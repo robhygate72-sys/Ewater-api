@@ -31,8 +31,8 @@ export const GetCredentialsStatusResponse = zod.object({
  * @summary Save eWater credentials
  */
 export const SaveCredentialsBody = zod.object({
-  "clientId": zod.string(),
-  "clientSecret": zod.string()
+  "username": zod.string(),
+  "password": zod.string()
 })
 
 export const SaveCredentialsResponse = zod.object({

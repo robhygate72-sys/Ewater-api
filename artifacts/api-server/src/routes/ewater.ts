@@ -37,8 +37,8 @@ router.post("/ewater/credentials", async (req, res): Promise<void> => {
   }
 
   setCredentials({
-    clientId: parsed.data.clientId,
-    clientSecret: parsed.data.clientSecret,
+    username: parsed.data.username,
+    password: parsed.data.password,
   });
 
   try {

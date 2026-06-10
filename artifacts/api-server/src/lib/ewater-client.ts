@@ -8,8 +8,8 @@ const EWATER_BASES: Record<string, string> = {
 };
 
 interface Credentials {
-  clientId: string;
-  clientSecret: string;
+  username: string;
+  password: string;
 }
 
 interface TokenCache {
@@ -40,61 +40,70 @@ export async function getToken(): Promise<string> {
   }
 
   const now = Date.now();
-  if (tokenCache && tokenCache.expiresAt > now + 30_000) {
+  if (tokenCache && tokenCache.expiresAt > now + 60_000) {
     return tokenCache.token;
   }
 
-  logger.info("Refreshing eWater token");
+  logger.info("Refreshing eWater token via web login");
 
-  const res = await fetch(`${EWATER_BASES.auth}/api/Client/GetToken`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: credentials.clientId,
-      client_secret: credentials.clientSecret,
-    }),
+  // Step 1: GET the login page to obtain the antiforgery cookie + CSRF token
+  const loginPageRes = await fetch(`${EWATER_BASES.auth}`, {
+    method: "GET",
+    redirect: "follow",
   });
 
-  // eWater always returns 200, even on error — check body for errorDescription
-  const data = (await res.json().catch(() => null)) as unknown;
+  const loginPageHtml = await loginPageRes.text();
 
-  if (!res.ok || !data) {
-    logger.warn({ status: res.status }, "Failed to get eWater token");
-    throw new Error(`Token request failed: ${res.status} ${res.statusText}`);
+  // Extract CSRF token from the hidden form field
+  const csrfMatch = loginPageHtml.match(
+    /name="__RequestVerificationToken"\s+type="hidden"\s+value="([^"]+)"/
+  );
+  if (!csrfMatch) {
+    throw new Error("Could not retrieve login form — eWater auth page may be unavailable");
+  }
+  const csrfToken = csrfMatch[1];
+
+  // Extract antiforgery cookie from response
+  const rawCookie = loginPageRes.headers.get("set-cookie") ?? "";
+  const antiforgeryCookie = rawCookie.match(/\.AspNetCore\.Antiforgery\.[^=]+=([^;]+)/)?.[0] ?? "";
+
+  // Step 2: POST the login form
+  const formData = new URLSearchParams();
+  formData.append("Username", credentials.username);
+  formData.append("Password", credentials.password);
+  formData.append("ReturnUrl", "/swagger");
+  formData.append("__RequestVerificationToken", csrfToken);
+
+  const loginRes = await fetch(`${EWATER_BASES.auth}/User/LoginViaForm`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(antiforgeryCookie ? { Cookie: antiforgeryCookie } : {}),
+    },
+    body: formData.toString(),
+    redirect: "manual",
+  });
+
+  // Successful login returns 302 with access_token in Set-Cookie
+  if (loginRes.status !== 302) {
+    // If we got 200, login failed (shows the form again with error)
+    throw new Error("Invalid username or password");
   }
 
-  let token: string;
-  let expiresInSeconds = 300;
-
-  if (typeof data === "string") {
-    token = data;
-  } else if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-
-    // Real eWater shape: { accessToken, expiresIn, errorDescription }
-    const accessToken = obj["accessToken"] ?? obj["access_token"] ?? obj["token"] ?? obj["Token"];
-
-    if (!accessToken) {
-      const desc = String(obj["errorDescription"] ?? obj["error"] ?? "Invalid credentials");
-      throw new Error(desc);
-    }
-
-    token = String(accessToken);
-
-    if (typeof obj["expiresIn"] === "number") {
-      expiresInSeconds = obj["expiresIn"] as number;
-    } else if (typeof obj["expires_in"] === "number") {
-      expiresInSeconds = obj["expires_in"] as number;
-    }
-  } else {
-    token = String(data);
+  const setCookie = loginRes.headers.get("set-cookie") ?? "";
+  const tokenMatch = setCookie.match(/access_token=([^;]+)/);
+  if (!tokenMatch) {
+    throw new Error("Login succeeded but no access token was returned");
   }
 
+  const token = tokenMatch[1];
+  // Web login tokens expire in 3600 seconds (1 hour)
   tokenCache = {
     token,
-    expiresAt: now + expiresInSeconds * 1000,
+    expiresAt: now + 3600 * 1000,
   };
 
+  logger.info("eWater token refreshed successfully");
   return token;
 }
 

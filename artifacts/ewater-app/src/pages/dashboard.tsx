@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout";
-import { useGetDashboard, useGetCredentialsStatus } from "@workspace/api-client-react";
+import { useGetDashboard, useGetCredentialsStatus, getGetDashboardQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert as AlertUI, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,8 +12,9 @@ export default function Dashboard() {
   const { data: credentials, isLoading: isLoadingCredentials } = useGetCredentialsStatus();
   const { data: dashboard, isLoading: isLoadingDashboard } = useGetDashboard({
     query: {
+      queryKey: getGetDashboardQueryKey(),
       enabled: credentials?.isConfigured,
-      refetchInterval: 30000 // Refetch every 30s
+      refetchInterval: 30000,
     }
   });
 

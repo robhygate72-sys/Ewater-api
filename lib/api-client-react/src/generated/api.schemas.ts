@@ -14,8 +14,8 @@ export interface ErrorResponse {
 }
 
 export interface CredentialsInput {
-  clientId: string;
-  clientSecret: string;
+  username: string;
+  password: string;
 }
 
 export interface CredentialsStatus {

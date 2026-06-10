@@ -7,14 +7,15 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ShieldAlert, KeyRound, Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
-  clientId: z.string().min(1, "Client ID is required"),
-  clientSecret: z.string().min(1, "Client Secret is required"),
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 export default function Settings() {
@@ -28,8 +29,8 @@ export default function Settings() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      clientId: "",
-      clientSecret: "",
+      username: "",
+      password: "",
     },
   });
 
@@ -37,16 +38,16 @@ export default function Settings() {
     saveMutation.mutate({ data: values }, {
       onSuccess: () => {
         toast({
-          title: "Credentials Saved",
-          description: "Successfully connected to eWater API.",
+          title: "Connected",
+          description: "Successfully signed in to eWater.",
         });
         queryClient.invalidateQueries({ queryKey: getGetCredentialsStatusQueryKey() });
         form.reset();
       },
       onError: (error: any) => {
         toast({
-          title: "Error",
-          description: error?.error || "Failed to save credentials.",
+          title: "Sign-in failed",
+          description: error?.response?.data?.error || error?.message || "Failed to connect. Check your username and password.",
           variant: "destructive",
         });
       }
@@ -57,8 +58,8 @@ export default function Settings() {
     clearMutation.mutate(undefined, {
       onSuccess: () => {
         toast({
-          title: "Credentials Cleared",
-          description: "Disconnected from eWater API.",
+          title: "Signed Out",
+          description: "Disconnected from eWater.",
         });
         queryClient.invalidateQueries({ queryKey: getGetCredentialsStatusQueryKey() });
       }
@@ -89,7 +90,7 @@ export default function Settings() {
                     ? "Checking..." 
                     : status?.isConfigured 
                       ? `Connected to ${status.environment || 'production'}` 
-                      : "Not configured"}
+                      : "Not signed in"}
                 </p>
               </div>
             </div>
@@ -99,15 +100,15 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Credentials Form */}
+        {/* Login Form */}
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <KeyRound className="w-5 h-5" />
-              API Credentials
+              eWater Sign In
             </CardTitle>
             <CardDescription>
-              Enter your eWater API Client ID and Secret to enable monitoring.
+              Sign in with your eWater account credentials to start monitoring.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -115,12 +116,18 @@ export default function Settings() {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="clientId"
+                  name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Client ID</FormLabel>
+                      <FormLabel>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter Client ID" {...field} className="bg-background" />
+                        <Input
+                          placeholder="Enter your eWater username"
+                          autoCapitalize="none"
+                          autoComplete="username"
+                          {...field}
+                          className="bg-background"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -128,12 +135,18 @@ export default function Settings() {
                 />
                 <FormField
                   control={form.control}
-                  name="clientSecret"
+                  name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Client Secret</FormLabel>
+                      <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="Enter Client Secret" {...field} className="bg-background" />
+                        <Input
+                          type="password"
+                          placeholder="Enter your eWater password"
+                          autoComplete="current-password"
+                          {...field}
+                          className="bg-background"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -143,7 +156,7 @@ export default function Settings() {
                 <div className="pt-2 flex flex-col gap-2">
                   <Button type="submit" disabled={saveMutation.isPending} className="w-full">
                     {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Save Credentials
+                    Sign In
                   </Button>
                   
                   {status?.isConfigured && (
@@ -155,7 +168,7 @@ export default function Settings() {
                       className="w-full text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
                     >
                       {clearMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                      Clear Credentials
+                      Sign Out
                     </Button>
                   )}
                 </div>
@@ -167,5 +180,3 @@ export default function Settings() {
     </Layout>
   );
 }
-
-import { Badge } from "@/components/ui/badge";
