@@ -1,8 +1,9 @@
 import { Link, useLocation } from "wouter";
-import { Home, Droplet, ChevronLeft, LogOut } from "lucide-react";
-import { ReactNode } from "react";
+import { Home, Droplet, ChevronLeft, LogOut, RefreshCw } from "lucide-react";
+import { ReactNode, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useLogout } from "@/App";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +15,14 @@ interface LayoutProps {
 export function Layout({ children, title, showBack, backTo }: LayoutProps) {
   const [location] = useLocation();
   const logout = useLogout();
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries();
+    setIsRefreshing(false);
+  }, [queryClient]);
 
   const navItems = [
     { href: "/", icon: Home, label: "Dashboard" },
@@ -29,6 +38,14 @@ export function Layout({ children, title, showBack, backTo }: LayoutProps) {
           </Link>
         ) : null}
         <h1 className="text-lg font-semibold tracking-tight truncate flex-1">{title || "eWater Monitor"}</h1>
+        <button
+          onClick={handleRefresh}
+          className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors"
+          title="Refresh data"
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={cn("w-5 h-5", isRefreshing && "animate-spin")} />
+        </button>
         <button
           onClick={logout}
           className="p-2 -mr-1 rounded-full hover:bg-primary-foreground/10 transition-colors"

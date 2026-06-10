@@ -160,19 +160,11 @@ export function getTokenExpiresAt(): string | null {
   return new Date(tokenCache.expiresAt).toISOString();
 }
 
-export async function ewaterFetch(
-  api: string,
-  path: string,
-  options: RequestInit = {}
+async function doFetch(
+  url: string,
+  token: string,
+  options: RequestInit
 ): Promise<{ status: number; data: unknown }> {
-  const base = EWATER_BASES[api];
-  if (!base) {
-    throw new Error(`Unknown eWater API: ${api}. Use: auth, query, state, command`);
-  }
-
-  const token = await getToken();
-  const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
-
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -192,6 +184,32 @@ export async function ewaterFetch(
   }
 
   return { status: res.status, data };
+}
+
+export async function ewaterFetch(
+  api: string,
+  path: string,
+  options: RequestInit = {}
+): Promise<{ status: number; data: unknown }> {
+  const base = EWATER_BASES[api];
+  if (!base) {
+    throw new Error(`Unknown eWater API: ${api}. Use: auth, query, state, command`);
+  }
+
+  const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
+
+  const token = await getToken();
+  const result = await doFetch(url, token, options);
+
+  // On 401, the cached token has expired — force a fresh login and retry once
+  if (result.status === 401) {
+    logger.info({ api, path }, "Got 401 — refreshing token and retrying");
+    tokenCache = null;
+    const freshToken = await getToken();
+    return doFetch(url, freshToken, options);
+  }
+
+  return result;
 }
 
 export type { Credentials };
