@@ -55,13 +55,13 @@ export async function getToken(): Promise<string> {
     }),
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    logger.warn({ status: res.status, body: text }, "Failed to get eWater token");
+  // eWater always returns 200, even on error — check body for errorDescription
+  const data = (await res.json().catch(() => null)) as unknown;
+
+  if (!res.ok || !data) {
+    logger.warn({ status: res.status }, "Failed to get eWater token");
     throw new Error(`Token request failed: ${res.status} ${res.statusText}`);
   }
-
-  const data = (await res.json()) as unknown;
 
   let token: string;
   let expiresInSeconds = 300;
@@ -70,8 +70,20 @@ export async function getToken(): Promise<string> {
     token = data;
   } else if (data && typeof data === "object") {
     const obj = data as Record<string, unknown>;
-    token = String(obj["access_token"] ?? obj["token"] ?? obj["Token"] ?? data);
-    if (typeof obj["expires_in"] === "number") {
+
+    // Real eWater shape: { accessToken, expiresIn, errorDescription }
+    const accessToken = obj["accessToken"] ?? obj["access_token"] ?? obj["token"] ?? obj["Token"];
+
+    if (!accessToken) {
+      const desc = String(obj["errorDescription"] ?? obj["error"] ?? "Invalid credentials");
+      throw new Error(desc);
+    }
+
+    token = String(accessToken);
+
+    if (typeof obj["expiresIn"] === "number") {
+      expiresInSeconds = obj["expiresIn"] as number;
+    } else if (typeof obj["expires_in"] === "number") {
       expiresInSeconds = obj["expires_in"] as number;
     }
   } else {
