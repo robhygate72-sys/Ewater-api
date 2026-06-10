@@ -1,0 +1,1 @@
+- [eWater API endpoints and schemas](ewater-api.md) — real Swagger-confirmed endpoints, token shape, and response schemas for all 4 APIs
