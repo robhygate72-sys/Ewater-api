@@ -49,6 +49,12 @@ export interface Asset {
   hasPowerFault?: boolean | null;
   /** @nullable */
   hasFlowFault?: boolean | null;
+  /** @nullable */
+  parentId?: number | null;
+  /** @nullable */
+  waterSystemName?: string | null;
+  /** @nullable */
+  countryName?: string | null;
   rawData?: AssetRawData;
 }
 
@@ -89,6 +95,97 @@ export interface DashboardSummary {
   /** @nullable */
   lastUpdated?: string | null;
   recentAlerts?: Alert[];
+}
+
+export interface EntityWaterSystem {
+  id: number;
+  name: string;
+  assetCount: number;
+}
+
+export interface EntityCountry {
+  id: number;
+  name: string;
+  waterSystems: EntityWaterSystem[];
+}
+
+export interface EntityHierarchy {
+  countries: EntityCountry[];
+}
+
+export interface FirmwareDevice {
+  deviceType: string;
+  /** @nullable */
+  version?: string | null;
+  /** @nullable */
+  phase?: string | null;
+  /** @nullable */
+  lastKnownDate?: string | null;
+}
+
+export interface AssetCommand {
+  id: string;
+  /** @nullable */
+  command?: string | null;
+  /** @nullable */
+  phase?: string | null;
+  /** @nullable */
+  createdDt?: string | null;
+  /** @nullable */
+  correlationId?: string | null;
+}
+
+export interface AssetTechStatus {
+  assetId: string;
+  name: string;
+  /** @nullable */
+  lifecycleState?: string | null;
+  /** @nullable */
+  purpose?: string | null;
+  /** @nullable */
+  waterSystemName?: string | null;
+  /** @nullable */
+  countryName?: string | null;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  lastCommsDt?: string | null;
+  /** @nullable */
+  lastNetwork?: string | null;
+  /** @nullable */
+  tapEventsPerMinuteToday?: number | null;
+  /** @nullable */
+  tapEventsPerMinuteThisWeek?: number | null;
+  /** @nullable */
+  batteryVoltage?: number | null;
+  /** @nullable */
+  batteryTrend?: string | null;
+  /** @nullable */
+  batteryTodayHigh?: number | null;
+  /** @nullable */
+  batteryTodayLow?: number | null;
+  /** @nullable */
+  lowBatteryEventCount?: number | null;
+  /** @nullable */
+  healthFlags?: string | null;
+  /** @nullable */
+  tamperSwitchState?: string | null;
+  /** @nullable */
+  litresDispensedToday?: number | null;
+  /** @nullable */
+  lastUsageDt?: string | null;
+  /** @nullable */
+  flowRateHour?: number | null;
+  /** @nullable */
+  flowRateToday?: number | null;
+  /** @nullable */
+  flowRateWeek?: number | null;
+  /** @nullable */
+  imei?: string | null;
+  firmware?: FirmwareDevice[];
+  recentCommands?: AssetCommand[];
 }
 
 export type ProxyInputBody = { [key: string]: unknown };

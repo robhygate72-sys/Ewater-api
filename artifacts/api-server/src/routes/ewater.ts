@@ -75,38 +75,56 @@ router.get("/ewater/assets", async (req, res): Promise<void> => {
   }
 
   try {
-    // Fetch all active lifecycle states
-    const result = await ewaterFetch("state", "/api/Entity/Assets", {
-      method: "POST",
-      body: JSON.stringify({
-        assetLifecycleStates: [
-          "Active", "Staged", "Demo", "Test", "Suspended",
-        ],
+    // Fetch assets + entity hierarchy in parallel
+    const [assetsResult, entityResult] = await Promise.allSettled([
+      ewaterFetch("state", "/api/Entity/Assets", {
+        method: "POST",
+        body: JSON.stringify({
+          assetLifecycleStates: ["Active", "Staged", "Demo", "Test", "Suspended"],
+        }),
       }),
-    });
+      ewaterFetch("state", "/api/Entity/List"),
+    ]);
 
-    if (result.status !== 200) {
-      req.log.warn({ status: result.status }, "Entity Assets returned non-200");
-      // Fallback: GET /api/Entity/List which returns all entity types
-      const listResult = await ewaterFetch("state", "/api/Entity/List");
-      if (listResult.status === 200 && listResult.data && typeof listResult.data === "object") {
-        const d = listResult.data as Record<string, unknown>;
-        const assets = Array.isArray(d["assets"])
-          ? (d["assets"] as Record<string, unknown>[]).map(normaliseAssetDto)
-          : [];
-        res.json(assets);
-        return;
+    // Build hierarchy maps: waterSystemId → { name, countryName }
+    const wsMap = new Map<number, { name: string; countryName: string }>();
+    if (entityResult.status === "fulfilled" && entityResult.value.status === 200) {
+      const ed = entityResult.value.data as Record<string, unknown>;
+      const countries = Array.isArray(ed["countries"]) ? (ed["countries"] as Record<string, unknown>[]) : [];
+      const orgs = Array.isArray(ed["organisations"]) ? (ed["organisations"] as Record<string, unknown>[]) : [];
+      const waterSystems = Array.isArray(ed["waterSystems"]) ? (ed["waterSystems"] as Record<string, unknown>[]) : [];
+
+      const countryById = new Map(countries.map((c) => [Number(c["id"]), strOrNull(c["name"]) ?? ""]));
+      const orgById = new Map(orgs.map((o) => [Number(o["id"]), { name: strOrNull(o["name"]) ?? "", parentId: Number(o["parentId"]) }]));
+
+      for (const ws of waterSystems) {
+        const wsId = Number(ws["id"]);
+        const wsName = strOrNull(ws["name"]) ?? "";
+        const parentId = Number(ws["parentId"]);
+        // parent may be org or country
+        const org = orgById.get(parentId);
+        const countryId = org ? org.parentId : parentId;
+        const countryName = countryById.get(countryId) ?? "";
+        wsMap.set(wsId, { name: wsName, countryName });
       }
-      res.json([]);
+    }
+
+    if (assetsResult.status === "fulfilled" && assetsResult.value.status === 200) {
+      const body = assetsResult.value.data as Record<string, unknown>;
+      const raw = Array.isArray(body["assets"]) ? (body["assets"] as Record<string, unknown>[]) : [];
+      res.json(raw.map((a) => normaliseAssetDto(a, wsMap)));
       return;
     }
 
-    const body = result.data as Record<string, unknown>;
-    const assets = Array.isArray(body["assets"])
-      ? (body["assets"] as Record<string, unknown>[]).map(normaliseAssetDto)
-      : [];
+    // Fallback: use entity list assets
+    if (entityResult.status === "fulfilled" && entityResult.value.status === 200) {
+      const d = entityResult.value.data as Record<string, unknown>;
+      const raw = Array.isArray(d["assets"]) ? (d["assets"] as Record<string, unknown>[]) : [];
+      res.json(raw.map((a) => normaliseAssetDto(a, wsMap)));
+      return;
+    }
 
-    res.json(assets);
+    res.json([]);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to list assets");
@@ -250,6 +268,243 @@ router.get("/ewater/assets/:assetId/telemetry", async (req, res): Promise<void> 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch telemetry");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Entity hierarchy
+// GET /api/ewater/entities
+// Uses State: GET /api/Entity/List
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/entities", async (req, res): Promise<void> => {
+  if (!getCredentials()) {
+    res.status(401).json({ error: "No credentials configured" });
+    return;
+  }
+
+  try {
+    const result = await ewaterFetch("state", "/api/Entity/List");
+    if (result.status !== 200) {
+      res.status(502).json({ error: "Failed to fetch entity list" });
+      return;
+    }
+
+    const ed = result.data as Record<string, unknown>;
+    const countries = Array.isArray(ed["countries"]) ? (ed["countries"] as Record<string, unknown>[]) : [];
+    const orgs = Array.isArray(ed["organisations"]) ? (ed["organisations"] as Record<string, unknown>[]) : [];
+    const waterSystems = Array.isArray(ed["waterSystems"]) ? (ed["waterSystems"] as Record<string, unknown>[]) : [];
+    const assets = Array.isArray(ed["assets"]) ? (ed["assets"] as Record<string, unknown>[]) : [];
+
+    const countryById = new Map(countries.map((c) => [Number(c["id"]), strOrNull(c["name"]) ?? ""]));
+    const orgById = new Map(orgs.map((o) => [Number(o["id"]), { name: strOrNull(o["name"]) ?? "", parentId: Number(o["parentId"]) }]));
+
+    // Count assets per water system
+    const assetCountByWs = new Map<number, number>();
+    for (const a of assets) {
+      const wsId = Number(a["parentId"]);
+      assetCountByWs.set(wsId, (assetCountByWs.get(wsId) ?? 0) + 1);
+    }
+
+    // Build country → water systems map
+    const countryMap = new Map<number, { id: number; name: string; waterSystems: { id: number; name: string; assetCount: number }[] }>();
+    for (const c of countries) {
+      countryMap.set(Number(c["id"]), { id: Number(c["id"]), name: strOrNull(c["name"]) ?? "", waterSystems: [] });
+    }
+
+    for (const ws of waterSystems) {
+      const wsId = Number(ws["id"]);
+      const wsName = strOrNull(ws["name"]) ?? "";
+      const parentId = Number(ws["parentId"]);
+      const org = orgById.get(parentId);
+      const countryId = org ? org.parentId : parentId;
+      const country = countryMap.get(countryId);
+      if (country) {
+        country.waterSystems.push({ id: wsId, name: wsName, assetCount: assetCountByWs.get(wsId) ?? 0 });
+      }
+    }
+
+    const result2 = {
+      countries: [...countryMap.values()]
+        .filter((c) => c.waterSystems.length > 0)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => ({ ...c, waterSystems: c.waterSystems.sort((a, b) => a.name.localeCompare(b.name)) })),
+    };
+
+    res.json(result2);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch entity hierarchy");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Asset tech status bundle
+// GET /api/ewater/assets/:assetId/tech
+// Parallel fetch: connectivity, power, flow, usage, status values, firmware,
+//   identifiers, commands from State + Query APIs
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
+  const params = GetAssetParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!getCredentials()) {
+    res.status(401).json({ error: "No credentials configured" });
+    return;
+  }
+
+  const id = params.data.assetId;
+  const idNum = Number(id);
+
+  try {
+    const [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, entityRes] =
+      await Promise.allSettled([
+        ewaterFetch("state", `/api/Asset/GetAssetBasicInfoByAssetID?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("query", `/api/Asset/AssetConnectivityStatus?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("query", `/api/Asset/AssetFlowStatus?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("query", `/api/Asset/AssetUsageStatus?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("state", `/api/Asset/GetStatusValuesForAsset?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("state", `/api/Asset/GetFirmwareStatusByAssetId?assetId=${encodeURIComponent(id)}`),
+        ewaterFetch("state", `/api/Asset/GetIdentifiersByAssetId?assetId=${encodeURIComponent(idNum)}`),
+        ewaterFetch("state", `/api/Asset/GetCommandsForAsset?assetId=${encodeURIComponent(id)}&pageSize=20&pageIndex=0`),
+        ewaterFetch("state", "/api/Entity/List"),
+      ]);
+
+    const ok = <T>(r: PromiseSettledResult<{ status: number; data: unknown }>): T | null =>
+      r.status === "fulfilled" && r.value.status === 200 ? (r.value.data as T) : null;
+
+    const basic = ok<Record<string, unknown>>(basicRes);
+    if (!basic) {
+      res.status(404).json({ error: "Asset not found" });
+      return;
+    }
+
+    const conn    = ok<Record<string, unknown>>(connRes);
+    const power   = ok<Record<string, unknown>>(powerRes);
+    const flow    = ok<Record<string, unknown>>(flowRes);
+    const usage   = ok<Record<string, unknown>>(usageRes);
+    const status  = ok<Record<string, unknown>>(statusRes);
+    const firmwareRaw = ok<Record<string, unknown>>(firmwareRes);
+    const identifiers = ok<Record<string, unknown>>(identifiersRes);
+    const commandsRaw = ok<Record<string, unknown>>(commandsRes);
+
+    // Resolve water system + country from entity list
+    let waterSystemName: string | null = null;
+    let countryName: string | null = null;
+    const entityData = ok<Record<string, unknown>>(entityRes);
+    if (entityData && basic["parentId"] != null) {
+      const wsParentId = Number(basic["parentId"]);
+      const countries = Array.isArray(entityData["countries"]) ? (entityData["countries"] as Record<string, unknown>[]) : [];
+      const orgs = Array.isArray(entityData["organisations"]) ? (entityData["organisations"] as Record<string, unknown>[]) : [];
+      const waterSystems = Array.isArray(entityData["waterSystems"]) ? (entityData["waterSystems"] as Record<string, unknown>[]) : [];
+      const countryById = new Map(countries.map((c) => [Number(c["id"]), strOrNull(c["name"]) ?? ""]));
+      const orgById = new Map(orgs.map((o) => [Number(o["id"]), Number(o["parentId"])]));
+      const ws = waterSystems.find((w) => Number(w["id"]) === wsParentId);
+      if (ws) {
+        waterSystemName = strOrNull(ws["name"]);
+        const wsParent = Number(ws["parentId"]);
+        const orgCountryId = orgById.get(wsParent);
+        const countryId = orgCountryId ?? wsParent;
+        countryName = countryById.get(countryId) ?? null;
+      }
+    }
+
+    // Parse status values (tamper, health flags)
+    const statusValues = Array.isArray(status?.["statusValues"])
+      ? (status!["statusValues"] as Record<string, unknown>[])
+      : Array.isArray(status) ? (status as Record<string, unknown>[]) : [];
+
+    const findStatusVal = (key: string) => {
+      const entry = statusValues.find((sv) =>
+        String(sv["statusValueType"] ?? sv["key"] ?? "").toLowerCase().includes(key.toLowerCase())
+      );
+      return entry ? strOrNull(entry["value"] ?? entry["currentValue"]) : null;
+    };
+
+    // Status values: real shape is { data: { tamperSwitchState: {value,date}, healthFlags: {value,date}, ... } }
+    const statusData = status?.["data"] as Record<string, Record<string, unknown>> | null | undefined;
+    const healthFlags = strOrNull(statusData?.["healthFlags"]?.["value"]);
+    const tamperSwitchState = strOrNull(statusData?.["tamperSwitchState"]?.["value"]);
+
+    // Firmware devices: real field is deviceChanges
+    const fwDevices = Array.isArray(firmwareRaw?.["deviceChanges"])
+      ? (firmwareRaw!["deviceChanges"] as Record<string, unknown>[])
+      : [];
+
+    const firmware = fwDevices.map((d) => ({
+      deviceType: strOrNull(d["deviceType"]) ?? "Unknown",
+      version: strOrNull(d["lastKnownFirmwareName"]),
+      phase: strOrNull(d["commandPhase"]),
+      lastKnownDate: strOrNull(d["lastKnownDate"]),
+    }));
+
+    // Identifiers: real shape is { identifiers: [{assetId, imei, modemType, createdDate}] }
+    const idList = Array.isArray(identifiers?.["identifiers"])
+      ? (identifiers!["identifiers"] as Record<string, unknown>[])
+      : [];
+    const imei = idList.length > 0 ? strOrNull(idList[0]!["imei"]) : null;
+
+    // Recent commands: real shape is { commands: [{id, correlationId, createdDate, state, priority, retryCount}] }
+    const cmdList = Array.isArray(commandsRaw?.["commands"])
+      ? (commandsRaw!["commands"] as Record<string, unknown>[])
+      : [];
+
+    const recentCommands = cmdList.slice(0, 15).map((c) => ({
+      id: String(c["id"] ?? crypto.randomUUID()),
+      command: strOrNull(c["state"]),       // no command type — state is most useful
+      phase: strOrNull(c["priority"]),      // reusing phase field for priority
+      createdDt: strOrNull(c["createdDate"]),
+      correlationId: strOrNull(c["correlationId"]),
+    }));
+
+    // Round voltage to 2dp to avoid floating point noise
+    const round2 = (n: number | null) => n != null ? Math.round(n * 100) / 100 : null;
+
+    res.json({
+      assetId: id,
+      name: strOrNull(basic["name"]) ?? id,
+      lifecycleState: strOrNull(basic["assetLifecycleState"]),
+      purpose: strOrNull(basic["purpose"]),
+      waterSystemName,
+      countryName,
+      latitude: numOrNull(basic["latitude"]),
+      longitude: numOrNull(basic["longitude"]),
+      // Connectivity — real fields confirmed
+      lastCommsDt: strOrNull(conn?.["lastCommsDt"]),
+      lastNetwork: strOrNull(conn?.["lastNetwork"]),
+      tapEventsPerMinuteToday: numOrNull(conn?.["tapEventsPerMinuteToday"]),
+      tapEventsPerMinuteThisWeek: numOrNull(conn?.["tapEventsPerMinuteThisWeek"]),
+      // Power — real fields confirmed
+      batteryVoltage: round2(numOrNull(power?.["lastKnownVoltage"])),
+      batteryTrend: strOrNull(power?.["trendDirection"]),
+      batteryTodayHigh: round2(numOrNull(power?.["todayHigh"])),
+      batteryTodayLow: round2(numOrNull(power?.["todayLow"])),
+      lowBatteryEventCount: numOrNull(power?.["todayLowBatteryEventCount"]) != null
+        ? Math.round(numOrNull(power?.["todayLowBatteryEventCount"])!)
+        : null,
+      // Health flags from status values data object
+      healthFlags,
+      tamperSwitchState,
+      // Usage
+      litresDispensedToday: round2(numOrNull(usage?.["litresDispensedToday"])),
+      lastUsageDt: strOrNull(usage?.["lastUsageDt"]),
+      flowRateHour: round2(numOrNull(flow?.["averageFlowRateThisHour"])),
+      flowRateToday: round2(numOrNull(flow?.["averageFlowRateToday"])),
+      flowRateWeek: round2(numOrNull(flow?.["averageFlowRateThisWeek"])),
+      // Identifiers & firmware
+      imei,
+      firmware,
+      recentCommands,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch asset tech status");
     res.status(502).json({ error: `eWater API error: ${msg}` });
   }
 });
@@ -421,7 +676,12 @@ router.post("/ewater/proxy", async (req, res): Promise<void> => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function normaliseAssetDto(raw: Record<string, unknown>) {
+function normaliseAssetDto(
+  raw: Record<string, unknown>,
+  wsMap?: Map<number, { name: string; countryName: string }>,
+) {
+  const parentId = numOrNull(raw["parentId"]);
+  const wsInfo = parentId != null && wsMap ? wsMap.get(parentId) : undefined;
   return {
     id: String(raw["id"] ?? ""),
     name: strOrNull(raw["name"]) ?? String(raw["id"] ?? ""),
@@ -434,6 +694,9 @@ function normaliseAssetDto(raw: Record<string, unknown>) {
     signalStrength: null,
     hasPowerFault: null,
     hasFlowFault: null,
+    parentId,
+    waterSystemName: wsInfo?.name ?? null,
+    countryName: wsInfo?.countryName ?? null,
     rawData: raw,
   };
 }

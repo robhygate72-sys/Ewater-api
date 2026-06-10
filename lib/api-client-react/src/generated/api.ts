@@ -21,9 +21,11 @@ import type {
 
 import type {
   Asset,
+  AssetTechStatus,
   CredentialsInput,
   CredentialsStatus,
   DashboardSummary,
+  EntityHierarchy,
   ErrorResponse,
   HealthStatus,
   ProxyInput,
@@ -635,6 +637,160 @@ export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDashboardQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetEntityHierarchyUrl = () => {
+
+
+
+
+  return `/api/ewater/entities`
+}
+
+/**
+ * @summary Get entity hierarchy (countries → water systems)
+ */
+export const getEntityHierarchy = async ( options?: RequestInit): Promise<EntityHierarchy> => {
+
+  return customFetch<EntityHierarchy>(getGetEntityHierarchyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEntityHierarchyQueryKey = () => {
+    return [
+    `/api/ewater/entities`
+    ] as const;
+    }
+
+
+export const getGetEntityHierarchyQueryOptions = <TData = Awaited<ReturnType<typeof getEntityHierarchy>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEntityHierarchy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEntityHierarchyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEntityHierarchy>>> = ({ signal }) => getEntityHierarchy({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEntityHierarchy>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEntityHierarchyQueryResult = NonNullable<Awaited<ReturnType<typeof getEntityHierarchy>>>
+export type GetEntityHierarchyQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get entity hierarchy (countries → water systems)
+ */
+
+export function useGetEntityHierarchy<TData = Awaited<ReturnType<typeof getEntityHierarchy>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEntityHierarchy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEntityHierarchyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssetTechUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/tech`
+}
+
+/**
+ * @summary Get comprehensive technical status for an asset
+ */
+export const getAssetTech = async (assetId: string, options?: RequestInit): Promise<AssetTechStatus> => {
+
+  return customFetch<AssetTechStatus>(getGetAssetTechUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssetTechQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/assets/${assetId}/tech`
+    ] as const;
+    }
+
+
+export const getGetAssetTechQueryOptions = <TData = Awaited<ReturnType<typeof getAssetTech>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetTech>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssetTechQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssetTech>>> = ({ signal }) => getAssetTech(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssetTech>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssetTechQueryResult = NonNullable<Awaited<ReturnType<typeof getAssetTech>>>
+export type GetAssetTechQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get comprehensive technical status for an asset
+ */
+
+export function useGetAssetTech<TData = Awaited<ReturnType<typeof getAssetTech>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetTech>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssetTechQueryOptions(assetId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

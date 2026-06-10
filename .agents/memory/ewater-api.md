@@ -43,6 +43,30 @@ Failure: `{ "accessToken": null, "expiresIn": 0, "errorDescription": "Invalid cl
   - `LogLine: { id: integer, correlationId: uuid, timeReceived: datetime, userId: uuid, pipeline: string, source: string, protocol: string, payload: string }`
 - `GET /api/Asset/GetStatusValuesForAsset?assetId=` → `{ success, queryDate, logDate, data: EwcStatusValues }`
 
+## Confirmed live field names for asset tech bundle
+
+### Query: AssetConnectivityStatus
+Real fields: `lastCommsDt`, `lastNetwork`, `tapEventsPerMinuteToday`, `tapEventsPerMinuteThisWeek`, `tapEventsPerMinuteThisMonth`, `ewcClockDriftSecondsToday`
+**Not real:** `lastKnownNetwork`, `averageTapEventsPerMinuteToday`
+
+### Query: AssetPowerStatus
+Real fields: `lastKnownVoltage`, `trendDirection`, `todayHigh`, `todayLow`, `todayAverage`, `todayLowBatteryEventCount`, `endOfDayDeclineConsecutiveDays`
+**Not real:** `voltageTrend`, `todayHighVoltage`, `todayLowVoltage`. Also: voltage has floating point noise — round to 2dp server-side.
+
+### State: GetStatusValuesForAsset
+Nested object under `data`, NOT an array:
+`{ data: { tamperSwitchState: {value, date}, healthFlags: {value, date}, batteryAdcReading: {value, date}, ... } }`
+Access via `status.data.healthFlags.value`, not `statusValues[]`.
+
+### State: GetFirmwareStatusByAssetId
+Array under `deviceChanges` (NOT `firmwareStatuses`). Fields: `deviceType`, `lastKnownFirmwareName`, `commandPhase`, `lastKnownDate`.
+
+### State: GetIdentifiersByAssetId
+`{ identifiers: [{ assetId, imei, modemType, createdDate }] }` — IMEI is a direct field, not a key/value pattern.
+
+### State: GetCommandsForAsset?pageSize=20&pageIndex=0
+`{ commands: [{ id, correlationId, createdDate, state, priority, retryCount }] }` — NO `commandType` or command name. States: `Dispatched`, `Abandoned`, `Cancelled`.
+
 ## Enums
 - `EntityType`: World, Country, Organisation, WaterSystem, Asset, AppZone, None
 - `AssetLifecycleState`: PreInstallation, Abandoned, Staged, Active, Suspended, Deactivated, RemovedFromService, Deleted, Test, Demo

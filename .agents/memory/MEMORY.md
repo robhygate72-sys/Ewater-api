@@ -1,1 +1,1 @@
-- [eWater API endpoints and schemas](ewater-api.md) — real Swagger-confirmed endpoints, token shape, and response schemas for all 4 APIs
+- [eWater API field names](ewater-api.md) — confirmed real field names for connectivity, power, status values, firmware, identifiers, and commands endpoints

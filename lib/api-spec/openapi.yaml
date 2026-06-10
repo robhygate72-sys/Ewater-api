@@ -172,6 +172,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/entities:
+    get:
+      operationId: getEntityHierarchy
+      tags: [ewater]
+      summary: Get entity hierarchy (countries → water systems)
+      responses:
+        "200":
+          description: Entity hierarchy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityHierarchy"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/assets/{assetId}/tech:
+    get:
+      operationId: getAssetTech
+      tags: [ewater]
+      summary: Get comprehensive technical status for an asset
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset technical status bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetTechStatus"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/proxy:
     post:
       operationId: proxyRequest
@@ -265,6 +315,12 @@ components:
           type: ["boolean", "null"]
         hasFlowFault:
           type: ["boolean", "null"]
+        parentId:
+          type: ["integer", "null"]
+        waterSystemName:
+          type: ["string", "null"]
+        countryName:
+          type: ["string", "null"]
         rawData:
           type: object
           additionalProperties: true
@@ -330,6 +386,130 @@ components:
           type: string
         timestamp:
           type: string
+
+    EntityWaterSystem:
+      type: object
+      required: [id, name, assetCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        assetCount:
+          type: integer
+
+    EntityCountry:
+      type: object
+      required: [id, name, waterSystems]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        waterSystems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityWaterSystem"
+
+    EntityHierarchy:
+      type: object
+      required: [countries]
+      properties:
+        countries:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityCountry"
+
+    FirmwareDevice:
+      type: object
+      required: [deviceType]
+      properties:
+        deviceType:
+          type: string
+        version:
+          type: ["string", "null"]
+        phase:
+          type: ["string", "null"]
+        lastKnownDate:
+          type: ["string", "null"]
+
+    AssetCommand:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        command:
+          type: ["string", "null"]
+        phase:
+          type: ["string", "null"]
+        createdDt:
+          type: ["string", "null"]
+        correlationId:
+          type: ["string", "null"]
+
+    AssetTechStatus:
+      type: object
+      required: [assetId, name]
+      properties:
+        assetId:
+          type: string
+        name:
+          type: string
+        lifecycleState:
+          type: ["string", "null"]
+        purpose:
+          type: ["string", "null"]
+        waterSystemName:
+          type: ["string", "null"]
+        countryName:
+          type: ["string", "null"]
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        lastCommsDt:
+          type: ["string", "null"]
+        lastNetwork:
+          type: ["string", "null"]
+        tapEventsPerMinuteToday:
+          type: ["number", "null"]
+        tapEventsPerMinuteThisWeek:
+          type: ["number", "null"]
+        batteryVoltage:
+          type: ["number", "null"]
+        batteryTrend:
+          type: ["string", "null"]
+        batteryTodayHigh:
+          type: ["number", "null"]
+        batteryTodayLow:
+          type: ["number", "null"]
+        lowBatteryEventCount:
+          type: ["integer", "null"]
+        healthFlags:
+          type: ["string", "null"]
+        tamperSwitchState:
+          type: ["string", "null"]
+        litresDispensedToday:
+          type: ["number", "null"]
+        lastUsageDt:
+          type: ["string", "null"]
+        flowRateHour:
+          type: ["number", "null"]
+        flowRateToday:
+          type: ["number", "null"]
+        flowRateWeek:
+          type: ["number", "null"]
+        imei:
+          type: ["string", "null"]
+        firmware:
+          type: array
+          items:
+            $ref: "#/components/schemas/FirmwareDevice"
+        recentCommands:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetCommand"
 
     ProxyInput:
       type: object

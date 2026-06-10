@@ -8,11 +8,17 @@
 
 export * from './alert';
 export * from './asset';
+export * from './assetCommand';
 export * from './assetRawData';
+export * from './assetTechStatus';
 export * from './credentialsInput';
 export * from './credentialsStatus';
 export * from './dashboardSummary';
+export * from './entityCountry';
+export * from './entityHierarchy';
+export * from './entityWaterSystem';
 export * from './errorResponse';
+export * from './firmwareDevice';
 export * from './healthStatus';
 export * from './proxyInput';
 export * from './proxyInputBody';

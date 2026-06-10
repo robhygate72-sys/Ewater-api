@@ -28,5 +28,11 @@ export interface Asset {
   hasPowerFault?: boolean | null;
   /** @nullable */
   hasFlowFault?: boolean | null;
+  /** @nullable */
+  parentId?: number | null;
+  /** @nullable */
+  waterSystemName?: string | null;
+  /** @nullable */
+  countryName?: string | null;
   rawData?: AssetRawData;
 }

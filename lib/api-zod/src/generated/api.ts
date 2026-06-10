@@ -67,6 +67,9 @@ export const ListAssetsResponseItem = zod.object({
   "signalStrength": zod.number().nullish(),
   "hasPowerFault": zod.boolean().nullish(),
   "hasFlowFault": zod.boolean().nullish(),
+  "parentId": zod.number().nullish(),
+  "waterSystemName": zod.string().nullish(),
+  "countryName": zod.string().nullish(),
   "rawData": zod.record(zod.string(), zod.unknown()).optional()
 })
 export const ListAssetsResponse = zod.array(ListAssetsResponseItem)
@@ -91,6 +94,9 @@ export const GetAssetResponse = zod.object({
   "signalStrength": zod.number().nullish(),
   "hasPowerFault": zod.boolean().nullish(),
   "hasFlowFault": zod.boolean().nullish(),
+  "parentId": zod.number().nullish(),
+  "waterSystemName": zod.string().nullish(),
+  "countryName": zod.string().nullish(),
   "rawData": zod.record(zod.string(), zod.unknown()).optional()
 })
 
@@ -133,6 +139,71 @@ export const GetDashboardResponse = zod.object({
   "message": zod.string(),
   "severity": zod.string(),
   "timestamp": zod.string().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Get entity hierarchy (countries → water systems)
+ */
+export const GetEntityHierarchyResponse = zod.object({
+  "countries": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "waterSystems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "assetCount": zod.number()
+}))
+}))
+})
+
+
+/**
+ * @summary Get comprehensive technical status for an asset
+ */
+export const GetAssetTechParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetAssetTechResponse = zod.object({
+  "assetId": zod.string(),
+  "name": zod.string(),
+  "lifecycleState": zod.string().nullish(),
+  "purpose": zod.string().nullish(),
+  "waterSystemName": zod.string().nullish(),
+  "countryName": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "lastCommsDt": zod.string().nullish(),
+  "lastNetwork": zod.string().nullish(),
+  "tapEventsPerMinuteToday": zod.number().nullish(),
+  "tapEventsPerMinuteThisWeek": zod.number().nullish(),
+  "batteryVoltage": zod.number().nullish(),
+  "batteryTrend": zod.string().nullish(),
+  "batteryTodayHigh": zod.number().nullish(),
+  "batteryTodayLow": zod.number().nullish(),
+  "lowBatteryEventCount": zod.number().nullish(),
+  "healthFlags": zod.string().nullish(),
+  "tamperSwitchState": zod.string().nullish(),
+  "litresDispensedToday": zod.number().nullish(),
+  "lastUsageDt": zod.string().nullish(),
+  "flowRateHour": zod.number().nullish(),
+  "flowRateToday": zod.number().nullish(),
+  "flowRateWeek": zod.number().nullish(),
+  "imei": zod.string().nullish(),
+  "firmware": zod.array(zod.object({
+  "deviceType": zod.string(),
+  "version": zod.string().nullish(),
+  "phase": zod.string().nullish(),
+  "lastKnownDate": zod.string().nullish()
+})).optional(),
+  "recentCommands": zod.array(zod.object({
+  "id": zod.string(),
+  "command": zod.string().nullish(),
+  "phase": zod.string().nullish(),
+  "createdDt": zod.string().nullish(),
+  "correlationId": zod.string().nullish()
 })).optional()
 })
 
