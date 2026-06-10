@@ -20,6 +20,14 @@ interface TokenCache {
 let credentials: Credentials | null = null;
 let tokenCache: TokenCache | null = null;
 
+// Auto-load from environment variables on startup
+if (process.env.EWATER_USERNAME && process.env.EWATER_PASSWORD) {
+  credentials = {
+    username: process.env.EWATER_USERNAME,
+    password: process.env.EWATER_PASSWORD,
+  };
+}
+
 export function setCredentials(creds: Credentials): void {
   credentials = creds;
   tokenCache = null;
