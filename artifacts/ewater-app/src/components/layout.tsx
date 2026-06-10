@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { Home, Droplet, Settings, ChevronLeft } from "lucide-react";
+import { Home, Droplet, ChevronLeft, LogOut } from "lucide-react";
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { useLogout } from "@/App";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,37 +13,42 @@ interface LayoutProps {
 
 export function Layout({ children, title, showBack, backTo }: LayoutProps) {
   const [location] = useLocation();
+  const logout = useLogout();
 
   const navItems = [
     { href: "/", icon: Home, label: "Dashboard" },
     { href: "/assets", icon: Droplet, label: "Assets" },
-    { href: "/settings", icon: Settings, label: "Settings" },
   ];
-
-  const hideBottomNav = showBack;
 
   return (
     <div className="flex flex-col min-h-[100dvh] bg-background text-foreground pb-safe">
       <header className="sticky top-0 z-10 bg-primary text-primary-foreground shadow-md h-14 flex items-center px-4 shrink-0">
-        {showBack && (
+        {showBack ? (
           <Link href={backTo || "/"} className="mr-3 p-1 -ml-1 rounded-full hover:bg-primary-foreground/10 transition-colors">
             <ChevronLeft className="w-6 h-6" />
           </Link>
-        )}
-        <h1 className="text-lg font-semibold tracking-tight truncate">{title || "eWater Monitor"}</h1>
+        ) : null}
+        <h1 className="text-lg font-semibold tracking-tight truncate flex-1">{title || "eWater Monitor"}</h1>
+        <button
+          onClick={logout}
+          className="p-2 -mr-1 rounded-full hover:bg-primary-foreground/10 transition-colors"
+          title="Sign out"
+        >
+          <LogOut className="w-5 h-5" />
+        </button>
       </header>
 
       <main className="flex-1 flex flex-col p-4 w-full max-w-md mx-auto overflow-x-hidden pb-20">
         {children}
       </main>
 
-      {!hideBottomNav && (
+      {!showBack && (
         <nav className="fixed bottom-0 w-full bg-card border-t border-border flex items-center justify-around h-16 pb-safe z-20 px-2 max-w-md left-1/2 -translate-x-1/2">
           {navItems.map((item) => {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             return (
-              <Link 
-                key={item.href} 
+              <Link
+                key={item.href}
                 href={item.href}
                 className={cn(
                   "flex flex-col items-center justify-center w-full h-full space-y-1 rounded-lg transition-colors",

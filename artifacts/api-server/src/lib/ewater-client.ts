@@ -1,3 +1,5 @@
+import fs from "fs";
+import nodePath from "path";
 import { logger } from "./logger";
 
 const EWATER_BASES: Record<string, string> = {
@@ -17,25 +19,66 @@ interface TokenCache {
   expiresAt: number;
 }
 
+const CREDS_FILE = nodePath.join(process.cwd(), ".ewater-credentials.json");
+
+function loadFromFile(): Credentials | null {
+  try {
+    const raw = fs.readFileSync(CREDS_FILE, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "username" in parsed &&
+      "password" in parsed
+    ) {
+      return parsed as Credentials;
+    }
+  } catch {
+    // file doesn't exist or is malformed — ignore
+  }
+  return null;
+}
+
+function saveToFile(creds: Credentials): void {
+  try {
+    fs.writeFileSync(CREDS_FILE, JSON.stringify(creds), "utf8");
+  } catch (e) {
+    logger.warn({ err: e }, "Failed to persist credentials to disk");
+  }
+}
+
+function deleteFile(): void {
+  try {
+    fs.unlinkSync(CREDS_FILE);
+  } catch {
+    // ignore — file may not exist
+  }
+}
+
 let credentials: Credentials | null = null;
 let tokenCache: TokenCache | null = null;
 
-// Auto-load from environment variables on startup
-if (process.env.EWATER_USERNAME && process.env.EWATER_PASSWORD) {
-  credentials = {
-    username: process.env.EWATER_USERNAME,
-    password: process.env.EWATER_PASSWORD,
-  };
+// Load persisted credentials on startup (file takes priority, then env vars)
+credentials =
+  loadFromFile() ??
+  (process.env.EWATER_USERNAME && process.env.EWATER_PASSWORD
+    ? { username: process.env.EWATER_USERNAME, password: process.env.EWATER_PASSWORD }
+    : null);
+
+if (credentials) {
+  logger.info("eWater credentials loaded from storage");
 }
 
 export function setCredentials(creds: Credentials): void {
   credentials = creds;
   tokenCache = null;
+  saveToFile(creds);
 }
 
 export function clearCredentials(): void {
   credentials = null;
   tokenCache = null;
+  deleteFile();
 }
 
 export function getCredentials(): Credentials | null {
@@ -92,9 +135,7 @@ export async function getToken(): Promise<string> {
     redirect: "manual",
   });
 
-  // Successful login returns 302 with access_token in Set-Cookie
   if (loginRes.status !== 302) {
-    // If we got 200, login failed (shows the form again with error)
     throw new Error("Invalid username or password");
   }
 
@@ -105,7 +146,6 @@ export async function getToken(): Promise<string> {
   }
 
   const token = tokenMatch[1];
-  // Web login tokens expire in 3600 seconds (1 hour)
   tokenCache = {
     token,
     expiresAt: now + 3600 * 1000,
