@@ -1,0 +1,61 @@
+import { Link, useLocation } from "wouter";
+import { Home, Droplet, Settings, ChevronLeft } from "lucide-react";
+import { ReactNode } from "react";
+import { cn } from "@/lib/utils";
+
+interface LayoutProps {
+  children: ReactNode;
+  title?: string;
+  showBack?: boolean;
+  backTo?: string;
+}
+
+export function Layout({ children, title, showBack, backTo }: LayoutProps) {
+  const [location] = useLocation();
+
+  const navItems = [
+    { href: "/", icon: Home, label: "Dashboard" },
+    { href: "/assets", icon: Droplet, label: "Assets" },
+    { href: "/settings", icon: Settings, label: "Settings" },
+  ];
+
+  const hideBottomNav = showBack;
+
+  return (
+    <div className="flex flex-col min-h-[100dvh] bg-background text-foreground pb-safe">
+      <header className="sticky top-0 z-10 bg-primary text-primary-foreground shadow-md h-14 flex items-center px-4 shrink-0">
+        {showBack && (
+          <Link href={backTo || "/"} className="mr-3 p-1 -ml-1 rounded-full hover:bg-primary-foreground/10 transition-colors">
+            <ChevronLeft className="w-6 h-6" />
+          </Link>
+        )}
+        <h1 className="text-lg font-semibold tracking-tight truncate">{title || "eWater Monitor"}</h1>
+      </header>
+
+      <main className="flex-1 flex flex-col p-4 w-full max-w-md mx-auto overflow-x-hidden pb-20">
+        {children}
+      </main>
+
+      {!hideBottomNav && (
+        <nav className="fixed bottom-0 w-full bg-card border-t border-border flex items-center justify-around h-16 pb-safe z-20 px-2 max-w-md left-1/2 -translate-x-1/2">
+          {navItems.map((item) => {
+            const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+            return (
+              <Link 
+                key={item.href} 
+                href={item.href}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full space-y-1 rounded-lg transition-colors",
+                  isActive ? "text-primary font-medium" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                <item.icon className={cn("w-5 h-5", isActive ? "stroke-[2.5px]" : "")} />
+                <span className="text-[10px]">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+    </div>
+  );
+}

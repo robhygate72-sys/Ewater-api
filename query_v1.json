@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>eWATER Auth</title>
+        <link rel="stylesheet" href="/style.css" />
+    </head>
+    <body>
+        <main>
+            
+<div class="ocean">
+    <div class="wave"></div>
+    <div class="wave"></div>
+</div>
+<div id="logo-container">
+    <img src="/Images/ewaterservices.png" width="200" id="logo" alt="eWater Services" />
+</div>
+<div class="centered-box-container">
+    <div class="centered-box">
+<form action="/User/LoginViaForm" method="post"><input data-val="true" data-val-required="The ReturnUrl field is required." id="ReturnUrl" name="ReturnUrl" type="hidden" value="https://query.ewater.io/swagger/v1/swagger.json" />            <div class="form-field-outer">
+                <div class="form-field-inner">
+                    <label class="input-label" for="Username">Username</label>
+                    <input class="input-textbox" data-val="true" data-val-required="The Username field is required." id="Username" name="Username" required="required" type="text" value="" />
+                </div>
+                <div><span class="input-validation field-validation-valid" data-valmsg-for="Username" data-valmsg-replace="true"></span></div>
+            </div>
+            <div class="form-field-outer">
+                <div class="form-field-inner">
+                    <label class="input-label" for="Password">Password</label>
+                    <input class="input-textbox" data-val="true" data-val-required="The Password field is required." id="Password" name="Password" required="required" type="password" />
+                </div>
+                <div><span class="input-validation field-validation-valid" data-valmsg-for="Password" data-valmsg-replace="true"></span></div>
+            </div>
+            <div class="error-message">
+                
+            </div>
+            <div class="buttons-container-right">
+                <button type="submit" class="primary-button">Login</button>
+            </div>
+<input name="__RequestVerificationToken" type="hidden" value="CfDJ8HL-PvtEMOtFgKohcDjYCVC4iaLI6KYoF0Z3WLOKAq8I2QXynolQsCVb2_jnMRtptS5H8Yj4BJ2kEjMwR6VRirGBxDPOxJ1OR7tzPCDcqGiz2llbddcVCUG1ASVt_JQs1BW223EAQ8GH7YFHwXALXaI" /></form>    </div>
+</div>
+
+
+
+
+        </main>
+    </body>
+</html>

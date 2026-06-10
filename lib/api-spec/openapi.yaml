@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: eWater Monitor API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: ewater
+    description: eWater API proxy operations
 paths:
   /healthz:
     get:
@@ -24,13 +26,334 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /ewater/credentials:
+    get:
+      operationId: getCredentialsStatus
+      tags: [ewater]
+      summary: Check if eWater credentials are configured
+      responses:
+        "200":
+          description: Credentials status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialsStatus"
+    post:
+      operationId: saveCredentials
+      tags: [ewater]
+      summary: Save eWater credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialsInput"
+      responses:
+        "200":
+          description: Credentials saved and token obtained
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialsStatus"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: clearCredentials
+      tags: [ewater]
+      summary: Clear saved eWater credentials
+      responses:
+        "200":
+          description: Credentials cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialsStatus"
+
+  /ewater/assets:
+    get:
+      operationId: listAssets
+      tags: [ewater]
+      summary: List all assets (community taps, controllers, etc.)
+      responses:
+        "200":
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Asset"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/assets/{assetId}:
+    get:
+      operationId: getAsset
+      tags: [ewater]
+      summary: Get asset details
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/assets/{assetId}/telemetry:
+    get:
+      operationId: fetchAssetTelemetry
+      tags: [ewater]
+      summary: Get telemetry data for an asset
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Telemetry entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TelemetryEntry"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/dashboard:
+    get:
+      operationId: getDashboard
+      tags: [ewater]
+      summary: Get system health summary for the dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/proxy:
+    post:
+      operationId: proxyRequest
+      tags: [ewater]
+      summary: Generic proxy to any eWater API endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyInput"
+      responses:
+        "200":
+          description: Proxied response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    CredentialsInput:
+      type: object
+      required: [clientId, clientSecret]
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+
+    CredentialsStatus:
+      type: object
+      required: [isConfigured]
+      properties:
+        isConfigured:
+          type: boolean
+        environment:
+          type: ["string", "null"]
+        tokenExpiresAt:
+          type: ["string", "null"]
+
+    Asset:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        isOnline:
+          type: ["boolean", "null"]
+        location:
+          type: ["string", "null"]
+        lastSeen:
+          type: ["string", "null"]
+        batteryVoltage:
+          type: ["number", "null"]
+        signalStrength:
+          type: ["number", "null"]
+        hasPowerFault:
+          type: ["boolean", "null"]
+        hasFlowFault:
+          type: ["boolean", "null"]
+        rawData:
+          type: object
+          additionalProperties: true
+
+    TelemetryEntry:
+      type: object
+      required: [id, assetId, timestamp]
+      properties:
+        id:
+          type: string
+        assetId:
+          type: string
+        timestamp:
+          type: string
+        imei:
+          type: ["string", "null"]
+        correlationId:
+          type: ["string", "null"]
+        pipeline:
+          type: ["string", "null"]
+        payload:
+          type: ["string", "null"]
+        rawData:
+          type: object
+          additionalProperties: true
+
+    DashboardSummary:
+      type: object
+      required: [totalAssets, onlineCount, offlineCount, faultCount]
+      properties:
+        totalAssets:
+          type: integer
+        onlineCount:
+          type: integer
+        offlineCount:
+          type: integer
+        faultCount:
+          type: integer
+        powerFaultCount:
+          type: integer
+        flowFaultCount:
+          type: integer
+        lastUpdated:
+          type: ["string", "null"]
+        recentAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+
+    Alert:
+      type: object
+      required: [id, assetId, message, severity]
+      properties:
+        id:
+          type: string
+        assetId:
+          type: string
+        assetName:
+          type: ["string", "null"]
+        message:
+          type: string
+        severity:
+          type: string
+        timestamp:
+          type: string
+
+    ProxyInput:
+      type: object
+      required: [api, path, method]
+      properties:
+        api:
+          type: string
+          description: "One of: query, state, command, auth"
+        path:
+          type: string
+          description: "API path, e.g. /api/Tap/GetAll"
+        method:
+          type: string
+          description: "HTTP method: GET, POST, PUT, DELETE"
+        body:
+          type: object
+          additionalProperties: true
+
+    ProxyResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: integer
+        data:
+          type: object
+          additionalProperties: true
