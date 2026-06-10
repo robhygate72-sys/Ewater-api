@@ -289,37 +289,64 @@ router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
       ? (faultRes.value.data as Record<string, unknown>)
       : null;
 
-    // EntityHealthSnapshotResponse { snapshot: EntityHealthSnapshot }
-    // EntityHealthSnapshot { totalAssetsCount, healthyAssetsCount, unhealthyAssetsCount, unknownAssetsCount, lastUpdatedDt }
-    const snapshot = (healthData?.["snapshot"] as Record<string, unknown> | null) ??
-      (Array.isArray(healthData) ? (healthData[0] as Record<string, unknown>) : null);
+    // Real shape: { snapshots: Array<{ entityType, entityId, lastUpdatedDt,
+    //   totalAssetsCount, healthyAssetsCount, unhealthyAssetsCount, unknownAssetsCount,
+    //   healthFactorSnapshots: Array<{ healthFactor, goodCount, okCount, poorCount }> }> }
+    const healthSnapshots = Array.isArray(healthData?.["snapshots"])
+      ? (healthData!["snapshots"] as Record<string, unknown>[])
+      : Array.isArray(healthData)
+        ? (healthData as Record<string, unknown>[])
+        : [];
 
-    const faultSnapshot = (faultData?.["snapshot"] as Record<string, unknown> | null) ??
-      (Array.isArray(faultData) ? (faultData[0] as Record<string, unknown>) : null);
+    // Aggregate totals across all entity snapshots
+    let total = 0, healthy = 0, unhealthy = 0;
+    let lastUpdatedDt: string | null = null;
+    const factorTotals: Record<string, { goodCount: number; okCount: number; poorCount: number }> = {};
 
-    const total = numOrZero(snapshot?.["totalAssetsCount"]);
-    const healthy = numOrZero(snapshot?.["healthyAssetsCount"]);
-    const unhealthy = numOrZero(snapshot?.["unhealthyAssetsCount"]);
-    const unknown = numOrZero(snapshot?.["unknownAssetsCount"]);
-    const offline = unhealthy;
-    const online = healthy;
+    for (const snap of healthSnapshots) {
+      total    += numOrZero(snap["totalAssetsCount"]);
+      healthy  += numOrZero(snap["healthyAssetsCount"]);
+      unhealthy += numOrZero(snap["unhealthyAssetsCount"]);
 
-    // healthFactorSnapshots is an array of { healthFactor, goodCount, okCount, poorCount }
-    const factorSnapshots = Array.isArray(snapshot?.["healthFactorSnapshots"])
-      ? (snapshot!["healthFactorSnapshots"] as Record<string, unknown>[])
+      if (!lastUpdatedDt && snap["lastUpdatedDt"]) {
+        lastUpdatedDt = String(snap["lastUpdatedDt"]);
+      }
+
+      const factors = Array.isArray(snap["healthFactorSnapshots"])
+        ? (snap["healthFactorSnapshots"] as Record<string, unknown>[])
+        : [];
+      for (const f of factors) {
+        const key = String(f["healthFactor"]);
+        if (!factorTotals[key]) factorTotals[key] = { goodCount: 0, okCount: 0, poorCount: 0 };
+        factorTotals[key].goodCount += numOrZero(f["goodCount"]);
+        factorTotals[key].okCount   += numOrZero(f["okCount"]);
+        factorTotals[key].poorCount += numOrZero(f["poorCount"]);
+      }
+    }
+
+    // Power / Flow poor counts from aggregated factor data
+    const powerKey = Object.keys(factorTotals).find(
+      (k) => k.toLowerCase().includes("power") || k.toLowerCase().includes("voltage")
+    );
+    const flowKey = Object.keys(factorTotals).find(
+      (k) => k.toLowerCase().includes("flow")
+    );
+    const powerFaultCount = powerKey ? factorTotals[powerKey].poorCount : 0;
+    const flowFaultCount  = flowKey  ? factorTotals[flowKey].poorCount  : 0;
+
+    // Count active faults from fault snapshots
+    // Real shape: { snapshots: Array<{ entityType, entityId, activeFaultCounts: Array<{ faultId, activeCount }> }> }
+    const faultSnapshots = Array.isArray(faultData?.["snapshots"])
+      ? (faultData!["snapshots"] as Record<string, unknown>[])
       : [];
+    const totalActiveFaults = faultSnapshots.reduce((sum, s) => {
+      const counts = Array.isArray(s["activeFaultCounts"])
+        ? (s["activeFaultCounts"] as Record<string, unknown>[])
+        : [];
+      return sum + counts.reduce((inner, c) => inner + numOrZero(c["activeCount"]), 0);
+    }, 0);
 
-    const powerFactor = factorSnapshots.find(
-      (f) => String(f["healthFactor"]).toLowerCase().includes("power") ||
-             String(f["healthFactor"]).toLowerCase().includes("voltage")
-    );
-    const flowFactor = factorSnapshots.find(
-      (f) => String(f["healthFactor"]).toLowerCase().includes("flow")
-    );
-    const powerFaultCount = numOrZero(powerFactor?.["poorCount"]);
-    const flowFaultCount = numOrZero(flowFactor?.["poorCount"]);
-
-    // Build alerts from unhealthy factor counts
+    // Build alerts from aggregated factor poor counts
     const alerts: Array<{
       id: string;
       assetId: string;
@@ -329,28 +356,27 @@ router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
       timestamp: string;
     }> = [];
 
-    for (const factor of factorSnapshots) {
-      const poorCount = numOrZero(factor["poorCount"]);
-      if (poorCount > 0) {
+    for (const [factorName, counts] of Object.entries(factorTotals)) {
+      if (counts.poorCount > 0) {
         alerts.push({
-          id: `alert-${factor["healthFactor"]}`,
+          id: `alert-${factorName}`,
           assetId: "system",
           assetName: null,
-          message: `${poorCount} asset(s) have poor ${factor["healthFactor"]} status`,
-          severity: poorCount > 5 ? "error" : "warning",
-          timestamp: strOrNull(snapshot?.["lastUpdatedDt"]) ?? new Date().toISOString(),
+          message: `${counts.poorCount} asset(s) have poor ${factorName} status`,
+          severity: counts.poorCount > 5 ? "error" : "warning",
+          timestamp: lastUpdatedDt ?? new Date().toISOString(),
         });
       }
     }
 
     res.json({
       totalAssets: total,
-      onlineCount: online,
-      offlineCount: offline,
-      faultCount: unhealthy,
+      onlineCount: healthy,
+      offlineCount: unhealthy,
+      faultCount: totalActiveFaults,
       powerFaultCount,
       flowFaultCount,
-      lastUpdated: strOrNull(snapshot?.["lastUpdatedDt"]) ?? new Date().toISOString(),
+      lastUpdated: lastUpdatedDt ?? new Date().toISOString(),
       recentAlerts: alerts.slice(0, 10),
     });
   } catch (err) {
