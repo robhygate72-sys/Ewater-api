@@ -149,7 +149,7 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
 
   const tankStartTs = tankData[0]?.ts ?? Date.now() - days * 86400000;
   const tankEndTs = tankData[tankData.length - 1]?.ts ?? Date.now();
-  const tankRefLines = getHourRefTimes(tankStartTs, tankEndTs);
+  const tankRefLines = days < 30 ? getHourRefTimes(tankStartTs, tankEndTs) : [];
 
   const tankXTicks = tankData
     .filter((_, i, arr) => {
