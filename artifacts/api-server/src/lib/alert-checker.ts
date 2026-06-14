@@ -104,7 +104,7 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
     offlineEnabled: true,
     offlineHours: 48,
     lowBatteryEnabled: true,
-    lowBatteryVoltage: 3.5,
+    lowBatteryVoltage: 11.5,
     lowTankEnabled: true,
     lowTankPercent: 20,
     lowFlowEnabled: false,

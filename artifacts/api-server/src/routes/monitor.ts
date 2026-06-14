@@ -49,7 +49,7 @@ router.get("/ewater/alert-rules", async (_req, res): Promise<void> => {
     // Return defaults
     res.json({
       offlineEnabled: true, offlineHours: 48,
-      lowBatteryEnabled: true, lowBatteryVoltage: 3.5,
+      lowBatteryEnabled: true, lowBatteryVoltage: 11.5,
       lowTankEnabled: true, lowTankPercent: 20,
       lowFlowEnabled: false, lowFlowLitres: 10,
       highFlowEnabled: false, highFlowLitres: 500,

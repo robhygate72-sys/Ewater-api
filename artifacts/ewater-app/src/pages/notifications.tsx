@@ -166,7 +166,7 @@ export default function Notifications() {
               <SliderRow
                 label="Battery below"
                 value={rules.lowBatteryVoltage}
-                min={2.5} max={4.5} step={0.1}
+                min={10} max={13} step={0.1}
                 unit="V"
                 onChange={(v) => updateRule("lowBatteryVoltage", v)}
               />
@@ -183,7 +183,7 @@ export default function Notifications() {
               <SliderRow
                 label="Tank below"
                 value={rules.lowTankPercent}
-                min={5} max={50} step={5}
+                min={0} max={100} step={1}
                 unit="%"
                 onChange={(v) => updateRule("lowTankPercent", v)}
               />
