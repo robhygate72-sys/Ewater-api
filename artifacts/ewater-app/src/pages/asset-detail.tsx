@@ -431,6 +431,9 @@ export default function AssetDetail() {
           </div>
         )}
 
+        {/* Alert Settings */}
+        <AssetAlertRules assetId={id} assetName={tech.name} />
+
         {/* eSense Charts */}
         {tech.purpose?.toLowerCase() === "esense" && (
           <ESenseCharts assetId={id} />
