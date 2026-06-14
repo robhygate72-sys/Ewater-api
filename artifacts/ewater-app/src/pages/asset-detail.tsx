@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/layout";
 import { ESenseCharts } from "@/components/esense-charts";
 import { useGetAssetTech, getGetAssetTechQueryKey, useFetchAssetTelemetry, getFetchAssetTelemetryQueryKey } from "@workspace/api-client-react";
@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { useFavourites } from "@/contexts/FavouritesContext";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -286,6 +287,7 @@ function AssetAlertRules({ assetId, assetName }: { assetId: string; assetName: s
 export default function AssetDetail() {
   const [, params] = useRoute("/assets/:id");
   const id = params?.id ?? "";
+  const [alertSheetOpen, setAlertSheetOpen] = useState(false);
 
   const { data: tech, isLoading: isLoadingTech } = useGetAssetTech(id, {
     query: { enabled: !!id, queryKey: getGetAssetTechQueryKey(id) },
@@ -329,8 +331,28 @@ export default function AssetDetail() {
   const lowBattery = hasFlag(tech.healthFlags, "lowbattery") || hasFlag(tech.healthFlags, "low battery");
   const hasAlerts = tamper || lowBattery || (tech.healthFlags && tech.healthFlags.toLowerCase() !== "none" && tech.healthFlags !== "");
 
+  const alertHeaderButton = (
+    <button
+      onClick={() => setAlertSheetOpen(true)}
+      className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors"
+      title="Alert settings"
+    >
+      <Bell className="w-5 h-5" />
+    </button>
+  );
+
   return (
-    <Layout title={tech.name} showBack backTo="/assets">
+    <Layout title={tech.name} showBack backTo="/assets" headerActions={alertHeaderButton}>
+      <Sheet open={alertSheetOpen} onOpenChange={setAlertSheetOpen}>
+        <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-2xl px-4 pb-8">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-base flex items-center gap-2">
+              <Bell className="w-4 h-4" /> Alert Settings — {tech.name}
+            </SheetTitle>
+          </SheetHeader>
+          <AssetAlertRules assetId={id} assetName={tech.name} />
+        </SheetContent>
+      </Sheet>
       <div className="space-y-3">
 
         {/* Header card */}
@@ -430,9 +452,6 @@ export default function AssetDetail() {
             )}
           </div>
         )}
-
-        {/* Alert Settings */}
-        <AssetAlertRules assetId={id} assetName={tech.name} />
 
         {/* eSense Charts */}
         {tech.purpose?.toLowerCase() === "esense" && (
@@ -547,9 +566,6 @@ export default function AssetDetail() {
             ))}
           </SectionCard>
         )}
-
-        {/* Alert Settings */}
-        <AssetAlertRules assetId={id} assetName={tech.name} />
 
         {/* Raw telemetry logs */}
         <section>

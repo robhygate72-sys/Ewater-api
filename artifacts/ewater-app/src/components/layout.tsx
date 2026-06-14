@@ -10,9 +10,10 @@ interface LayoutProps {
   title?: string;
   showBack?: boolean;
   backTo?: string;
+  headerActions?: ReactNode;
 }
 
-export function Layout({ children, title, showBack, backTo }: LayoutProps) {
+export function Layout({ children, title, showBack, backTo, headerActions }: LayoutProps) {
   const [location] = useLocation();
   const logout = useLogout();
   const queryClient = useQueryClient();
@@ -40,6 +41,7 @@ export function Layout({ children, title, showBack, backTo }: LayoutProps) {
           </Link>
         ) : null}
         <h1 className="text-lg font-semibold tracking-tight truncate flex-1">{title || "eWater Monitor"}</h1>
+        {headerActions}
         <button
           onClick={handleRefresh}
           className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors"
