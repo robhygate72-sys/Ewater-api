@@ -19,15 +19,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import {
-  Activity,
-  Droplets,
-  Zap,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  AlertCircle,
-} from "lucide-react";
+import { Activity, Droplets, Zap, AlertCircle } from "lucide-react";
 
 const RANGE_OPTIONS = [
   { label: "1 day", value: 1 },
@@ -38,12 +30,16 @@ const RANGE_OPTIONS = [
   { label: "6 months", value: 180 },
 ];
 
-function formatAxisTime(isoStr: string, days: number): string {
-  if (!isoStr) return "";
-  const d = new Date(isoStr);
-  if (isNaN(d.getTime())) return isoStr.slice(0, 10);
+function formatAxisTs(ts: number, days: number): string {
+  const d = new Date(ts);
   if (days <= 3) {
-    return d.toLocaleString("en-GB", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+    return d.toLocaleString("en-GB", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   }
   return d.toLocaleString("en-GB", { month: "short", day: "numeric" });
 }
@@ -54,13 +50,33 @@ function formatAxisDate(dateStr: string): string {
   return d.toLocaleString("en-GB", { month: "short", day: "numeric" });
 }
 
-function formatTooltipTime(isoStr: string): string {
-  const d = new Date(isoStr);
-  if (isNaN(d.getTime())) return isoStr;
-  return d.toLocaleString("en-GB", {
-    month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: false,
+function formatTooltipTs(ts: number): string {
+  return new Date(ts).toLocaleString("en-GB", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   });
+}
+
+function getHourRefTimes(startTs: number, endTs: number): number[] {
+  const out: number[] = [];
+  const start = new Date(startTs);
+  start.setHours(0, 0, 0, 0);
+  for (
+    let d = new Date(start);
+    d.getTime() <= endTs;
+    d.setDate(d.getDate() + 1)
+  ) {
+    for (const h of [0, 6, 12, 18]) {
+      const t = new Date(d);
+      t.setHours(h, 0, 0, 0);
+      const ts = t.getTime();
+      if (ts >= startTs && ts <= endTs) out.push(ts);
+    }
+  }
+  return out;
 }
 
 function ChartSection({
@@ -98,14 +114,6 @@ function ChartSection({
   );
 }
 
-function TrendIcon({ trend }: { trend: string | null | undefined }) {
-  if (!trend) return null;
-  const t = trend.toLowerCase();
-  if (t.includes("fall") || t.includes("declin")) return <TrendingDown className="w-4 h-4 text-amber-500" />;
-  if (t.includes("ris") || t.includes("charg")) return <TrendingUp className="w-4 h-4 text-emerald-500" />;
-  return <Minus className="w-4 h-4 text-muted-foreground" />;
-}
-
 export function ESenseCharts({ assetId }: { assetId: string }) {
   const [days, setDays] = useState(3);
 
@@ -123,25 +131,72 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
 
   const tickColor = "hsl(var(--muted-foreground))";
   const gridColor = "hsl(var(--border))";
+  const refLineColor = "hsl(var(--muted-foreground) / 0.35)";
 
   const hasChlorine =
-    data?.tankHeight.some((p) => p.chlorineTank != null && p.chlorineTank > 0) ?? false;
+    data?.tankHeight.some(
+      (p) => p.chlorineTank != null && p.chlorineTank > 0,
+    ) ?? false;
 
-  const tankTicks = data?.tankHeight
+  const tankData = (data?.tankHeight ?? []).map((p) => ({
+    ...p,
+    ts: new Date(p.time).getTime(),
+  }));
+
+  const tankStartTs = tankData[0]?.ts ?? Date.now() - days * 86400000;
+  const tankEndTs = tankData[tankData.length - 1]?.ts ?? Date.now();
+  const tankRefLines = getHourRefTimes(tankStartTs, tankEndTs);
+
+  const tankXTicks = tankData
     .filter((_, i, arr) => {
       if (arr.length <= 12) return true;
       const step = Math.ceil(arr.length / 8);
       return i % step === 0;
     })
-    .map((p) => p.time) ?? [];
+    .map((p) => p.ts);
 
-  const inflowTicks = data?.dailyInflow
+  const inflowTicks = (data?.dailyInflow ?? [])
     .filter((_, i, arr) => {
       if (arr.length <= 12) return true;
       const step = Math.ceil(arr.length / 8);
       return i % step === 0;
     })
-    .map((p) => p.date) ?? [];
+    .map((p) => p.date);
+
+  const vs = data?.voltageStatus;
+  const nowTs = Date.now();
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const voltageLineData = vs
+    ? [
+        {
+          ts: todayMidnight.getTime() + 6 * 3600000,
+          voltage: vs.todayLow,
+          label: "Day Low",
+        },
+        {
+          ts: todayMidnight.getTime() + 12 * 3600000,
+          voltage: vs.todayAverage,
+          label: "Day Avg",
+        },
+        {
+          ts: todayMidnight.getTime() + 14 * 3600000,
+          voltage: vs.todayHigh,
+          label: "Day High",
+        },
+        { ts: nowTs, voltage: vs.current, label: "Current" },
+      ].sort((a, b) => a.ts - b.ts)
+    : [];
+  const voltageRefLines = getHourRefTimes(
+    todayMidnight.getTime(),
+    nowTs,
+  );
+  const voltageMin = vs
+    ? Math.floor(Math.min(vs.todayLow ?? 99, vs.current ?? 99) - 0.5)
+    : 0;
+  const voltageMax = vs
+    ? Math.ceil(Math.max(vs.todayHigh ?? 0, vs.current ?? 0) + 0.5)
+    : 20;
 
   return (
     <div className="space-y-3">
@@ -176,19 +231,22 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
         <ChartSection
           title="Tank Height"
           icon={<Droplets className="w-3.5 h-3.5" />}
-          isEmpty={!data?.tankHeight.length}
+          isEmpty={!tankData.length}
           emptyMessage="No tank height data for this period"
         >
           <ResponsiveContainer width="100%" height={200}>
             <LineChart
-              data={data?.tankHeight}
+              data={tankData}
               margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
               <XAxis
-                dataKey="time"
-                ticks={tankTicks}
-                tickFormatter={(v) => formatAxisTime(v, days)}
+                dataKey="ts"
+                type="number"
+                scale="time"
+                domain={["dataMin", "dataMax"]}
+                ticks={tankXTicks}
+                tickFormatter={(v) => formatAxisTs(v as number, days)}
                 tick={{ fontSize: 9, fill: tickColor }}
                 interval="preserveStartEnd"
               />
@@ -199,7 +257,7 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 tickFormatter={(v) => Number(v).toFixed(2)}
               />
               <Tooltip
-                labelFormatter={(v) => formatTooltipTime(String(v))}
+                labelFormatter={(v) => formatTooltipTs(v as number)}
                 formatter={(value: unknown, name: string) => [
                   value != null ? `${Number(value).toFixed(3)} m` : "—",
                   name,
@@ -212,6 +270,15 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 10 }} />
+              {tankRefLines.map((ts) => (
+                <ReferenceLine
+                  key={ts}
+                  x={ts}
+                  stroke={refLineColor}
+                  strokeWidth={1}
+                  strokeDasharray="2 3"
+                />
+              ))}
               <Line
                 type="monotone"
                 dataKey="waterTank"
@@ -237,15 +304,15 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
         </ChartSection>
       )}
 
-      {/* Daily Inflow Histogram */}
+      {/* Water Usage */}
       {isLoading ? (
         <Skeleton className="h-52 w-full rounded-xl" />
       ) : (
         <ChartSection
-          title="Daily Water Inflow"
+          title="Water Usage"
           icon={<Droplets className="w-3.5 h-3.5" />}
           isEmpty={!data?.dailyInflow.length}
-          emptyMessage="No inflow data for this period"
+          emptyMessage="No water usage data for this period"
         >
           <ResponsiveContainer width="100%" height={200}>
             <BarChart
@@ -266,14 +333,16 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 width={52}
                 tickFormatter={(v) => {
                   const n = Number(v);
-                  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
+                  return n >= 1000
+                    ? `${(n / 1000).toFixed(1)}k`
+                    : String(Math.round(n));
                 }}
               />
               <Tooltip
                 labelFormatter={formatAxisDate}
                 formatter={(value: unknown) => [
                   value != null ? `${Number(value).toLocaleString()} L` : "—",
-                  "Inflow",
+                  "Usage",
                 ]}
                 contentStyle={{
                   fontSize: 11,
@@ -282,74 +351,106 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                   borderRadius: 6,
                 }}
               />
-              <Bar dataKey="litres" fill="#4D9DE0" name="Litres" radius={[2, 2, 0, 0]} />
+              <Bar
+                dataKey="litres"
+                fill="#4D9DE0"
+                name="Litres"
+                radius={[2, 2, 0, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
         </ChartSection>
       )}
 
-      {/* Voltage */}
+      {/* Battery Voltage Line Chart */}
       {isLoading ? (
-        <Skeleton className="h-36 w-full rounded-xl" />
+        <Skeleton className="h-52 w-full rounded-xl" />
       ) : (
         <ChartSection
           title="Battery Voltage"
           icon={<Zap className="w-3.5 h-3.5" />}
-          isEmpty={!data?.voltageStatus && !data?.voltageHistory.length}
+          isEmpty={!vs}
           emptyMessage="Voltage data unavailable"
         >
-          {data?.voltageStatus && (
-            <div className="px-2">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-3xl font-bold font-mono">
-                  {data.voltageStatus.current != null
-                    ? `${data.voltageStatus.current}V`
-                    : "—"}
-                </span>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">
-                    {data.voltageStatus.trend ?? ""}
-                  </span>
-                  <TrendIcon trend={data.voltageStatus.trend} />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 bg-muted/40 rounded-lg px-3 py-2 text-center">
-                <div>
-                  <span className="text-[10px] text-muted-foreground block mb-0.5">
-                    Today High
-                  </span>
-                  <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                    {data.voltageStatus.todayHigh != null
-                      ? `${data.voltageStatus.todayHigh}V`
-                      : "—"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground block mb-0.5">
-                    Today Avg
-                  </span>
-                  <span className="text-xs font-mono font-medium">
-                    {data.voltageStatus.todayAverage != null
-                      ? `${data.voltageStatus.todayAverage}V`
-                      : "—"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground block mb-0.5">
-                    Today Low
-                  </span>
-                  <span className="text-xs font-mono font-medium text-amber-600 dark:text-amber-400">
-                    {data.voltageStatus.todayLow != null
-                      ? `${data.voltageStatus.todayLow}V`
-                      : "—"}
-                  </span>
-                </div>
-              </div>
-              <p className="text-[10px] text-muted-foreground text-center mt-2 px-1">
-                Historical voltage time-series not available via API — showing today's snapshot
-              </p>
-            </div>
-          )}
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart
+              data={voltageLineData}
+              margin={{ top: 4, right: 8, left: -12, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis
+                dataKey="ts"
+                type="number"
+                scale="time"
+                domain={[
+                  todayMidnight.getTime(),
+                  todayMidnight.getTime() + 24 * 3600000,
+                ]}
+                ticks={[
+                  todayMidnight.getTime(),
+                  todayMidnight.getTime() + 6 * 3600000,
+                  todayMidnight.getTime() + 12 * 3600000,
+                  todayMidnight.getTime() + 18 * 3600000,
+                  todayMidnight.getTime() + 24 * 3600000,
+                ]}
+                tickFormatter={(v) =>
+                  new Date(v as number).toLocaleString("en-GB", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  })
+                }
+                tick={{ fontSize: 9, fill: tickColor }}
+              />
+              <YAxis
+                unit="V"
+                domain={[voltageMin, voltageMax]}
+                tick={{ fontSize: 9, fill: tickColor }}
+                width={44}
+                tickFormatter={(v) => Number(v).toFixed(1)}
+              />
+              <Tooltip
+                labelFormatter={(v) =>
+                  new Date(v as number).toLocaleString("en-GB", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  })
+                }
+                formatter={(value: unknown) => [
+                  value != null ? `${Number(value).toFixed(2)} V` : "—",
+                  "Voltage",
+                ]}
+                contentStyle={{
+                  fontSize: 11,
+                  background: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: 6,
+                }}
+              />
+              {voltageRefLines.map((ts) => (
+                <ReferenceLine
+                  key={ts}
+                  x={ts}
+                  stroke={refLineColor}
+                  strokeWidth={1}
+                  strokeDasharray="2 3"
+                />
+              ))}
+              <Line
+                type="monotone"
+                dataKey="voltage"
+                stroke="#F5A623"
+                name="Voltage"
+                dot={{ r: 4, fill: "#F5A623" }}
+                strokeWidth={2}
+                connectNulls
+              />
+            </LineChart>
+          </ResponsiveContainer>
+          <p className="text-[10px] text-muted-foreground text-center mt-1 px-2">
+            Today's low / avg / high / current — hourly history not available via API
+          </p>
         </ChartSection>
       )}
     </div>

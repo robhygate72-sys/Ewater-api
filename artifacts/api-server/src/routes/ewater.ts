@@ -710,10 +710,25 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     const inflowRaw = Array.isArray(inflowOk?.["data"])
       ? (inflowOk!["data"] as Record<string, unknown>[])
       : [];
-    const dailyInflow = inflowRaw.map((d) => ({
+    const inflowFromApi = inflowRaw.map((d) => ({
       date: String(d["lowerBound"] ?? "").slice(0, 10),
       litres: numOrNull(d["estimateTotalLitres"]) ?? 0,
     }));
+    // Zero-fill every calendar day in the requested range
+    const inflowMap = new Map(inflowFromApi.map((d) => [d.date, d.litres]));
+    const rangeStart = new Date(now.getTime() - days * 86400 * 1000);
+    rangeStart.setUTCHours(0, 0, 0, 0);
+    const rangeEnd = new Date(now);
+    rangeEnd.setUTCHours(0, 0, 0, 0);
+    const dailyInflow: { date: string; litres: number }[] = [];
+    for (
+      let d = new Date(rangeStart);
+      d.getTime() <= rangeEnd.getTime();
+      d.setUTCDate(d.getUTCDate() + 1)
+    ) {
+      const dateStr = d.toISOString().slice(0, 10);
+      dailyInflow.push({ date: dateStr, litres: inflowMap.get(dateStr) ?? 0 });
+    }
 
     // Parse voltage (today's snapshot from AssetPowerStatus)
     const powerOk =
