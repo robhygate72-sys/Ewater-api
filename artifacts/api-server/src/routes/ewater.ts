@@ -690,9 +690,14 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
           endDate: needsTodaySupp ? yesterdayEnd : endDate,
         }),
       }),
-      ewaterFetch("state", "/api/Asset/GetInflowHistoryByDateRange", {
+      ewaterFetch("state", "/api/Asset/GetDisbursementHistoryByDateRange", {
         method: "POST",
-        body: JSON.stringify({ assetId, startDate, endDate }),
+        body: JSON.stringify({
+          assetId,
+          startDate,
+          endDate,
+          includeTickAccumulatorDerivedDisbursement: true,
+        }),
       }),
       ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${assetId}`),
       needsTodaySupp
@@ -732,7 +737,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
       : [];
     const inflowFromApi = inflowRaw.map((d) => ({
       date: String(d["lowerBound"] ?? "").slice(0, 10),
-      litres: numOrNull(d["estimateTotalLitres"]) ?? 0,
+      litres: numOrNull(d["tickAccumulatorDerivedTotalLitres"]) ?? numOrNull(d["estimateTotalLitres"]) ?? 0,
     }));
     // Zero-fill every calendar day in the requested range
     const inflowMap = new Map(inflowFromApi.map((d) => [d.date, d.litres]));

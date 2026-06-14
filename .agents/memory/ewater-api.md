@@ -15,11 +15,26 @@ Response: { data: [{ lowerBound, upperBound, averageWaterTankHeight, minimumWate
 - Auto-aggregates: hourly for ≤7 days, daily for longer
 - waterTank = vsen1, chlorineTank = vsen2 (chlorine all zeros if not connected)
 
-### Daily Inflow (state API)
+### Daily Water Dispensed / Usage (state API)  ← USE THIS for the usage bar chart
+POST /api/Asset/GetDisbursementHistoryByDateRange
+Body: { assetId, startDate, endDate, includeTickAccumulatorDerivedDisbursement: true }
+Response: { data: [{ lowerBound, upperBound, tickAccumulatorDerivedTotalLitres, estimateTotalLitres, totalTicks, ... }] }
+- **Use `tickAccumulatorDerivedTotalLitres`** — matches AssetUsageStatus.litresDispensedToday exactly
+- `estimateTotalLitres` is wrong/underestimated (30× off); `tickAccumulatorDerivedTotalLitres` is accurate
+- Returns daily buckets; missing days = gaps (zero-fill server-side)
+- lowerBound dates are UTC with "Z" suffix, use .slice(0,10) for date key
+
+### GetInflowHistoryByDateRange (state API) — DO NOT use for usage chart
 POST /api/Asset/GetInflowHistoryByDateRange
 Body: { assetId: number, startDate, endDate }
-Response: { data: [{ lowerBound, upperBound, estimateTotalLitres, readingCount, totalTicks, totalSeconds, totalCredits }] }
-- Per-day aggregation for any range
+Response: { data: [{ lowerBound, upperBound, estimateTotalLitres, totalTicks, totalCredits, tickAccumulatorDerivedTotalLitres (null) }] }
+- Returns individual tap event buckets (not daily); `estimateTotalLitres` is badly wrong
+- Correct formula: totalTicks / GetTicksPerLitre = actual litres (matches disbursement history)
+- GetTicksPerLitre: GET /api/Asset/GetTicksPerLitre?assetId={id} → { ticksPerLitre: 365, ... }
+
+### LitresDispensedPerDay (query API) — returns empty for individual assets
+GET /api/Entity/LitresDispensedPerDay?entityType=Asset&entityId={id}&startDt=...&endDt=...
+- Returns empty litresDispensedPerDay array for individual assets; may work for higher entity levels
 
 ### Power Status (query API)
 GET /api/Asset/AssetPowerStatus?assetId={id}
