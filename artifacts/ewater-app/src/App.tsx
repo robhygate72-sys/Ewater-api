@@ -7,9 +7,12 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Assets from "@/pages/assets";
 import AssetDetail from "@/pages/asset-detail";
+import Watchlist from "@/pages/watchlist";
+import NotificationsPage from "@/pages/notifications";
 import Login from "@/pages/login";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
+import { FavouritesProvider } from "@/contexts/FavouritesContext";
 
 export type LifecycleFilter = "PreInstallation" | "Staged" | "Active";
 
@@ -80,6 +83,8 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/assets" component={Assets} />
       <Route path="/assets/:id" component={AssetDetail} />
+      <Route path="/watchlist" component={Watchlist} />
+      <Route path="/notifications" component={NotificationsPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -92,11 +97,13 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <LifecycleFilterContext.Provider value={{ lifecycleFilter, setLifecycleFilter }}>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <AuthGate>
-              <Router />
-            </AuthGate>
-          </WouterRouter>
+          <FavouritesProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <AuthGate>
+                <Router />
+              </AuthGate>
+            </WouterRouter>
+          </FavouritesProvider>
         </LifecycleFilterContext.Provider>
         <Toaster />
       </TooltipProvider>

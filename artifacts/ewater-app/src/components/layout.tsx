@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Droplet, ChevronLeft, LogOut, RefreshCw } from "lucide-react";
+import { Home, Droplet, ChevronLeft, LogOut, RefreshCw, Star, Bell } from "lucide-react";
 import { ReactNode, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useLogout } from "@/App";
@@ -27,6 +27,8 @@ export function Layout({ children, title, showBack, backTo }: LayoutProps) {
   const navItems = [
     { href: "/", icon: Home, label: "Dashboard" },
     { href: "/assets", icon: Droplet, label: "Assets" },
+    { href: "/watchlist", icon: Star, label: "Watchlist" },
+    { href: "/notifications", icon: Bell, label: "Alerts" },
   ];
 
   return (

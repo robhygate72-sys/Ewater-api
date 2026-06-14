@@ -1,1 +1,2 @@
 - [eWater API endpoints](ewater-api.md) — confirmed live eWater endpoints for eSense charts (tank height, inflow, voltage), asset ID patterns, and Orval codegen quirk fix for query-param type conflicts.
+- [Push Notifications](push-notifications.md) — Web Push setup, VAPID env vars, SW path convention, DB tables, alert checker architecture

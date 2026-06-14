@@ -30,3 +30,10 @@ externalPort = 8081
 [[ports]]
 localPort = 19955
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BI-LgfRO0AAzTlyK9T93ZOF38ScMcpQ8EN3JsaGNFLjc38RfXIEJ8ZsoJENFa0EoC_ZVEvFKEllYDKw5sabjfwQ"
+VAPID_PRIVATE_KEY = "2j33lqEM-k-LG6rZ7-riOYsBGX0XbUl52RUVt37nIFs"
+VAPID_SUBJECT = "mailto:admin@ewater.io"

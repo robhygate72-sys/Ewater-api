@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout";
 import { useGetDashboard, useGetCredentialsStatus, getGetDashboardQueryKey } from "@workspace/api-client-react";
-import { useLifecycleFilter } from "@/App";
+import { useLifecycleFilter, type LifecycleFilter } from "@/App";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert as AlertUI, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";

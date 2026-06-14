@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { Battery, Signal, AlertTriangle, Droplet, Search, ChevronRight, ShieldAlert, Zap, TrendingDown } from "lucide-react";
+import { FavouriteButton } from "@/components/FavouriteButton";
 import { formatTimeAgo } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -208,7 +209,10 @@ export default function Assets() {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <ChevronRight className="w-4 h-4 text-muted-foreground/40 mt-0.5" />
+                          <div className="flex items-center gap-0.5">
+                            <FavouriteButton assetId={asset.id} assetName={asset.name} />
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                          </div>
                         </div>
                       </div>
 
