@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLifecycleFilter, type LifecycleFilter } from "@/App";
 import { Layout } from "@/components/layout";
 import { useListAssets, useGetEntityHierarchy } from "@workspace/api-client-react";
@@ -32,10 +32,23 @@ export default function Assets() {
   const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
   const [selectedWaterSystem, setSelectedWaterSystem] = useState<number | null>(null);
 
-  const countries = hierarchy?.countries ?? [];
+  const allHierarchyCountries = hierarchy?.countries ?? [];
+
+  // Only show country chips for countries that have assets in the current lifecycle filter
+  const countries = useMemo(() => {
+    if (!assets) return allHierarchyCountries;
+    const namesWithAssets = new Set(
+      assets
+        .filter((a) => (a.status ?? "Active") === lifecycleFilter)
+        .map((a) => a.countryName)
+        .filter(Boolean),
+    );
+    return allHierarchyCountries.filter((c) => namesWithAssets.has(c.name));
+  }, [assets, allHierarchyCountries, lifecycleFilter]);
+
   const waterSystems = useMemo(
-    () => countries.find((c) => c.id === selectedCountry)?.waterSystems ?? [],
-    [countries, selectedCountry],
+    () => allHierarchyCountries.find((c) => c.id === selectedCountry)?.waterSystems ?? [],
+    [allHierarchyCountries, selectedCountry],
   );
 
   const filtered = useMemo(() => {
@@ -58,6 +71,12 @@ export default function Assets() {
     }
     return list;
   }, [assets, search, selectedCountry, selectedWaterSystem, countries, lifecycleFilter]);
+
+  // Auto-clear country/water-system selection when lifecycle filter changes
+  useEffect(() => {
+    setSelectedCountry(null);
+    setSelectedWaterSystem(null);
+  }, [lifecycleFilter]);
 
   function selectCountry(id: number | null) {
     setSelectedCountry(id);
