@@ -14,7 +14,7 @@ import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQu
 import { Droplets } from "lucide-react";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
 
-export type LifecycleFilter = "PreInstallation" | "Staged" | "Active";
+export type LifecycleFilter = "PreInstallation" | "Staged" | "Active" | "Test";
 
 interface LifecycleFilterContextValue {
   lifecycleFilter: LifecycleFilter;

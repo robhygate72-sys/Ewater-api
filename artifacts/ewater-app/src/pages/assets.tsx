@@ -21,6 +21,7 @@ const LIFECYCLE_OPTIONS: { value: LifecycleFilter; label: string }[] = [
   { value: "PreInstallation", label: "Pre-install" },
   { value: "Staged", label: "Staged" },
   { value: "Active", label: "Active" },
+  { value: "Test", label: "Test" },
 ];
 
 export default function Assets() {
