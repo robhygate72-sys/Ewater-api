@@ -60,8 +60,11 @@ function formatTooltipTs(ts: number): string {
   });
 }
 
-function getHourRefTimes(startTs: number, endTs: number): number[] {
-  const out: number[] = [];
+function getHourRefTimes(
+  startTs: number,
+  endTs: number,
+): { ts: number; midnight: boolean }[] {
+  const out: { ts: number; midnight: boolean }[] = [];
   const start = new Date(startTs);
   start.setHours(0, 0, 0, 0);
   for (
@@ -73,7 +76,7 @@ function getHourRefTimes(startTs: number, endTs: number): number[] {
       const t = new Date(d);
       t.setHours(h, 0, 0, 0);
       const ts = t.getTime();
-      if (ts >= startTs && ts <= endTs) out.push(ts);
+      if (ts >= startTs && ts <= endTs) out.push({ ts, midnight: h === 0 });
     }
   }
   return out;
@@ -132,6 +135,7 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
   const tickColor = "hsl(var(--muted-foreground))";
   const gridColor = "hsl(var(--border))";
   const refLineColor = "hsl(var(--muted-foreground) / 0.35)";
+  const midnightLineColor = "#6366f1";
 
   const hasChlorine =
     data?.tankHeight.some(
@@ -270,13 +274,13 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 10 }} />
-              {tankRefLines.map((ts) => (
+              {tankRefLines.map(({ ts, midnight }) => (
                 <ReferenceLine
                   key={ts}
                   x={ts}
-                  stroke={refLineColor}
-                  strokeWidth={1}
-                  strokeDasharray="2 3"
+                  stroke={midnight ? midnightLineColor : refLineColor}
+                  strokeWidth={midnight ? 1.5 : 1}
+                  strokeDasharray={midnight ? "4 3" : "2 3"}
                 />
               ))}
               <Line
@@ -428,13 +432,13 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                   borderRadius: 6,
                 }}
               />
-              {voltageRefLines.map((ts) => (
+              {voltageRefLines.map(({ ts, midnight }) => (
                 <ReferenceLine
                   key={ts}
                   x={ts}
-                  stroke={refLineColor}
-                  strokeWidth={1}
-                  strokeDasharray="2 3"
+                  stroke={midnight ? midnightLineColor : refLineColor}
+                  strokeWidth={midnight ? 1.5 : 1}
+                  strokeDasharray={midnight ? "4 3" : "2 3"}
                 />
               ))}
               <Line
