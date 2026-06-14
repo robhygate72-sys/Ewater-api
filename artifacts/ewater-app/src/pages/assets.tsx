@@ -246,17 +246,19 @@ export default function Assets() {
                           {asset.lastSeen && (
                             <span className="text-[10px]">{formatTimeAgo(asset.lastSeen)}</span>
                           )}
-                          <Badge
-                            variant={asset.isOnline ? "default" : "secondary"}
-                            className={cn(
-                              "text-[10px] px-1.5 py-0 h-4 font-medium uppercase tracking-wider shadow-none",
-                              asset.isOnline
-                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 hover:bg-emerald-500/20"
-                                : "",
-                            )}
-                          >
-                            {asset.isOnline ? "Online" : "Offline"}
-                          </Badge>
+                          {asset.isOnline != null && (
+                            <Badge
+                              variant={asset.isOnline ? "default" : "secondary"}
+                              className={cn(
+                                "text-[10px] px-1.5 py-0 h-4 font-medium uppercase tracking-wider shadow-none",
+                                asset.isOnline
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 hover:bg-emerald-500/20"
+                                  : "",
+                              )}
+                            >
+                              {asset.isOnline ? "Online" : "Offline"}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </CardContent>
