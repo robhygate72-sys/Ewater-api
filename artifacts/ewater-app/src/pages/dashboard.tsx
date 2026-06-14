@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Layout } from "@/components/layout";
 import { useGetDashboard, useGetCredentialsStatus, getGetDashboardQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,16 +8,35 @@ import { Link } from "wouter";
 import { Activity, AlertTriangle, CheckCircle2, Droplet, Settings, XCircle } from "lucide-react";
 import { formatTimeAgo } from "@/lib/date";
 import { Badge } from "@/components/ui/badge";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+type LifecycleFilter = "PreInstallation" | "Staged" | "Active";
+
+const LIFECYCLE_OPTIONS: { value: LifecycleFilter; label: string }[] = [
+  { value: "PreInstallation", label: "Pre-install" },
+  { value: "Staged", label: "Staged" },
+  { value: "Active", label: "Active" },
+];
 
 export default function Dashboard() {
+  const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>("Active");
+
   const { data: credentials, isLoading: isLoadingCredentials } = useGetCredentialsStatus();
-  const { data: dashboard, isLoading: isLoadingDashboard } = useGetDashboard({
-    query: {
-      queryKey: getGetDashboardQueryKey(),
-      enabled: credentials?.isConfigured,
-      refetchInterval: 30000,
+  const { data: dashboard, isLoading: isLoadingDashboard } = useGetDashboard(
+    { lifecycleState: lifecycleFilter },
+    {
+      query: {
+        queryKey: [...getGetDashboardQueryKey({ lifecycleState: lifecycleFilter }), lifecycleFilter],
+        enabled: credentials?.isConfigured,
+        refetchInterval: 30000,
+      }
     }
-  });
+  );
 
   if (isLoadingCredentials) {
     return (
@@ -62,6 +82,25 @@ export default function Dashboard() {
   return (
     <Layout title="Dashboard">
       <div className="space-y-6">
+
+        {/* Lifecycle Filter */}
+        <div className="flex gap-2">
+          {LIFECYCLE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setLifecycleFilter(opt.value)}
+              className={cn(
+                "flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors",
+                lifecycleFilter === opt.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted"
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {/* System Overview */}
         <section>
           <div className="flex items-center justify-between mb-3">
@@ -185,11 +224,4 @@ export default function Dashboard() {
       </div>
     </Layout>
   );
-}
-
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
 }

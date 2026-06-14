@@ -515,9 +515,15 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
 // GET /api/ewater/dashboard
 // Uses Query: GET /api/Entity/HealthSnapshots  (EntityHealthSnapshotResponse)
 //        Query: GET /api/Entity/FaultSnapshots
+//        State: GET /api/Entity/List  (for lifecycle-filtered totalAssets count)
 // ---------------------------------------------------------------------------
 
-router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
+const ALLOWED_LIFECYCLE_STATES = new Set(["PreInstallation", "Staged", "Active"]);
+
+router.get("/ewater/dashboard", async (req, res): Promise<void> => {
+  const rawLifecycle = typeof req.query["lifecycleState"] === "string" ? req.query["lifecycleState"] : "Active";
+  const lifecycleFilter = ALLOWED_LIFECYCLE_STATES.has(rawLifecycle) ? rawLifecycle : "Active";
+
   if (!getCredentials()) {
     res.json({
       totalAssets: 0,
@@ -527,15 +533,17 @@ router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
       powerFaultCount: 0,
       flowFaultCount: 0,
       lastUpdated: null,
+      lifecycleFilter,
       recentAlerts: [],
     });
     return;
   }
 
   try {
-    const [healthRes, faultRes] = await Promise.allSettled([
+    const [healthRes, faultRes, entityListRes] = await Promise.allSettled([
       ewaterFetch("query", "/api/Entity/HealthSnapshots"),
       ewaterFetch("query", "/api/Entity/FaultSnapshots"),
+      ewaterFetch("state", "/api/Entity/List"),
     ]);
 
     const healthData = healthRes.status === "fulfilled" && healthRes.value.status === 200
@@ -544,6 +552,17 @@ router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
     const faultData = faultRes.status === "fulfilled" && faultRes.value.status === 200
       ? (faultRes.value.data as Record<string, unknown>)
       : null;
+    const entityListData = entityListRes.status === "fulfilled" && entityListRes.value.status === 200
+      ? (entityListRes.value.data as Record<string, unknown>)
+      : null;
+
+    // Count assets filtered by lifecycle state from Entity/List
+    const allAssets = Array.isArray(entityListData?.["assets"])
+      ? (entityListData!["assets"] as Record<string, unknown>[])
+      : [];
+    const filteredTotal = allAssets.filter(
+      (a) => String(a["assetLifecycleState"]) === lifecycleFilter
+    ).length;
 
     // Real shape: { snapshots: Array<{ entityType, entityId, lastUpdatedDt,
     //   totalAssetsCount, healthyAssetsCount, unhealthyAssetsCount, unknownAssetsCount,
@@ -626,13 +645,14 @@ router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
     }
 
     res.json({
-      totalAssets: total,
+      totalAssets: filteredTotal || total,
       onlineCount: healthy,
       offlineCount: unhealthy,
       faultCount: totalActiveFaults,
       powerFaultCount,
       flowFaultCount,
       lastUpdated: lastUpdatedDt ?? new Date().toISOString(),
+      lifecycleFilter,
       recentAlerts: alerts.slice(0, 10),
     });
   } catch (err) {

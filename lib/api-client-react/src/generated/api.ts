@@ -28,6 +28,7 @@ import type {
   ESenseChartsData,
   EntityHierarchy,
   ErrorResponse,
+  GetDashboardParams,
   GetESenseChartsParams,
   HealthStatus,
   ProxyInput,
@@ -574,20 +575,27 @@ export function useFetchAssetTelemetry<TData = Awaited<ReturnType<typeof fetchAs
 
 
 
-export const getGetDashboardUrl = () => {
+export const getGetDashboardUrl = (params?: GetDashboardParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/ewater/dashboard`
+  return stringifiedParams.length > 0 ? `/api/ewater/dashboard?${stringifiedParams}` : `/api/ewater/dashboard`
 }
 
 /**
  * @summary Get system health summary for the dashboard
  */
-export const getDashboard = async ( options?: RequestInit): Promise<DashboardSummary> => {
+export const getDashboard = async (params?: GetDashboardParams, options?: RequestInit): Promise<DashboardSummary> => {
 
-  return customFetch<DashboardSummary>(getGetDashboardUrl(),
+  return customFetch<DashboardSummary>(getGetDashboardUrl(params),
   {
     ...options,
     method: 'GET'
@@ -600,23 +608,23 @@ export const getDashboard = async ( options?: RequestInit): Promise<DashboardSum
 
 
 
-export const getGetDashboardQueryKey = () => {
+export const getGetDashboardQueryKey = (params?: GetDashboardParams,) => {
     return [
-    `/api/ewater/dashboard`
+    `/api/ewater/dashboard`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getDashboard>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getDashboard>>, TError = ErrorType<ErrorResponse>>(params?: GetDashboardParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetDashboardQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboard>>> = ({ signal }) => getDashboard({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboard>>> = ({ signal }) => getDashboard(params, { signal, ...requestOptions });
 
 
 
@@ -634,11 +642,11 @@ export type GetDashboardQueryError = ErrorType<ErrorResponse>
  */
 
 export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>, TError = ErrorType<ErrorResponse>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetDashboardParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetDashboardQueryOptions(options)
+  const queryOptions = getGetDashboardQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

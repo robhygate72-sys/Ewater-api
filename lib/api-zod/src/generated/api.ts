@@ -124,6 +124,12 @@ export const FetchAssetTelemetryResponse = zod.array(FetchAssetTelemetryResponse
 /**
  * @summary Get system health summary for the dashboard
  */
+export const getDashboardQueryLifecycleStateDefault = `Active`;
+
+export const GetDashboardQueryParams = zod.object({
+  "lifecycleState": zod.enum(['PreInstallation', 'Staged', 'Active']).default(getDashboardQueryLifecycleStateDefault)
+})
+
 export const GetDashboardResponse = zod.object({
   "totalAssets": zod.number(),
   "onlineCount": zod.number(),
@@ -132,6 +138,7 @@ export const GetDashboardResponse = zod.object({
   "powerFaultCount": zod.number().optional(),
   "flowFaultCount": zod.number().optional(),
   "lastUpdated": zod.string().nullish(),
+  "lifecycleFilter": zod.string(),
   "recentAlerts": zod.array(zod.object({
   "id": zod.string(),
   "assetId": zod.string(),

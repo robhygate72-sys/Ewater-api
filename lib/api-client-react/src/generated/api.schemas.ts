@@ -94,6 +94,7 @@ export interface DashboardSummary {
   flowFaultCount?: number;
   /** @nullable */
   lastUpdated?: string | null;
+  lifecycleFilter: string;
   recentAlerts?: Alert[];
 }
 
@@ -252,6 +253,19 @@ export interface ProxyResponse {
   status: number;
   data?: ProxyResponseData;
 }
+
+export type GetDashboardParams = {
+lifecycleState?: GetDashboardLifecycleState;
+};
+
+export type GetDashboardLifecycleState = typeof GetDashboardLifecycleState[keyof typeof GetDashboardLifecycleState];
+
+
+export const GetDashboardLifecycleState = {
+  PreInstallation: 'PreInstallation',
+  Staged: 'Staged',
+  Active: 'Active',
+} as const;
 
 export type GetESenseChartsParams = {
 days?: number;

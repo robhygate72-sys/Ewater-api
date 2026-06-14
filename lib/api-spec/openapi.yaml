@@ -158,6 +158,14 @@ paths:
       operationId: getDashboard
       tags: [ewater]
       summary: Get system health summary for the dashboard
+      parameters:
+        - name: lifecycleState
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PreInstallation, Staged, Active]
+            default: Active
       responses:
         "200":
           description: Dashboard summary
@@ -386,7 +394,7 @@ components:
 
     DashboardSummary:
       type: object
-      required: [totalAssets, onlineCount, offlineCount, faultCount]
+      required: [totalAssets, onlineCount, offlineCount, faultCount, lifecycleFilter]
       properties:
         totalAssets:
           type: integer
@@ -402,6 +410,8 @@ components:
           type: integer
         lastUpdated:
           type: ["string", "null"]
+        lifecycleFilter:
+          type: string
         recentAlerts:
           type: array
           items:
