@@ -1,3 +1,4 @@
+import { createContext, useContext, useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -9,6 +10,22 @@ import AssetDetail from "@/pages/asset-detail";
 import Login from "@/pages/login";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
+
+export type LifecycleFilter = "PreInstallation" | "Staged" | "Active";
+
+interface LifecycleFilterContextValue {
+  lifecycleFilter: LifecycleFilter;
+  setLifecycleFilter: (f: LifecycleFilter) => void;
+}
+
+export const LifecycleFilterContext = createContext<LifecycleFilterContextValue>({
+  lifecycleFilter: "Active",
+  setLifecycleFilter: () => {},
+});
+
+export function useLifecycleFilter() {
+  return useContext(LifecycleFilterContext);
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,14 +86,18 @@ function Router() {
 }
 
 function App() {
+  const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>("Active");
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AuthGate>
-            <Router />
-          </AuthGate>
-        </WouterRouter>
+        <LifecycleFilterContext.Provider value={{ lifecycleFilter, setLifecycleFilter }}>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AuthGate>
+              <Router />
+            </AuthGate>
+          </WouterRouter>
+        </LifecycleFilterContext.Provider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

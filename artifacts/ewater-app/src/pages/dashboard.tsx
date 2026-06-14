@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { Layout } from "@/components/layout";
 import { useGetDashboard, useGetCredentialsStatus, getGetDashboardQueryKey } from "@workspace/api-client-react";
+import { useLifecycleFilter } from "@/App";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert as AlertUI, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,8 +15,6 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type LifecycleFilter = "PreInstallation" | "Staged" | "Active";
-
 const LIFECYCLE_OPTIONS: { value: LifecycleFilter; label: string }[] = [
   { value: "PreInstallation", label: "Pre-install" },
   { value: "Staged", label: "Staged" },
@@ -24,7 +22,7 @@ const LIFECYCLE_OPTIONS: { value: LifecycleFilter; label: string }[] = [
 ];
 
 export default function Dashboard() {
-  const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>("Active");
+  const { lifecycleFilter, setLifecycleFilter } = useLifecycleFilter();
 
   const { data: credentials, isLoading: isLoadingCredentials } = useGetCredentialsStatus();
   const { data: dashboard, isLoading: isLoadingDashboard } = useGetDashboard(

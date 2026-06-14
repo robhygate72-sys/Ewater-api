@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useLifecycleFilter, type LifecycleFilter } from "@/App";
 import { Layout } from "@/components/layout";
 import { useListAssets, useGetEntityHierarchy } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +16,14 @@ function hasFlag(flags: string | null | undefined, flag: string) {
   return flags.toLowerCase().split(",").some((f) => f.trim().toLowerCase().includes(flag.toLowerCase()));
 }
 
+const LIFECYCLE_OPTIONS: { value: LifecycleFilter; label: string }[] = [
+  { value: "PreInstallation", label: "Pre-install" },
+  { value: "Staged", label: "Staged" },
+  { value: "Active", label: "Active" },
+];
+
 export default function Assets() {
+  const { lifecycleFilter, setLifecycleFilter } = useLifecycleFilter();
   const { data: assets, isLoading: isLoadingAssets } = useListAssets();
   const { data: hierarchy } = useGetEntityHierarchy();
 
@@ -31,7 +39,7 @@ export default function Assets() {
 
   const filtered = useMemo(() => {
     if (!assets) return [];
-    let list = assets;
+    let list = assets.filter((a) => (a.status ?? "Active") === lifecycleFilter);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -48,7 +56,7 @@ export default function Assets() {
       list = list.filter((a) => a.parentId === selectedWaterSystem);
     }
     return list;
-  }, [assets, search, selectedCountry, selectedWaterSystem, countries]);
+  }, [assets, search, selectedCountry, selectedWaterSystem, countries, lifecycleFilter]);
 
   function selectCountry(id: number | null) {
     setSelectedCountry(id);
@@ -57,9 +65,29 @@ export default function Assets() {
 
   const isLoading = isLoadingAssets;
 
+  const lifecycleTotal = assets?.filter((a) => (a.status ?? "Active") === lifecycleFilter).length ?? 0;
+
   return (
     <Layout title="Assets">
       <div className="space-y-3">
+        {/* Lifecycle Filter */}
+        <div className="flex gap-2">
+          {LIFECYCLE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setLifecycleFilter(opt.value)}
+              className={cn(
+                "flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors",
+                lifecycleFilter === opt.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -137,9 +165,9 @@ export default function Assets() {
         {/* Count */}
         {!isLoading && assets && (
           <p className="text-xs text-muted-foreground pl-0.5">
-            {filtered.length === assets.length
-              ? `${assets.length} assets`
-              : `${filtered.length} of ${assets.length} assets`}
+            {filtered.length === lifecycleTotal
+              ? `${lifecycleTotal} assets`
+              : `${filtered.length} of ${lifecycleTotal} assets`}
           </p>
         )}
 

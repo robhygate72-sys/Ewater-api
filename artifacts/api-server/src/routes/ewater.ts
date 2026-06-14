@@ -81,7 +81,7 @@ router.get("/ewater/assets", async (req, res): Promise<void> => {
       ewaterFetch("state", "/api/Entity/Assets", {
         method: "POST",
         body: JSON.stringify({
-          assetLifecycleStates: ["Active", "Staged", "Demo", "Test", "Suspended"],
+          assetLifecycleStates: ["PreInstallation", "Active", "Staged", "Demo", "Test", "Suspended"],
         }),
       }),
       ewaterFetch("state", "/api/Entity/List"),
