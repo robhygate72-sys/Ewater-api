@@ -24,12 +24,15 @@ const LIFECYCLE_OPTIONS: { value: LifecycleFilter; label: string }[] = [
 export default function Dashboard() {
   const { lifecycleFilter, setLifecycleFilter } = useLifecycleFilter();
 
+  // Dashboard API only supports PreInstallation / Staged / Active — fall back to Active for Test
+  const dashboardLifecycle = (lifecycleFilter === "Test" ? "Active" : lifecycleFilter) as Exclude<LifecycleFilter, "Test">;
+
   const { data: credentials, isLoading: isLoadingCredentials } = useGetCredentialsStatus();
   const { data: dashboard, isLoading: isLoadingDashboard } = useGetDashboard(
-    { lifecycleState: lifecycleFilter },
+    { lifecycleState: dashboardLifecycle },
     {
       query: {
-        queryKey: [...getGetDashboardQueryKey({ lifecycleState: lifecycleFilter }), lifecycleFilter],
+        queryKey: [...getGetDashboardQueryKey({ lifecycleState: dashboardLifecycle }), lifecycleFilter],
         enabled: credentials?.isConfigured,
         refetchInterval: 30000,
       }

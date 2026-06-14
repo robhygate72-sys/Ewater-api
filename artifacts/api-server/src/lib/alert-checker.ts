@@ -18,6 +18,21 @@ type TechStatus = {
   tankHeightPercent?: number | null;
 };
 
+const DEFAULT_RULES = {
+  offlineEnabled: true,
+  offlineHours: 48,
+  lowBatteryEnabled: true,
+  lowBatteryVoltage: 11.5,
+  lowTankEnabled: true,
+  lowTankPercent: 20,
+  lowFlowEnabled: false,
+  lowFlowLitres: 10,
+  highFlowEnabled: false,
+  highFlowLitres: 500,
+  stuckValveEnabled: false,
+  cooldownMinutes: 60,
+};
+
 async function fetchTech(assetId: string): Promise<TechStatus | null> {
   try {
     const [techRes, eSenseRes] = await Promise.allSettled([
@@ -34,7 +49,6 @@ async function fetchTech(assetId: string): Promise<TechStatus | null> {
         ? (eSenseRes.value.data as Record<string, unknown>)
         : null;
 
-    // Also try to get tank height from esense chart
     const chartRes = await ewaterFetch(
       "query",
       `/api/Asset/GetESenseChartDataForAsset?assetId=${encodeURIComponent(assetId)}&startDate=${new Date(Date.now() - 2 * 3600 * 1000).toISOString()}&endDate=${new Date().toISOString()}`
@@ -90,30 +104,18 @@ async function logNotification(assetId: string, alertType: string): Promise<void
 export async function checkAlerts(): Promise<{ checked: number; notified: number }> {
   if (!getCredentials()) return { checked: 0, notified: 0 };
 
-  const [favourites, subscriptions, rulesRows] = await Promise.all([
+  const [favourites, subscriptions, allRulesRows] = await Promise.all([
     db.select().from(assetFavouritesTable),
     db.select().from(pushSubscriptionsTable),
-    db.select().from(alertRulesTable).limit(1),
+    db.select().from(alertRulesTable),
   ]);
 
   if (favourites.length === 0 || subscriptions.length === 0) {
     return { checked: 0, notified: 0 };
   }
 
-  const rules = rulesRows[0] ?? {
-    offlineEnabled: true,
-    offlineHours: 48,
-    lowBatteryEnabled: true,
-    lowBatteryVoltage: 11.5,
-    lowTankEnabled: true,
-    lowTankPercent: 20,
-    lowFlowEnabled: false,
-    lowFlowLitres: 10,
-    highFlowEnabled: false,
-    highFlowLitres: 500,
-    stuckValveEnabled: false,
-    cooldownMinutes: 60,
-  };
+  // Build a per-asset rules map
+  const rulesMap = new Map(allRulesRows.map((r) => [r.assetId, r]));
 
   let notified = 0;
 
@@ -121,9 +123,11 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
     const tech = await fetchTech(fav.assetId);
     if (!tech) continue;
 
+    // Use per-asset rules if saved, otherwise fall back to defaults
+    const rules = rulesMap.get(fav.assetId) ?? DEFAULT_RULES;
+
     const alerts: { type: string; title: string; body: string }[] = [];
 
-    // Offline check
     if (rules.offlineEnabled && tech.lastCommsDt) {
       const hoursAgo = (Date.now() - new Date(tech.lastCommsDt).getTime()) / 3600000;
       if (hoursAgo > rules.offlineHours) {
@@ -135,7 +139,6 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
       }
     }
 
-    // Low battery
     if (rules.lowBatteryEnabled && tech.batteryVoltage != null && tech.batteryVoltage < rules.lowBatteryVoltage) {
       alerts.push({
         type: "low_battery",
@@ -144,7 +147,6 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
       });
     }
 
-    // Low tank
     if (rules.lowTankEnabled && tech.tankHeightPercent != null && tech.tankHeightPercent < rules.lowTankPercent) {
       alerts.push({
         type: "low_tank",
@@ -153,7 +155,6 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
       });
     }
 
-    // Low daily flow
     if (rules.lowFlowEnabled && tech.litresDispensedToday != null && tech.litresDispensedToday < rules.lowFlowLitres) {
       alerts.push({
         type: "low_flow",
@@ -162,7 +163,6 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
       });
     }
 
-    // High daily flow (anomaly)
     if (rules.highFlowEnabled && tech.litresDispensedToday != null && tech.litresDispensedToday > rules.highFlowLitres) {
       alerts.push({
         type: "high_flow",
@@ -171,7 +171,6 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
       });
     }
 
-    // Stuck valve: tap events today = 0 but no offline alert
     if (rules.stuckValveEnabled && tech.tapEventsPerMinuteToday === 0 && tech.litresDispensedToday === 0) {
       alerts.push({
         type: "stuck_valve",

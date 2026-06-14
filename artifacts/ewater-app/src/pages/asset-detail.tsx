@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout";
 import { ESenseCharts } from "@/components/esense-charts";
 import { useGetAssetTech, getGetAssetTechQueryKey, useFetchAssetTelemetry, getFetchAssetTelemetryQueryKey } from "@workspace/api-client-react";
@@ -5,13 +6,21 @@ import { useRoute } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
 import { formatDateTime, formatTimeAgo } from "@/lib/date";
 import {
   MapPin, Battery, Signal, Wifi, WifiOff, ShieldAlert, ShieldCheck,
   TrendingDown, TrendingUp, Minus, Droplet, Zap, Cpu, Radio,
   Terminal, AlertTriangle, CheckCircle2, Clock, Activity, Info,
+  Bell, Lock, RefreshCw, Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FavouriteButton } from "@/components/FavouriteButton";
+import { useFavourites } from "@/contexts/FavouritesContext";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function Row({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
@@ -53,6 +62,226 @@ function hasFlag(flags: string | null | undefined, keyword: string) {
   if (!flags) return false;
   return flags.toLowerCase().split(",").some((f) => f.trim().toLowerCase().includes(keyword.toLowerCase()));
 }
+
+// ---------------------------------------------------------------------------
+// Alert Rules Section
+// ---------------------------------------------------------------------------
+
+interface AlertRules {
+  offlineEnabled: boolean; offlineHours: number;
+  lowBatteryEnabled: boolean; lowBatteryVoltage: number;
+  lowTankEnabled: boolean; lowTankPercent: number;
+  lowFlowEnabled: boolean; lowFlowLitres: number;
+  highFlowEnabled: boolean; highFlowLitres: number;
+  stuckValveEnabled: boolean;
+  cooldownMinutes: number;
+}
+
+const DEFAULT_RULES: AlertRules = {
+  offlineEnabled: true, offlineHours: 48,
+  lowBatteryEnabled: true, lowBatteryVoltage: 11.5,
+  lowTankEnabled: true, lowTankPercent: 20,
+  lowFlowEnabled: false, lowFlowLitres: 10,
+  highFlowEnabled: false, highFlowLitres: 500,
+  stuckValveEnabled: false,
+  cooldownMinutes: 60,
+};
+
+function SliderRow({
+  label, value, min, max, step, unit, onChange,
+}: {
+  label: string; value: number; min: number; max: number; step: number; unit: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-1.5 pt-2">
+      <div className="flex justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono font-medium">{value}{unit}</span>
+      </div>
+      <Slider
+        value={[value]}
+        min={min} max={max} step={step}
+        onValueChange={([v]) => onChange(v!)}
+        className="w-full"
+      />
+    </div>
+  );
+}
+
+function AlertRuleRow({
+  icon, title, description, enabled, onToggle, children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={cn("py-3 border-b border-border/40 last:border-0", !enabled && "opacity-60")}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-primary shrink-0">{icon}</span>
+          <div>
+            <p className="text-sm font-medium leading-tight">{title}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+          </div>
+        </div>
+        <Switch checked={enabled} onCheckedChange={onToggle} className="shrink-0 mt-0.5" />
+      </div>
+      {enabled && children}
+    </div>
+  );
+}
+
+function AssetAlertRules({ assetId, assetName }: { assetId: string; assetName: string }) {
+  const { isFavourite, toggleFavourite } = useFavourites();
+  const starred = isFavourite(assetId);
+
+  const [rules, setRules] = useState<AlertRules>(DEFAULT_RULES);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!starred) return;
+    fetch(`${BASE}/api/ewater/alert-rules/${encodeURIComponent(assetId)}`)
+      .then((r) => r.json())
+      .then((data) => { setRules({ ...DEFAULT_RULES, ...data }); setLoaded(true); })
+      .catch(() => { setLoaded(true); });
+  }, [assetId, starred]);
+
+  const updateRule = <K extends keyof AlertRules>(key: K, value: AlertRules[K]) => {
+    setRules((r) => ({ ...r, [key]: value }));
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${BASE}/api/ewater/alert-rules/${encodeURIComponent(assetId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rules),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
+
+  return (
+    <Card className="shadow-sm border">
+      <CardHeader className="py-3 px-4 border-b border-border/50">
+        <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Bell className="w-3.5 h-3.5" />
+          Alert Settings
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 py-0">
+        {!starred ? (
+          <div className="py-5 flex flex-col items-center gap-3 text-center">
+            <Star className="w-6 h-6 text-muted-foreground/40" />
+            <div>
+              <p className="text-sm text-muted-foreground">Star this asset to configure alert thresholds</p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">Alerts fire when monitored values exceed your thresholds</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => toggleFavourite(assetId, assetName)}>
+              <Star className="w-3.5 h-3.5 mr-1.5" />
+              Add to watchlist
+            </Button>
+          </div>
+        ) : !loaded ? (
+          <div className="py-4 space-y-3">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
+          </div>
+        ) : (
+          <>
+            <AlertRuleRow
+              icon={<Wifi className="w-4 h-4" />}
+              title="Offline / No Comms"
+              description="Alert when the asset hasn't reported in."
+              enabled={rules.offlineEnabled}
+              onToggle={(v) => updateRule("offlineEnabled", v)}
+            >
+              <SliderRow label="No comms for more than" value={rules.offlineHours} min={2} max={168} step={2} unit="h" onChange={(v) => updateRule("offlineHours", v)} />
+            </AlertRuleRow>
+
+            <AlertRuleRow
+              icon={<Battery className="w-4 h-4" />}
+              title="Low Battery"
+              description="Alert when battery voltage drops below threshold."
+              enabled={rules.lowBatteryEnabled}
+              onToggle={(v) => updateRule("lowBatteryEnabled", v)}
+            >
+              <SliderRow label="Battery below" value={rules.lowBatteryVoltage} min={10} max={13} step={0.1} unit="V" onChange={(v) => updateRule("lowBatteryVoltage", v)} />
+            </AlertRuleRow>
+
+            <AlertRuleRow
+              icon={<Droplet className="w-4 h-4" />}
+              title="Low Tank Level"
+              description="Alert when water tank height falls below threshold."
+              enabled={rules.lowTankEnabled}
+              onToggle={(v) => updateRule("lowTankEnabled", v)}
+            >
+              <SliderRow label="Tank below" value={rules.lowTankPercent} min={0} max={100} step={1} unit="%" onChange={(v) => updateRule("lowTankPercent", v)} />
+            </AlertRuleRow>
+
+            <AlertRuleRow
+              icon={<Droplet className="w-4 h-4 rotate-180" />}
+              title="Low Daily Flow"
+              description="Alert when daily water dispensed is unexpectedly low."
+              enabled={rules.lowFlowEnabled}
+              onToggle={(v) => updateRule("lowFlowEnabled", v)}
+            >
+              <SliderRow label="Less than" value={rules.lowFlowLitres} min={1} max={100} step={1} unit="L/day" onChange={(v) => updateRule("lowFlowLitres", v)} />
+            </AlertRuleRow>
+
+            <AlertRuleRow
+              icon={<TrendingUp className="w-4 h-4" />}
+              title="High Flow Anomaly"
+              description="Alert when daily flow is unusually high — possible leak."
+              enabled={rules.highFlowEnabled}
+              onToggle={(v) => updateRule("highFlowEnabled", v)}
+            >
+              <SliderRow label="More than" value={rules.highFlowLitres} min={100} max={2000} step={50} unit="L/day" onChange={(v) => updateRule("highFlowLitres", v)} />
+            </AlertRuleRow>
+
+            <AlertRuleRow
+              icon={<Lock className="w-4 h-4" />}
+              title="Possible Stuck Valve"
+              description="Alert when zero tap events and zero flow are recorded today."
+              enabled={rules.stuckValveEnabled}
+              onToggle={(v) => updateRule("stuckValveEnabled", v)}
+            />
+
+            <div className="py-3">
+              <SliderRow label="Notification cooldown" value={rules.cooldownMinutes} min={15} max={480} step={15} unit="min" onChange={(v) => updateRule("cooldownMinutes", v)} />
+              <p className="text-xs text-muted-foreground mt-1">Minimum gap between repeat alerts for this asset.</p>
+            </div>
+
+            <div className="pb-3">
+              <Button className="w-full" size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin mr-2" />
+                ) : saved ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" />
+                ) : null}
+                {saved ? "Saved" : "Save Alert Settings"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function AssetDetail() {
   const [, params] = useRoute("/assets/:id");
@@ -112,8 +341,11 @@ export default function AssetDetail() {
           )} />
           <CardContent className="p-4 pt-5">
             <div className="flex justify-between items-start mb-3 gap-2">
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold tracking-tight truncate">{tech.name}</h2>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold tracking-tight truncate">{tech.name}</h2>
+                  <FavouriteButton assetId={id} assetName={tech.name} />
+                </div>
                 <div className="flex items-center text-xs text-muted-foreground mt-0.5 gap-1.5 flex-wrap">
                   {tech.waterSystemName && (
                     <>
@@ -312,6 +544,9 @@ export default function AssetDetail() {
             ))}
           </SectionCard>
         )}
+
+        {/* Alert Settings */}
+        <AssetAlertRules assetId={id} assetName={tech.name} />
 
         {/* Raw telemetry logs */}
         <section>

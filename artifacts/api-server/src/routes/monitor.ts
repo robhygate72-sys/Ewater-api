@@ -40,26 +40,21 @@ router.delete("/ewater/favourites/:assetId", async (req, res): Promise<void> => 
 });
 
 // ---------------------------------------------------------------------------
-// Alert rules
+// Alert rules — per asset
 // ---------------------------------------------------------------------------
 
-router.get("/ewater/alert-rules", async (_req, res): Promise<void> => {
-  const rows = await db.select().from(alertRulesTable).limit(1);
-  if (rows.length === 0) {
-    // Return defaults
-    res.json({
-      offlineEnabled: true, offlineHours: 48,
-      lowBatteryEnabled: true, lowBatteryVoltage: 11.5,
-      lowTankEnabled: true, lowTankPercent: 20,
-      lowFlowEnabled: false, lowFlowLitres: 10,
-      highFlowEnabled: false, highFlowLitres: 500,
-      stuckValveEnabled: false,
-      cooldownMinutes: 60,
-    });
-    return;
-  }
-  const r = rows[0]!;
-  res.json({
+const DEFAULT_RULES = {
+  offlineEnabled: true, offlineHours: 48,
+  lowBatteryEnabled: true, lowBatteryVoltage: 11.5,
+  lowTankEnabled: true, lowTankPercent: 20,
+  lowFlowEnabled: false, lowFlowLitres: 10,
+  highFlowEnabled: false, highFlowLitres: 500,
+  stuckValveEnabled: false,
+  cooldownMinutes: 60,
+};
+
+function rowToJson(r: typeof DEFAULT_RULES & { assetId?: string }) {
+  return {
     offlineEnabled: r.offlineEnabled, offlineHours: r.offlineHours,
     lowBatteryEnabled: r.lowBatteryEnabled, lowBatteryVoltage: r.lowBatteryVoltage,
     lowTankEnabled: r.lowTankEnabled, lowTankPercent: r.lowTankPercent,
@@ -67,7 +62,13 @@ router.get("/ewater/alert-rules", async (_req, res): Promise<void> => {
     highFlowEnabled: r.highFlowEnabled, highFlowLitres: r.highFlowLitres,
     stuckValveEnabled: r.stuckValveEnabled,
     cooldownMinutes: r.cooldownMinutes,
-  });
+  };
+}
+
+router.get("/ewater/alert-rules/:assetId", async (req, res): Promise<void> => {
+  const { assetId } = req.params;
+  const rows = await db.select().from(alertRulesTable).where(eq(alertRulesTable.assetId, assetId)).limit(1);
+  res.json(rows.length === 0 ? DEFAULT_RULES : rowToJson(rows[0]!));
 });
 
 const AlertRulesBody = z.object({
@@ -85,27 +86,19 @@ const AlertRulesBody = z.object({
   cooldownMinutes: z.number().optional(),
 });
 
-router.put("/ewater/alert-rules", async (req, res): Promise<void> => {
+router.put("/ewater/alert-rules/:assetId", async (req, res): Promise<void> => {
+  const { assetId } = req.params;
   const parsed = AlertRulesBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const existing = await db.select().from(alertRulesTable).limit(1);
+  const existing = await db.select().from(alertRulesTable).where(eq(alertRulesTable.assetId, assetId)).limit(1);
   if (existing.length === 0) {
-    await db.insert(alertRulesTable).values(parsed.data as Record<string, unknown>);
+    await db.insert(alertRulesTable).values({ assetId, ...parsed.data });
   } else {
-    await db.update(alertRulesTable).set(parsed.data).where(eq(alertRulesTable.id, existing[0]!.id));
+    await db.update(alertRulesTable).set(parsed.data).where(eq(alertRulesTable.assetId, assetId));
   }
-  const updated = await db.select().from(alertRulesTable).limit(1);
-  const r = updated[0]!;
-  res.json({
-    offlineEnabled: r.offlineEnabled, offlineHours: r.offlineHours,
-    lowBatteryEnabled: r.lowBatteryEnabled, lowBatteryVoltage: r.lowBatteryVoltage,
-    lowTankEnabled: r.lowTankEnabled, lowTankPercent: r.lowTankPercent,
-    lowFlowEnabled: r.lowFlowEnabled, lowFlowLitres: r.lowFlowLitres,
-    highFlowEnabled: r.highFlowEnabled, highFlowLitres: r.highFlowLitres,
-    stuckValveEnabled: r.stuckValveEnabled,
-    cooldownMinutes: r.cooldownMinutes,
-  });
+  const updated = await db.select().from(alertRulesTable).where(eq(alertRulesTable.assetId, assetId)).limit(1);
+  res.json(rowToJson(updated[0]!));
 });
 
 // ---------------------------------------------------------------------------
@@ -131,7 +124,6 @@ router.post("/ewater/push/subscribe", async (req, res): Promise<void> => {
     .values({ endpoint, p256dh: keys.p256dh, auth: keys.auth })
     .onConflictDoUpdate({ target: pushSubscriptionsTable.endpoint, set: { p256dh: keys.p256dh, auth: keys.auth } });
 
-  // Send a welcome notification
   if (isPushEnabled()) {
     try {
       await sendPush({ endpoint, p256dh: keys.p256dh, auth: keys.auth }, {
@@ -155,7 +147,7 @@ router.delete("/ewater/push/subscribe", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// Manual alert check (test trigger)
+// Manual alert check
 // ---------------------------------------------------------------------------
 
 router.post("/ewater/check-alerts", async (req, res): Promise<void> => {
