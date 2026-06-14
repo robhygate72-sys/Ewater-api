@@ -248,11 +248,10 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 dataKey="ts"
                 type="number"
                 scale="time"
-                domain={["dataMin", "dataMax"]}
+                domain={[tankStartTs, tankEndTs]}
                 ticks={tankXTicks}
                 tickFormatter={(v) => formatAxisTs(v as number, days)}
                 tick={{ fontSize: 9, fill: tickColor }}
-                interval="preserveStartEnd"
               />
               <YAxis
                 unit="m"
@@ -453,7 +452,7 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
             </LineChart>
           </ResponsiveContainer>
           <p className="text-[10px] text-muted-foreground text-center mt-1 px-2">
-            Today's low / avg / high / current — hourly history not available via API
+            Today's low / avg / high / current — the eWater API does not expose per-day voltage history
           </p>
         </ChartSection>
       )}

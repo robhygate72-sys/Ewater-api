@@ -671,28 +671,48 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
   const startDate = new Date(now.getTime() - days * 86400 * 1000).toISOString().slice(0, 19);
   const endDate = now.toISOString().slice(0, 19);
 
+  // For ranges > 5 days the API switches to daily aggregation and today's bucket
+  // is always incomplete (only has early-morning data). We fix this by fetching
+  // the main range up to yesterday-end, then a separate hourly fetch for today.
+  const todayMidnight = new Date(now);
+  todayMidnight.setHours(0, 0, 0, 0);
+  const yesterdayEnd = new Date(todayMidnight.getTime() - 1000).toISOString().slice(0, 19);
+  const todayStart = todayMidnight.toISOString().slice(0, 19);
+  const needsTodaySupp = days > 5;
+
   try {
-    const [tankRes, inflowRes, powerRes] = await Promise.allSettled([
+    const [tankRes, inflowRes, powerRes, todayTankRes] = await Promise.allSettled([
       ewaterFetch("state", "/api/Asset/GetTankHeightHistoryByDateRange", {
         method: "POST",
-        body: JSON.stringify({ assetId, startDate, endDate }),
+        body: JSON.stringify({
+          assetId,
+          startDate,
+          endDate: needsTodaySupp ? yesterdayEnd : endDate,
+        }),
       }),
       ewaterFetch("state", "/api/Asset/GetInflowHistoryByDateRange", {
         method: "POST",
         body: JSON.stringify({ assetId, startDate, endDate }),
       }),
       ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${assetId}`),
+      needsTodaySupp
+        ? ewaterFetch("state", "/api/Asset/GetTankHeightHistoryByDateRange", {
+            method: "POST",
+            body: JSON.stringify({ assetId, startDate: todayStart, endDate }),
+          })
+        : Promise.resolve({ status: 204 as const, data: null }),
     ]);
 
-    // Parse tank height
-    const tankOk =
-      tankRes.status === "fulfilled" && tankRes.value.status === 200
-        ? (tankRes.value.data as Record<string, unknown>)
-        : null;
-    const tankRaw = Array.isArray(tankOk?.["data"])
-      ? (tankOk!["data"] as Record<string, unknown>[])
-      : [];
-    const tankHeight = tankRaw.map((d) => ({
+    // Parse tank height — merge historical (daily) + today (hourly) when needed
+    function parseTankRaw(res: (typeof tankRes)): Record<string, unknown>[] {
+      const ok =
+        res.status === "fulfilled" && res.value.status === 200
+          ? (res.value.data as Record<string, unknown>)
+          : null;
+      return Array.isArray(ok?.["data"]) ? (ok!["data"] as Record<string, unknown>[]) : [];
+    }
+    const combinedTankRaw = [...parseTankRaw(tankRes), ...parseTankRaw(todayTankRes)];
+    const tankHeight = combinedTankRaw.map((d) => ({
       time: String(d["lowerBound"] ?? ""),
       waterTank: numOrNull(d["averageWaterTankHeight"]),
       waterTankMin: numOrNull(d["minimumWaterTankHeight"]),
