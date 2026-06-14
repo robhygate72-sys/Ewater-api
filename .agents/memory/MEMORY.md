@@ -1,1 +1,1 @@
-- [eWater API field names](ewater-api.md) — confirmed real field names for connectivity, power, status values, firmware, identifiers, and commands endpoints
+- [eWater API endpoints](ewater-api.md) — confirmed live eWater endpoints for eSense charts (tank height, inflow, voltage), asset ID patterns, and Orval codegen quirk fix for query-param type conflicts.

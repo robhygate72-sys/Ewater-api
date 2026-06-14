@@ -1,4 +1,5 @@
 import { Layout } from "@/components/layout";
+import { ESenseCharts } from "@/components/esense-charts";
 import { useGetAssetTech, getGetAssetTechQueryKey, useFetchAssetTelemetry, getFetchAssetTelemetryQueryKey } from "@workspace/api-client-react";
 import { useRoute } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -196,6 +197,11 @@ export default function AssetDetail() {
               </div>
             )}
           </div>
+        )}
+
+        {/* eSense Charts */}
+        {tech.purpose?.toLowerCase() === "esense" && (
+          <ESenseCharts assetId={id} />
         )}
 
         {/* Connectivity */}

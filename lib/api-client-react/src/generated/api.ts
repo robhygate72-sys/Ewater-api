@@ -25,8 +25,10 @@ import type {
   CredentialsInput,
   CredentialsStatus,
   DashboardSummary,
+  ESenseChartsData,
   EntityHierarchy,
   ErrorResponse,
+  GetESenseChartsParams,
   HealthStatus,
   ProxyInput,
   ProxyResponse,
@@ -791,6 +793,95 @@ export function useGetAssetTech<TData = Awaited<ReturnType<typeof getAssetTech>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAssetTechQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetESenseChartsUrl = (assetId: string,
+    params?: GetESenseChartsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ewater/assets/${assetId}/esense-charts?${stringifiedParams}` : `/api/ewater/assets/${assetId}/esense-charts`
+}
+
+/**
+ * @summary Get eSense chart data (tank height, daily inflow, voltage) over a time range
+ */
+export const getESenseCharts = async (assetId: string,
+    params?: GetESenseChartsParams, options?: RequestInit): Promise<ESenseChartsData> => {
+
+  return customFetch<ESenseChartsData>(getGetESenseChartsUrl(assetId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetESenseChartsQueryKey = (assetId: string,
+    params?: GetESenseChartsParams,) => {
+    return [
+    `/api/ewater/assets/${assetId}/esense-charts`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetESenseChartsQueryOptions = <TData = Awaited<ReturnType<typeof getESenseCharts>>, TError = ErrorType<ErrorResponse>>(assetId: string,
+    params?: GetESenseChartsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getESenseCharts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetESenseChartsQueryKey(assetId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getESenseCharts>>> = ({ signal }) => getESenseCharts(assetId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getESenseCharts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetESenseChartsQueryResult = NonNullable<Awaited<ReturnType<typeof getESenseCharts>>>
+export type GetESenseChartsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get eSense chart data (tank height, daily inflow, voltage) over a time range
+ */
+
+export function useGetESenseCharts<TData = Awaited<ReturnType<typeof getESenseCharts>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string,
+    params?: GetESenseChartsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getESenseCharts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetESenseChartsQueryOptions(assetId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

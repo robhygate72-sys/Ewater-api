@@ -12,6 +12,7 @@ import {
   GetAssetParams,
   FetchAssetTelemetryParams,
   ProxyRequestBody,
+  GetESenseChartsQueryParams,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -641,6 +642,108 @@ router.get("/ewater/dashboard", async (_req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// eSense Charts
+// GET /api/ewater/assets/:assetId/esense-charts?days=3
+// Fetches tank height, daily inflow, and voltage status for eSense assets
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<void> => {
+  const paramsParsed = GetAssetParams.safeParse(req.params);
+  if (!paramsParsed.success) {
+    res.status(400).json({ error: paramsParsed.error.message });
+    return;
+  }
+  if (!getCredentials()) {
+    res.status(401).json({ error: "No credentials configured" });
+    return;
+  }
+
+  const assetId = Number(paramsParsed.data.assetId);
+  if (isNaN(assetId)) {
+    res.status(400).json({ error: "Invalid asset ID" });
+    return;
+  }
+
+  const queryParsed = GetESenseChartsQueryParams.safeParse(req.query);
+  const days = Math.min(Math.max(queryParsed.success ? queryParsed.data.days : 3, 1), 180);
+
+  const now = new Date();
+  const startDate = new Date(now.getTime() - days * 86400 * 1000).toISOString().slice(0, 19);
+  const endDate = now.toISOString().slice(0, 19);
+
+  try {
+    const [tankRes, inflowRes, powerRes] = await Promise.allSettled([
+      ewaterFetch("state", "/api/Asset/GetTankHeightHistoryByDateRange", {
+        method: "POST",
+        body: JSON.stringify({ assetId, startDate, endDate }),
+      }),
+      ewaterFetch("state", "/api/Asset/GetInflowHistoryByDateRange", {
+        method: "POST",
+        body: JSON.stringify({ assetId, startDate, endDate }),
+      }),
+      ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${assetId}`),
+    ]);
+
+    // Parse tank height
+    const tankOk =
+      tankRes.status === "fulfilled" && tankRes.value.status === 200
+        ? (tankRes.value.data as Record<string, unknown>)
+        : null;
+    const tankRaw = Array.isArray(tankOk?.["data"])
+      ? (tankOk!["data"] as Record<string, unknown>[])
+      : [];
+    const tankHeight = tankRaw.map((d) => ({
+      time: String(d["lowerBound"] ?? ""),
+      waterTank: numOrNull(d["averageWaterTankHeight"]),
+      waterTankMin: numOrNull(d["minimumWaterTankHeight"]),
+      waterTankMax: numOrNull(d["maximumWaterTankHeight"]),
+      chlorineTank: numOrNull(d["averageChlorineTankHeight"]),
+      chlorineTankMin: numOrNull(d["minimumChlorineTankHeight"]),
+      chlorineTankMax: numOrNull(d["maximumChlorineTankHeight"]),
+    }));
+
+    // Parse daily inflow
+    const inflowOk =
+      inflowRes.status === "fulfilled" && inflowRes.value.status === 200
+        ? (inflowRes.value.data as Record<string, unknown>)
+        : null;
+    const inflowRaw = Array.isArray(inflowOk?.["data"])
+      ? (inflowOk!["data"] as Record<string, unknown>[])
+      : [];
+    const dailyInflow = inflowRaw.map((d) => ({
+      date: String(d["lowerBound"] ?? "").slice(0, 10),
+      litres: numOrNull(d["estimateTotalLitres"]) ?? 0,
+    }));
+
+    // Parse voltage (today's snapshot from AssetPowerStatus)
+    const powerOk =
+      powerRes.status === "fulfilled" && powerRes.value.status === 200
+        ? (powerRes.value.data as Record<string, unknown>)
+        : null;
+    const voltageStatus = powerOk
+      ? {
+          current: round2(numOrNull(powerOk["lastKnownVoltage"])),
+          todayHigh: round2(numOrNull(powerOk["todayHigh"])),
+          todayLow: round2(numOrNull(powerOk["todayLow"])),
+          todayAverage: round2(numOrNull(powerOk["todayAverage"])),
+          trend: strOrNull(powerOk["trendDirection"]),
+        }
+      : null;
+
+    res.json({
+      tankHeight,
+      dailyInflow,
+      voltageHistory: [],
+      voltageStatus,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch eSense chart data");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Generic proxy
 // POST /api/ewater/proxy
 // ---------------------------------------------------------------------------
@@ -725,6 +828,11 @@ function numOrNull(v: unknown): number | null {
 
 function numOrZero(v: unknown): number {
   return numOrNull(v) ?? 0;
+}
+
+function round2(v: number | null): number | null {
+  if (v == null) return null;
+  return Math.round(v * 100) / 100;
 }
 
 export default router;

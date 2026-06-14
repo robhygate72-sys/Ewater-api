@@ -188,6 +188,52 @@ export interface AssetTechStatus {
   recentCommands?: AssetCommand[];
 }
 
+export interface ESenseTankPoint {
+  time: string;
+  /** @nullable */
+  waterTank?: number | null;
+  /** @nullable */
+  waterTankMin?: number | null;
+  /** @nullable */
+  waterTankMax?: number | null;
+  /** @nullable */
+  chlorineTank?: number | null;
+  /** @nullable */
+  chlorineTankMin?: number | null;
+  /** @nullable */
+  chlorineTankMax?: number | null;
+}
+
+export interface ESenseInflowDay {
+  date: string;
+  litres: number;
+}
+
+export interface ESenseVoltagePoint {
+  time: string;
+  value: number;
+}
+
+export interface ESenseVoltageStatus {
+  /** @nullable */
+  current?: number | null;
+  /** @nullable */
+  todayHigh?: number | null;
+  /** @nullable */
+  todayLow?: number | null;
+  /** @nullable */
+  todayAverage?: number | null;
+  /** @nullable */
+  trend?: string | null;
+}
+
+export interface ESenseChartsData {
+  tankHeight: ESenseTankPoint[];
+  dailyInflow: ESenseInflowDay[];
+  voltageHistory: ESenseVoltagePoint[];
+  voltageStatus?: ESenseVoltageStatus;
+}
+
 export type ProxyInputBody = { [key: string]: unknown };
 
 export interface ProxyInput {
@@ -206,4 +252,8 @@ export interface ProxyResponse {
   status: number;
   data?: ProxyResponseData;
 }
+
+export type GetESenseChartsParams = {
+days?: number;
+};
 

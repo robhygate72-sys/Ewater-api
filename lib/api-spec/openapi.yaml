@@ -222,6 +222,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/esense-charts:
+    get:
+      operationId: getESenseCharts
+      tags: [ewater]
+      summary: Get eSense chart data (tank height, daily inflow, voltage) over a time range
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 3
+      responses:
+        "200":
+          description: eSense chart data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ESenseChartsData"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/proxy:
     post:
       operationId: proxyRequest
@@ -510,6 +547,76 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssetCommand"
+
+    ESenseTankPoint:
+      type: object
+      required: [time]
+      properties:
+        time:
+          type: string
+        waterTank:
+          type: ["number", "null"]
+        waterTankMin:
+          type: ["number", "null"]
+        waterTankMax:
+          type: ["number", "null"]
+        chlorineTank:
+          type: ["number", "null"]
+        chlorineTankMin:
+          type: ["number", "null"]
+        chlorineTankMax:
+          type: ["number", "null"]
+
+    ESenseInflowDay:
+      type: object
+      required: [date, litres]
+      properties:
+        date:
+          type: string
+        litres:
+          type: number
+
+    ESenseVoltagePoint:
+      type: object
+      required: [time, value]
+      properties:
+        time:
+          type: string
+        value:
+          type: number
+
+    ESenseVoltageStatus:
+      type: object
+      properties:
+        current:
+          type: ["number", "null"]
+        todayHigh:
+          type: ["number", "null"]
+        todayLow:
+          type: ["number", "null"]
+        todayAverage:
+          type: ["number", "null"]
+        trend:
+          type: ["string", "null"]
+
+    ESenseChartsData:
+      type: object
+      required: [tankHeight, dailyInflow, voltageHistory]
+      properties:
+        tankHeight:
+          type: array
+          items:
+            $ref: "#/components/schemas/ESenseTankPoint"
+        dailyInflow:
+          type: array
+          items:
+            $ref: "#/components/schemas/ESenseInflowDay"
+        voltageHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/ESenseVoltagePoint"
+        voltageStatus:
+          $ref: "#/components/schemas/ESenseVoltageStatus"
 
     ProxyInput:
       type: object

@@ -209,6 +209,47 @@ export const GetAssetTechResponse = zod.object({
 
 
 /**
+ * @summary Get eSense chart data (tank height, daily inflow, voltage) over a time range
+ */
+export const GetESenseChartsParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const getESenseChartsQueryDaysDefault = 3;
+
+export const GetESenseChartsQueryParams = zod.object({
+  "days": zod.coerce.number().default(getESenseChartsQueryDaysDefault)
+})
+
+export const GetESenseChartsResponse = zod.object({
+  "tankHeight": zod.array(zod.object({
+  "time": zod.string(),
+  "waterTank": zod.number().nullish(),
+  "waterTankMin": zod.number().nullish(),
+  "waterTankMax": zod.number().nullish(),
+  "chlorineTank": zod.number().nullish(),
+  "chlorineTankMin": zod.number().nullish(),
+  "chlorineTankMax": zod.number().nullish()
+})),
+  "dailyInflow": zod.array(zod.object({
+  "date": zod.string(),
+  "litres": zod.number()
+})),
+  "voltageHistory": zod.array(zod.object({
+  "time": zod.string(),
+  "value": zod.number()
+})),
+  "voltageStatus": zod.object({
+  "current": zod.number().nullish(),
+  "todayHigh": zod.number().nullish(),
+  "todayLow": zod.number().nullish(),
+  "todayAverage": zod.number().nullish(),
+  "trend": zod.string().nullish()
+}).optional()
+})
+
+
+/**
  * @summary Generic proxy to any eWater API endpoint
  */
 export const ProxyRequestBody = zod.object({
