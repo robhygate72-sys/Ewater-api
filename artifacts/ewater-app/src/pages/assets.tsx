@@ -1,16 +1,60 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLifecycleFilter, type LifecycleFilter } from "@/App";
 import { Layout } from "@/components/layout";
-import { useListAssets, useGetEntityHierarchy } from "@workspace/api-client-react";
+import { useListAssets, useGetEntityHierarchy, useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { Battery, Signal, AlertTriangle, Droplet, Search, ChevronRight, ShieldAlert, Zap, TrendingDown, Download } from "lucide-react";
+import { Battery, Signal, AlertTriangle, Droplet, Search, ChevronRight, ShieldAlert, Zap, TrendingDown, Download, CircleDollarSign } from "lucide-react";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { formatTimeAgo } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+
+function AssetEwcBadge({ assetId }: { assetId: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry?.isIntersecting) { setIsVisible(true); observer.disconnect(); } },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const { data } = useGetAssetEwc(assetId, {
+    query: { enabled: isVisible, queryKey: getGetAssetEwcQueryKey(assetId) },
+  });
+
+  return (
+    <div ref={ref}>
+      {data && (data.priceOfWater != null || data.ewcFcf != null) && (
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          {data.priceOfWater != null && (
+            <span className="flex items-center gap-1 text-[10px] font-mono bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded">
+              <CircleDollarSign className="w-2.5 h-2.5" />
+              {data.priceOfWater.toFixed(4)}
+            </span>
+          )}
+          {data.ewcFcf != null && (
+            <span className="text-[10px] font-mono text-muted-foreground">FCF {data.ewcFcf}</span>
+          )}
+          {data.ewcLcf != null && (
+            <span className="text-[10px] font-mono text-muted-foreground">LCF {data.ewcLcf}</span>
+          )}
+          {data.ewcPreload != null && (
+            <span className="text-[10px] font-mono text-muted-foreground">Pre {data.ewcPreload}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function hasFlag(flags: string | null | undefined, flag: string) {
   if (!flags) return false;
@@ -246,6 +290,8 @@ export default function Assets() {
                           </div>
                         </div>
                       </div>
+
+                      <AssetEwcBadge assetId={asset.id} />
 
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {/* Alert badges */}

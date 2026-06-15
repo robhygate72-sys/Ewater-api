@@ -195,6 +195,21 @@ export interface AssetTechStatus {
   ewcLcf?: number | null;
   /** @nullable */
   ewcFx?: number | null;
+  /** @nullable */
+  ewcPreload?: number | null;
+}
+
+export interface AssetEwcSettings {
+  /** @nullable */
+  priceOfWater?: number | null;
+  /** @nullable */
+  ewcFcf?: number | null;
+  /** @nullable */
+  ewcLcf?: number | null;
+  /** @nullable */
+  ewcFx?: number | null;
+  /** @nullable */
+  ewcPreload?: number | null;
 }
 
 export interface ESenseTankPoint {

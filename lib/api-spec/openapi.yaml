@@ -230,6 +230,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/ewc:
+    get:
+      operationId: getAssetEwc
+      tags: [ewater]
+      summary: Get EWC calibration settings and calculated price of water for an asset
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: EWC settings and price of water
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetEwcSettings"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/assets/{assetId}/esense-charts:
     get:
       operationId: getESenseCharts
@@ -564,6 +589,22 @@ components:
         ewcLcf:
           type: ["number", "null"]
         ewcFx:
+          type: ["number", "null"]
+        ewcPreload:
+          type: ["number", "null"]
+
+    AssetEwcSettings:
+      type: object
+      properties:
+        priceOfWater:
+          type: ["number", "null"]
+        ewcFcf:
+          type: ["number", "null"]
+        ewcLcf:
+          type: ["number", "null"]
+        ewcFx:
+          type: ["number", "null"]
+        ewcPreload:
           type: ["number", "null"]
 
     ESenseTankPoint:

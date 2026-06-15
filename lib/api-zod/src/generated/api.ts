@@ -215,7 +215,24 @@ export const GetAssetTechResponse = zod.object({
   "priceOfWater": zod.number().nullish(),
   "ewcFcf": zod.number().nullish(),
   "ewcLcf": zod.number().nullish(),
-  "ewcFx": zod.number().nullish()
+  "ewcFx": zod.number().nullish(),
+  "ewcPreload": zod.number().nullish()
+})
+
+
+/**
+ * @summary Get EWC calibration settings and calculated price of water for an asset
+ */
+export const GetAssetEwcParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetAssetEwcResponse = zod.object({
+  "priceOfWater": zod.number().nullish(),
+  "ewcFcf": zod.number().nullish(),
+  "ewcLcf": zod.number().nullish(),
+  "ewcFx": zod.number().nullish(),
+  "ewcPreload": zod.number().nullish()
 })
 
 

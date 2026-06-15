@@ -21,6 +21,7 @@ import type {
 
 import type {
   Asset,
+  AssetEwcSettings,
   AssetTechStatus,
   CredentialsInput,
   CredentialsStatus,
@@ -801,6 +802,83 @@ export function useGetAssetTech<TData = Awaited<ReturnType<typeof getAssetTech>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAssetTechQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssetEwcUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/ewc`
+}
+
+/**
+ * @summary Get EWC calibration settings and calculated price of water for an asset
+ */
+export const getAssetEwc = async (assetId: string, options?: RequestInit): Promise<AssetEwcSettings> => {
+
+  return customFetch<AssetEwcSettings>(getGetAssetEwcUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssetEwcQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/assets/${assetId}/ewc`
+    ] as const;
+    }
+
+
+export const getGetAssetEwcQueryOptions = <TData = Awaited<ReturnType<typeof getAssetEwc>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetEwc>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssetEwcQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssetEwc>>> = ({ signal }) => getAssetEwc(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssetEwc>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssetEwcQueryResult = NonNullable<Awaited<ReturnType<typeof getAssetEwc>>>
+export type GetAssetEwcQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get EWC calibration settings and calculated price of water for an asset
+ */
+
+export function useGetAssetEwc<TData = Awaited<ReturnType<typeof getAssetEwc>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetEwc>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssetEwcQueryOptions(assetId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

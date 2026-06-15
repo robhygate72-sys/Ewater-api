@@ -568,6 +568,7 @@ export default function AssetDetail() {
                     {tech.ewcFx != null && <span className="text-[10px] text-muted-foreground font-mono">FX {tech.ewcFx.toLocaleString()}</span>}
                     {tech.ewcLcf != null && <span className="text-[10px] text-muted-foreground font-mono">LCF {tech.ewcLcf}</span>}
                     {tech.ewcFcf != null && <span className="text-[10px] text-muted-foreground font-mono">FCF {tech.ewcFcf}</span>}
+                    {tech.ewcPreload != null && <span className="text-[10px] text-muted-foreground font-mono">Preload {tech.ewcPreload}</span>}
                   </div>
                 </div>
               </div>

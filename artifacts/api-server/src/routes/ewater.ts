@@ -342,6 +342,52 @@ router.get("/ewater/entities", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// Asset EWC settings (FCF, LCF, FX, Preload, price of water)
+// GET /api/ewater/assets/:assetId/ewc
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/ewc", async (req, res): Promise<void> => {
+  const params = GetAssetParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const id = params.data.assetId;
+  try {
+    const result = await ewaterFetch("state", `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(id)}`);
+    const settingsRaw = result.status === 200 ? (result.data as Record<string, unknown>) : null;
+    const inner = settingsRaw?.["data"] as Record<string, unknown> | null | undefined;
+    const settings: Record<string, unknown>[] = Array.isArray(inner?.["settings"])
+      ? (inner!["settings"] as Record<string, unknown>[])
+      : Array.isArray(settingsRaw?.["settings"])
+        ? (settingsRaw!["settings"] as Record<string, unknown>[])
+        : [];
+
+    const getSetting = (key: string): number | null => {
+      const s = settings.find((x) => x["settingKey"] === key);
+      if (!s) return null;
+      const val = (s["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
+      if (val == null) return null;
+      const n = Number(val);
+      return isNaN(n) ? null : n;
+    };
+
+    const fcf = getSetting("FlowConversion");
+    const lcf = getSetting("LitresConversion");
+    const fx  = getSetting("CurrencyConversion");
+    const preload = getSetting("Preload");
+    const priceOfWater = fcf != null && lcf != null && fx != null && fcf > 0
+      ? (fx * lcf) / (fcf * 1_000_000)
+      : null;
+
+    res.json({ ewcFcf: fcf, ewcLcf: lcf, ewcFx: fx, ewcPreload: preload, priceOfWater });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch EWC settings");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Asset tech status bundle
 // GET /api/ewater/assets/:assetId/tech
 // Parallel fetch: connectivity, power, flow, usage, status values, firmware,
@@ -523,10 +569,11 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
         const fcf = getSetting("FlowConversion");
         const lcf = getSetting("LitresConversion");
         const fx  = getSetting("CurrencyConversion");
+        const preload = getSetting("Preload");
         const price = fcf != null && lcf != null && fx != null && fcf > 0
           ? (fx * lcf) / (fcf * 1_000_000)
           : null;
-        return { ewcFcf: fcf, ewcLcf: lcf, ewcFx: fx, priceOfWater: price };
+        return { ewcFcf: fcf, ewcLcf: lcf, ewcFx: fx, ewcPreload: preload, priceOfWater: price };
       })(),
     });
   } catch (err) {
