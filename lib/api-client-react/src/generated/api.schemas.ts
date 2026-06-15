@@ -187,6 +187,14 @@ export interface AssetTechStatus {
   imei?: string | null;
   firmware?: FirmwareDevice[];
   recentCommands?: AssetCommand[];
+  /** @nullable */
+  priceOfWater?: number | null;
+  /** @nullable */
+  ewcFcf?: number | null;
+  /** @nullable */
+  ewcLcf?: number | null;
+  /** @nullable */
+  ewcFx?: number | null;
 }
 
 export interface ESenseTankPoint {

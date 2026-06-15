@@ -557,6 +557,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssetCommand"
+        priceOfWater:
+          type: ["number", "null"]
+        ewcFcf:
+          type: ["number", "null"]
+        ewcLcf:
+          type: ["number", "null"]
+        ewcFx:
+          type: ["number", "null"]
 
     ESenseTankPoint:
       type: object

@@ -555,6 +555,24 @@ export default function AssetDetail() {
           <Row label="Flow rate (this hour)" value={tech.flowRateHour != null ? `${tech.flowRateHour.toFixed(2)} L/min` : null} mono />
           <Row label="Flow rate (today avg)" value={tech.flowRateToday != null ? `${tech.flowRateToday.toFixed(2)} L/min` : null} mono />
           <Row label="Flow rate (week avg)" value={tech.flowRateWeek != null ? `${tech.flowRateWeek.toFixed(2)} L/min` : null} mono />
+          {tech.priceOfWater != null && (
+            <div className="mt-2 pt-2 border-t border-border/40">
+              <div className="flex items-baseline gap-2 py-1">
+                <CircleDollarSign className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex-1">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-bold font-mono">{tech.priceOfWater.toFixed(4)}</span>
+                    <span className="text-xs text-muted-foreground">price of water</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                    {tech.ewcFx != null && <span className="text-[10px] text-muted-foreground font-mono">FX {tech.ewcFx.toLocaleString()}</span>}
+                    {tech.ewcLcf != null && <span className="text-[10px] text-muted-foreground font-mono">LCF {tech.ewcLcf}</span>}
+                    {tech.ewcFcf != null && <span className="text-[10px] text-muted-foreground font-mono">FCF {tech.ewcFcf}</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </SectionCard>
 
         {/* Firmware */}

@@ -211,7 +211,11 @@ export const GetAssetTechResponse = zod.object({
   "phase": zod.string().nullish(),
   "createdDt": zod.string().nullish(),
   "correlationId": zod.string().nullish()
-})).optional()
+})).optional(),
+  "priceOfWater": zod.number().nullish(),
+  "ewcFcf": zod.number().nullish(),
+  "ewcLcf": zod.number().nullish(),
+  "ewcFx": zod.number().nullish()
 })
 
 

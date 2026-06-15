@@ -363,7 +363,7 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
   const idNum = Number(id);
 
   try {
-    const [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, entityRes] =
+    const [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, entityRes, settingsRes] =
       await Promise.allSettled([
         ewaterFetch("state", `/api/Asset/GetAssetBasicInfoByAssetID?assetId=${encodeURIComponent(id)}`),
         ewaterFetch("query", `/api/Asset/AssetConnectivityStatus?assetId=${encodeURIComponent(id)}`),
@@ -375,6 +375,7 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
         ewaterFetch("state", `/api/Asset/GetIdentifiersByAssetId?assetId=${encodeURIComponent(idNum)}`),
         ewaterFetch("state", `/api/Asset/GetCommandsForAsset?assetId=${encodeURIComponent(id)}&pageSize=20&pageIndex=0`),
         ewaterFetch("state", "/api/Entity/List"),
+        ewaterFetch("state", `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(id)}`),
       ]);
 
     const ok = <T>(r: PromiseSettledResult<{ status: number; data: unknown }>): T | null =>
@@ -502,6 +503,31 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
       imei,
       firmware,
       recentCommands,
+      // EWC calibration — price of water
+      ...(() => {
+        const settingsRaw = ok<Record<string, unknown>>(settingsRes!);
+        const inner = settingsRaw?.["data"] as Record<string, unknown> | null | undefined;
+        const settings: Record<string, unknown>[] = Array.isArray(inner?.["settings"])
+          ? (inner!["settings"] as Record<string, unknown>[])
+          : Array.isArray(settingsRaw?.["settings"])
+            ? (settingsRaw!["settings"] as Record<string, unknown>[])
+            : [];
+        const getSetting = (key: string): number | null => {
+          const s = settings.find((x) => x["settingKey"] === key);
+          if (!s) return null;
+          const val = (s["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
+          if (val == null) return null;
+          const n = Number(val);
+          return isNaN(n) ? null : n;
+        };
+        const fcf = getSetting("FlowConversion");
+        const lcf = getSetting("LitresConversion");
+        const fx  = getSetting("CurrencyConversion");
+        const price = fcf != null && lcf != null && fx != null && fcf > 0
+          ? (fx * lcf) / (fcf * 1_000_000)
+          : null;
+        return { ewcFcf: fcf, ewcLcf: lcf, ewcFx: fx, priceOfWater: price };
+      })(),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
