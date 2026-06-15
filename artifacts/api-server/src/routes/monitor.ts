@@ -8,7 +8,8 @@ import {
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { sendPush, isPushEnabled } from "../lib/push-client";
-import { checkAlerts } from "../lib/alert-checker";
+import { checkAlerts, getCheckLog } from "../lib/alert-checker";
+import { lastCheckAt, CHECK_INTERVAL_MS } from "../lib/check-state";
 
 const router: IRouter = Router();
 
@@ -179,6 +180,36 @@ router.post("/ewater/push/test", async (req, res): Promise<void> => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Test push error");
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Alert check status (timer + last run)
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/alert-check-status", (_req, res): void => {
+  const now = Date.now();
+  const lastMs = lastCheckAt ? lastCheckAt.getTime() : null;
+  const nextMs = lastMs ? lastMs + CHECK_INTERVAL_MS : null;
+  res.json({
+    lastCheckAt: lastCheckAt ? lastCheckAt.toISOString() : null,
+    nextCheckAt: nextMs ? new Date(nextMs).toISOString() : null,
+    intervalMs: CHECK_INTERVAL_MS,
+    secondsUntilNext: nextMs ? Math.max(0, Math.round((nextMs - now) / 1000)) : null,
+  });
+});
+
+// Alert check log
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/alert-check-log", async (req, res): Promise<void> => {
+  try {
+    const limit = Math.min(Number(req.query["limit"] ?? 10), 50);
+    const runs = await getCheckLog(limit);
+    res.json(runs);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch check log");
     res.status(500).json({ error: msg });
   }
 });

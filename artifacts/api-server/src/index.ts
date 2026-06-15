@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { initialisePush } from "./lib/push-client";
 import { checkAlerts } from "./lib/alert-checker";
+import { CHECK_INTERVAL_MS, setLastCheckAt } from "./lib/check-state";
 
 const rawPort = process.env["PORT"];
 
@@ -27,14 +28,12 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
-  // Check alerts every 5 minutes
-  const CHECK_INTERVAL_MS = 5 * 60 * 1000;
   setInterval(async () => {
+    const now = new Date();
+    setLastCheckAt(now);
     try {
       const result = await checkAlerts();
-      if (result.checked > 0) {
-        logger.info(result, "Alert check complete");
-      }
+      logger.info(result, "Alert check complete");
     } catch (err) {
       logger.error({ err }, "Alert check error");
     }
