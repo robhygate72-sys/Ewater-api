@@ -12,6 +12,8 @@ export default function Notifications() {
   const { state: pushState, error: pushError, enablePush, disablePush } = usePushNotifications();
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [testPushResult, setTestPushResult] = useState<string | null>(null);
+  const [testingPush, setTestingPush] = useState(false);
 
   const handleTestAlert = async () => {
     setTesting(true);
@@ -24,7 +26,25 @@ export default function Notifications() {
       setTestResult("Failed to run check");
     }
     setTesting(false);
-    setTimeout(() => setTestResult(null), 6000);
+    setTimeout(() => setTestResult(null), 8000);
+  };
+
+  const handleTestPush = async () => {
+    setTestingPush(true);
+    setTestPushResult(null);
+    try {
+      const res = await fetch(`${BASE}/api/ewater/push/test`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setTestPushResult(`Error: ${data.error}`);
+      } else {
+        setTestPushResult(`Sent to ${data.sent} device${data.sent !== 1 ? "s" : ""} — check your notifications`);
+      }
+    } catch {
+      setTestPushResult("Request failed");
+    }
+    setTestingPush(false);
+    setTimeout(() => setTestPushResult(null), 8000);
   };
 
   const PushIcon = pushState === "subscribed" ? Bell : BellOff;
@@ -108,6 +128,28 @@ export default function Notifications() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Test push */}
+        {pushState === "subscribed" && (
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleTestPush}
+              disabled={testingPush}
+            >
+              {testingPush ? (
+                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Bell className="w-4 h-4 mr-2" />
+              )}
+              Send test notification now
+            </Button>
+            {testPushResult && (
+              <p className="text-xs text-center text-muted-foreground">{testPushResult}</p>
+            )}
+          </div>
+        )}
 
         {/* Manual check */}
         <div className="space-y-2">

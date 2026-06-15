@@ -147,6 +147,42 @@ router.delete("/ewater/push/subscribe", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// Test push notification
+// ---------------------------------------------------------------------------
+
+router.post("/ewater/push/test", async (req, res): Promise<void> => {
+  try {
+    const subscriptions = await db.select().from(pushSubscriptionsTable);
+    if (subscriptions.length === 0) {
+      res.status(400).json({ error: "No push subscriptions registered on this device yet." });
+      return;
+    }
+    let sent = 0;
+    for (const sub of subscriptions) {
+      try {
+        await sendPush(sub, {
+          title: "✅ eWater Test Notification",
+          body: "Push notifications are working correctly.",
+          tag: "ewater-test",
+          url: "/notifications",
+        });
+        sent++;
+      } catch (err: unknown) {
+        if ((err as Record<string, unknown>)["expired"]) {
+          await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.endpoint, sub.endpoint));
+        } else {
+          req.log.error({ err }, "Test push failed");
+        }
+      }
+    }
+    res.json({ sent });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Test push error");
+    res.status(500).json({ error: msg });
+  }
+});
+
 // Manual alert check
 // ---------------------------------------------------------------------------
 
