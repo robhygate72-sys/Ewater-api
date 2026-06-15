@@ -9,6 +9,7 @@ import Assets from "@/pages/assets";
 import AssetDetail from "@/pages/asset-detail";
 import Watchlist from "@/pages/watchlist";
 import NotificationsPage from "@/pages/notifications";
+import ExportPage from "@/pages/export";
 import Login from "@/pages/login";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
@@ -85,6 +86,7 @@ function Router() {
       <Route path="/assets/:id" component={AssetDetail} />
       <Route path="/watchlist" component={Watchlist} />
       <Route path="/notifications" component={NotificationsPage} />
+      <Route path="/export" component={ExportPage} />
       <Route component={NotFound} />
     </Switch>
   );

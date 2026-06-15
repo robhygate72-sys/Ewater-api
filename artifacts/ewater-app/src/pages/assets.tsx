@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { Battery, Signal, AlertTriangle, Droplet, Search, ChevronRight, ShieldAlert, Zap, TrendingDown } from "lucide-react";
+import { Battery, Signal, AlertTriangle, Droplet, Search, ChevronRight, ShieldAlert, Zap, TrendingDown, Download } from "lucide-react";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { formatTimeAgo } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -89,7 +89,18 @@ export default function Assets() {
   const lifecycleTotal = assets?.filter((a) => (a.status ?? "Active") === lifecycleFilter).length ?? 0;
 
   return (
-    <Layout title="Assets">
+    <Layout
+      title="Assets"
+      headerActions={
+        <Link
+          href="/export"
+          className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors text-primary-foreground"
+          title="Export FCF/LCF/FX CSV"
+        >
+          <Download className="w-5 h-5" />
+        </Link>
+      }
+    >
       <div className="space-y-3">
         {/* Lifecycle Filter */}
         <div className="flex gap-2">
