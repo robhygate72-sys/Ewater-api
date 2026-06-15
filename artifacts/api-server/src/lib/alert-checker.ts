@@ -36,39 +36,43 @@ const DEFAULT_RULES = {
 
 async function fetchTech(assetId: string): Promise<TechStatus | null> {
   try {
-    const [techRes, eSenseRes] = await Promise.allSettled([
+    const [connRes, powerRes, usageRes, tankRes] = await Promise.allSettled([
       ewaterFetch("query", `/api/Asset/AssetConnectivityStatus?assetId=${encodeURIComponent(assetId)}`),
+      ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${encodeURIComponent(assetId)}`),
       ewaterFetch("query", `/api/Asset/AssetUsageStatus?assetId=${encodeURIComponent(assetId)}`),
+      ewaterFetch("state", `/api/Asset/GetTankHeightSamplesForAsset?assetId=${encodeURIComponent(assetId)}&numberOfSamples=1`),
     ]);
 
     const conn =
-      techRes.status === "fulfilled" && techRes.value.status === 200
-        ? (techRes.value.data as Record<string, unknown>)
+      connRes.status === "fulfilled" && connRes.value.status === 200
+        ? (connRes.value.data as Record<string, unknown>)
         : null;
+
+    const power =
+      powerRes.status === "fulfilled" && powerRes.value.status === 200
+        ? (powerRes.value.data as Record<string, unknown>)
+        : null;
+
     const usage =
-      eSenseRes.status === "fulfilled" && eSenseRes.value.status === 200
-        ? (eSenseRes.value.data as Record<string, unknown>)
+      usageRes.status === "fulfilled" && usageRes.value.status === 200
+        ? (usageRes.value.data as Record<string, unknown>)
         : null;
 
-    const chartRes = await ewaterFetch(
-      "query",
-      `/api/Asset/GetESenseChartDataForAsset?assetId=${encodeURIComponent(assetId)}&startDate=${new Date(Date.now() - 2 * 3600 * 1000).toISOString()}&endDate=${new Date().toISOString()}`
-    ).catch(() => null);
+    const tank =
+      tankRes.status === "fulfilled" && tankRes.value.status === 200
+        ? (tankRes.value.data as Record<string, unknown>)
+        : null;
 
+    // Tank height: waterTankAverageLastHour is a 0–1 fraction → convert to %
     let tankHeightPercent: number | null = null;
-    if (chartRes && chartRes.status === 200) {
-      const cd = chartRes.data as Record<string, unknown>;
-      const readings = Array.isArray(cd["readings"]) ? cd["readings"] as Record<string, unknown>[] : [];
-      if (readings.length > 0) {
-        const last = readings[readings.length - 1];
-        const raw = Number(last?.["waterTank"] ?? last?.["waterTankPercent"] ?? NaN);
-        if (!isNaN(raw)) tankHeightPercent = raw;
-      }
+    if (tank && tank["waterTankConnected"] === true) {
+      const raw = Number(tank["waterTankAverageLastHour"] ?? NaN);
+      if (!isNaN(raw)) tankHeightPercent = Math.round(raw * 100);
     }
 
     return {
       lastCommsDt: conn ? String(conn["lastCommsDt"] ?? "") || null : null,
-      batteryVoltage: conn ? (Number(conn["lastKnownVoltage"] ?? NaN) || null) : null,
+      batteryVoltage: power ? (Number(power["lastKnownVoltage"] ?? NaN) || null) : null,
       litresDispensedToday: usage ? (Number(usage["litresDispensedToday"] ?? NaN) || null) : null,
       tapEventsPerMinuteToday: conn ? (Number(conn["tapEventsPerMinuteToday"] ?? NaN) || null) : null,
       tankHeightPercent,
