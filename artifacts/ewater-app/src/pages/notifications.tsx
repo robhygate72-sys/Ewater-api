@@ -9,7 +9,7 @@ import { Link } from "wouter";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Notifications() {
-  const { state: pushState, enablePush, disablePush } = usePushNotifications();
+  const { state: pushState, error: pushError, enablePush, disablePush } = usePushNotifications();
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -58,24 +58,32 @@ export default function Notifications() {
                 Permission blocked. Open browser settings to allow notifications for this site.
               </div>
             ) : (
-              <Button
-                size="sm"
-                variant={pushState === "subscribed" ? "outline" : "default"}
-                className="w-full"
-                disabled={pushState === "loading"}
-                onClick={pushState === "subscribed" ? disablePush : enablePush}
-              >
-                {pushState === "loading" ? (
-                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                ) : pushState === "subscribed" ? (
-                  <BellOff className="w-4 h-4 mr-2" />
-                ) : (
-                  <Bell className="w-4 h-4 mr-2" />
+              <>
+                <Button
+                  size="sm"
+                  variant={pushState === "subscribed" ? "outline" : "default"}
+                  className="w-full"
+                  disabled={pushState === "loading"}
+                  onClick={pushState === "subscribed" ? disablePush : enablePush}
+                >
+                  {pushState === "loading" ? (
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                  ) : pushState === "subscribed" ? (
+                    <BellOff className="w-4 h-4 mr-2" />
+                  ) : (
+                    <Bell className="w-4 h-4 mr-2" />
+                  )}
+                  {pushState === "loading" ? "Checking…"
+                    : pushState === "subscribed" ? "Disable push notifications"
+                    : "Enable push notifications"}
+                </Button>
+                {pushError && (
+                  <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{pushError}</span>
+                  </div>
                 )}
-                {pushState === "loading" ? "Checking…"
-                  : pushState === "subscribed" ? "Disable push notifications"
-                  : "Enable push notifications"}
-              </Button>
+              </>
             )}
           </CardContent>
         </Card>

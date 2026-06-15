@@ -3,8 +3,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "eWater Alert";
   const options = {
     body: data.body || "A monitored asset needs attention.",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/favicon.svg",
+    badge: "/favicon.svg",
     tag: data.tag || "ewater-alert",
     data: { url: data.url || "/" },
     vibrate: [200, 100, 200],

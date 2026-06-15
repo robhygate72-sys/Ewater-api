@@ -1,0 +1,19 @@
+{
+  "name": "eWater Monitor",
+  "short_name": "eWater",
+  "description": "Tech support monitoring for community water infrastructure",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0f7490",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
