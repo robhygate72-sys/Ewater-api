@@ -51,6 +51,7 @@ const DEFAULT_RULES = {
   lowFlowEnabled: false, lowFlowLitres: 10,
   highFlowEnabled: false, highFlowLitres: 500,
   stuckValveEnabled: false,
+  priceCheckEnabled: false, targetPrice: 1.5, priceDeviancePercent: 0.5,
   cooldownMinutes: 60,
 };
 
@@ -62,6 +63,7 @@ function rowToJson(r: typeof DEFAULT_RULES & { assetId?: string }) {
     lowFlowEnabled: r.lowFlowEnabled, lowFlowLitres: r.lowFlowLitres,
     highFlowEnabled: r.highFlowEnabled, highFlowLitres: r.highFlowLitres,
     stuckValveEnabled: r.stuckValveEnabled,
+    priceCheckEnabled: r.priceCheckEnabled, targetPrice: r.targetPrice, priceDeviancePercent: r.priceDeviancePercent,
     cooldownMinutes: r.cooldownMinutes,
   };
 }
@@ -84,6 +86,9 @@ const AlertRulesBody = z.object({
   highFlowEnabled: z.boolean().optional(),
   highFlowLitres: z.number().optional(),
   stuckValveEnabled: z.boolean().optional(),
+  priceCheckEnabled: z.boolean().optional(),
+  targetPrice: z.number().positive().optional(),
+  priceDeviancePercent: z.number().min(0).optional(),
   cooldownMinutes: z.number().optional(),
 });
 

@@ -17,6 +17,9 @@ type TechStatus = {
   litresDispensedToday?: number | null;
   tapEventsPerMinuteToday?: number | null;
   tankHeightPercent?: number | null;
+  ewcFcf?: number | null;
+  ewcLcf?: number | null;
+  ewcFx?: number | null;
 };
 
 const DEFAULT_RULES = {
@@ -31,37 +34,47 @@ const DEFAULT_RULES = {
   highFlowEnabled: false,
   highFlowLitres: 500,
   stuckValveEnabled: false,
+  priceCheckEnabled: false,
+  targetPrice: 1.5,
+  priceDeviancePercent: 0.5,
   cooldownMinutes: 60,
 };
 
-async function fetchTech(assetId: string): Promise<TechStatus | null> {
+function extractSetting(settings: Record<string, unknown>[], key: string): number | null {
+  const s = settings.find((x) => x.settingKey === key);
+  if (!s) return null;
+  const val = (s.value as Record<string, unknown> | null)?.lastKnownValue;
+  if (val == null) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
+}
+
+async function fetchTech(assetId: string, needsPrice: boolean): Promise<TechStatus | null> {
   try {
-    const [connRes, powerRes, usageRes, tankRes] = await Promise.allSettled([
+    const calls: Promise<unknown>[] = [
       ewaterFetch("query", `/api/Asset/AssetConnectivityStatus?assetId=${encodeURIComponent(assetId)}`),
       ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${encodeURIComponent(assetId)}`),
       ewaterFetch("query", `/api/Asset/AssetUsageStatus?assetId=${encodeURIComponent(assetId)}`),
       ewaterFetch("state", `/api/Asset/GetTankHeightSamplesForAsset?assetId=${encodeURIComponent(assetId)}&numberOfSamples=1`),
-    ]);
+    ];
+    if (needsPrice) {
+      calls.push(ewaterFetch("state", `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(assetId)}`));
+    }
 
-    const conn =
-      connRes.status === "fulfilled" && connRes.value.status === 200
-        ? (connRes.value.data as Record<string, unknown>)
-        : null;
+    const settled = await Promise.allSettled(calls);
 
-    const power =
-      powerRes.status === "fulfilled" && powerRes.value.status === 200
-        ? (powerRes.value.data as Record<string, unknown>)
-        : null;
+    function ok(idx: number): Record<string, unknown> | null {
+      const r = settled[idx];
+      if (!r || r.status !== "fulfilled") return null;
+      const v = r.value as { status: number; data: unknown };
+      return v.status === 200 ? (v.data as Record<string, unknown>) : null;
+    }
 
-    const usage =
-      usageRes.status === "fulfilled" && usageRes.value.status === 200
-        ? (usageRes.value.data as Record<string, unknown>)
-        : null;
-
-    const tank =
-      tankRes.status === "fulfilled" && tankRes.value.status === 200
-        ? (tankRes.value.data as Record<string, unknown>)
-        : null;
+    const conn = ok(0);
+    const power = ok(1);
+    const usage = ok(2);
+    const tank = ok(3);
+    const settingsRaw = needsPrice ? ok(4) : null;
 
     // Tank height: waterTankAverageLastHour is a 0–1 fraction → convert to %
     let tankHeightPercent: number | null = null;
@@ -70,12 +83,31 @@ async function fetchTech(assetId: string): Promise<TechStatus | null> {
       if (!isNaN(raw)) tankHeightPercent = Math.round(raw * 100);
     }
 
+    // EWC calibration settings (FCF, LCF, FX)
+    let ewcFcf: number | null = null;
+    let ewcLcf: number | null = null;
+    let ewcFx: number | null = null;
+    if (settingsRaw) {
+      const inner = settingsRaw["data"] as Record<string, unknown> | null;
+      const settings = Array.isArray(inner?.["settings"])
+        ? (inner!["settings"] as Record<string, unknown>[])
+        : Array.isArray(settingsRaw["settings"])
+          ? (settingsRaw["settings"] as Record<string, unknown>[])
+          : [];
+      ewcFcf = extractSetting(settings, "FlowConversion");
+      ewcLcf = extractSetting(settings, "LitresConversion");
+      ewcFx = extractSetting(settings, "CurrencyConversion");
+    }
+
     return {
       lastCommsDt: conn ? String(conn["lastCommsDt"] ?? "") || null : null,
       batteryVoltage: power ? (Number(power["lastKnownVoltage"] ?? NaN) || null) : null,
       litresDispensedToday: usage ? (Number(usage["litresDispensedToday"] ?? NaN) || null) : null,
       tapEventsPerMinuteToday: conn ? (Number(conn["tapEventsPerMinuteToday"] ?? NaN) || null) : null,
       tankHeightPercent,
+      ewcFcf,
+      ewcLcf,
+      ewcFx,
     };
   } catch {
     return null;
@@ -141,7 +173,9 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
   const logRows: typeof alertCheckLogTable.$inferInsert[] = [];
 
   for (const fav of favourites) {
-    const tech = await fetchTech(fav.assetId);
+    const rules = rulesMap.get(fav.assetId) ?? DEFAULT_RULES;
+    const needsPrice = (rules as typeof DEFAULT_RULES).priceCheckEnabled ?? false;
+    const tech = await fetchTech(fav.assetId, needsPrice);
     if (!tech) {
       logRows.push({
         runId,
@@ -157,10 +191,7 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
       continue;
     }
 
-    const rules = rulesMap.get(fav.assetId) ?? DEFAULT_RULES;
     const alerts: { type: string; title: string; body: string }[] = [];
-
-    // --- offline ---
     if (rules.offlineEnabled) {
       if (tech.lastCommsDt) {
         const hoursAgo = (Date.now() - new Date(tech.lastCommsDt).getTime()) / 3600000;
@@ -261,6 +292,42 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
         detail: triggered ? "FAIL — zero tap events and zero flow today" : "OK — tap events or flow present",
       });
       if (triggered) alerts.push({ type: "stuck_valve", title: `🔒 Possible Stuck Valve: ${fav.assetName}`, body: "Zero tap events and zero flow today" });
+    }
+
+    // --- price of water ---
+    if ((rules as typeof DEFAULT_RULES).priceCheckEnabled) {
+      const { ewcFcf, ewcLcf, ewcFx } = tech;
+      const r = rules as typeof DEFAULT_RULES;
+      if (ewcFcf != null && ewcLcf != null && ewcFx != null && ewcFcf > 0) {
+        const price = (ewcFx * ewcLcf) / (ewcFcf * 1_000_000);
+        const band = r.targetPrice * (r.priceDeviancePercent / 100);
+        const hi = r.targetPrice + band;
+        const lo = r.targetPrice - band;
+        const triggered = price > hi || price < lo;
+        const direction = price > hi ? "above" : "below";
+        logRows.push({
+          runId, checkedAt,
+          assetId: fav.assetId, assetName: fav.assetName,
+          alertType: "price_water", enabled: true, triggered, notified: false,
+          detail: triggered
+            ? `FAIL — price ${price.toFixed(4)} ${direction} band [${lo.toFixed(4)}, ${hi.toFixed(4)}] (target ${r.targetPrice} ±${r.priceDeviancePercent}%)`
+            : `OK — price ${price.toFixed(4)} within band [${lo.toFixed(4)}, ${hi.toFixed(4)}]`,
+        });
+        if (triggered) {
+          alerts.push({
+            type: "price_water",
+            title: `💰 Water Price Alert: ${fav.assetName}`,
+            body: `Calculated price ${price.toFixed(4)} is ${direction} target ${r.targetPrice} ±${r.priceDeviancePercent}%`,
+          });
+        }
+      } else {
+        logRows.push({
+          runId, checkedAt,
+          assetId: fav.assetId, assetName: fav.assetName,
+          alertType: "price_water", enabled: true, triggered: false, notified: false,
+          detail: "SKIP — EWC settings (FCF/LCF/FX) not available from API",
+        });
+      }
     }
 
     // --- send alerts and update notified flag ---

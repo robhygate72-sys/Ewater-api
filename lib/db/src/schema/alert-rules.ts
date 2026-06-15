@@ -14,6 +14,9 @@ export const alertRulesTable = pgTable("alert_rules", {
   highFlowEnabled: boolean("high_flow_enabled").notNull().default(false),
   highFlowLitres: real("high_flow_litres").notNull().default(500),
   stuckValveEnabled: boolean("stuck_valve_enabled").notNull().default(false),
+  priceCheckEnabled: boolean("price_check_enabled").notNull().default(false),
+  targetPrice: real("target_price").notNull().default(1.5),
+  priceDeviancePercent: real("price_deviance_percent").notNull().default(0.5),
   cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

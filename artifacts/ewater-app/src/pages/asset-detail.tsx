@@ -14,7 +14,7 @@ import {
   MapPin, Battery, Signal, Wifi, WifiOff, ShieldAlert, ShieldCheck,
   TrendingDown, TrendingUp, Minus, Droplet, Zap, Cpu, Radio,
   Terminal, AlertTriangle, CheckCircle2, Clock, Activity, Info,
-  Bell, Lock, RefreshCw, Star,
+  Bell, Lock, RefreshCw, Star, CircleDollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
@@ -75,6 +75,7 @@ interface AlertRules {
   lowFlowEnabled: boolean; lowFlowLitres: number;
   highFlowEnabled: boolean; highFlowLitres: number;
   stuckValveEnabled: boolean;
+  priceCheckEnabled: boolean; targetPrice: number; priceDeviancePercent: number;
   cooldownMinutes: number;
 }
 
@@ -85,6 +86,7 @@ const DEFAULT_RULES: AlertRules = {
   lowFlowEnabled: false, lowFlowLitres: 10,
   highFlowEnabled: false, highFlowLitres: 500,
   stuckValveEnabled: false,
+  priceCheckEnabled: false, targetPrice: 1.5, priceDeviancePercent: 0.5,
   cooldownMinutes: 60,
 };
 
@@ -257,6 +259,43 @@ function AssetAlertRules({ assetId, assetName }: { assetId: string; assetName: s
               enabled={rules.stuckValveEnabled}
               onToggle={(v) => updateRule("stuckValveEnabled", v)}
             />
+
+            <AlertRuleRow
+              icon={<CircleDollarSign className="w-4 h-4" />}
+              title="Price of Water"
+              description="Alert when calculated price (FX × LCF ÷ FCF ÷ 1M) deviates from target."
+              enabled={rules.priceCheckEnabled}
+              onToggle={(v) => updateRule("priceCheckEnabled", v)}
+            >
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-28 shrink-0">Target price</label>
+                  <input
+                    type="number"
+                    value={rules.targetPrice}
+                    min="0"
+                    step="0.01"
+                    onChange={(e) => updateRule("targetPrice", parseFloat(e.target.value) || 0)}
+                    className="flex-1 min-w-0 border border-border rounded-md px-2 py-1 text-sm font-mono bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground w-28 shrink-0">Deviance</label>
+                  <input
+                    type="number"
+                    value={rules.priceDeviancePercent}
+                    min="0"
+                    step="0.1"
+                    onChange={(e) => updateRule("priceDeviancePercent", parseFloat(e.target.value) || 0)}
+                    className="flex-1 min-w-0 border border-border rounded-md px-2 py-1 text-sm font-mono bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="text-xs text-muted-foreground shrink-0">%</span>
+                </div>
+                <p className="text-xs text-muted-foreground/70">
+                  Alert if price &lt; {(rules.targetPrice * (1 - rules.priceDeviancePercent / 100)).toFixed(4)} or &gt; {(rules.targetPrice * (1 + rules.priceDeviancePercent / 100)).toFixed(4)}
+                </p>
+              </div>
+            </AlertRuleRow>
 
             <div className="py-3">
               <SliderRow label="Notification cooldown" value={rules.cooldownMinutes} min={15} max={480} step={15} unit="min" onChange={(v) => updateRule("cooldownMinutes", v)} />
