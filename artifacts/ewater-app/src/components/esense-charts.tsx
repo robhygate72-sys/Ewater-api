@@ -19,7 +19,100 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Activity, Droplets, Zap, AlertCircle } from "lucide-react";
+import { Activity, Droplets, Zap, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+
+interface LeakageRate {
+  date: string;
+  ratePerHour: number | null;
+}
+
+function computeLeakageRates(
+  tankData: { ts: number; waterTank?: number | null }[],
+): LeakageRate[] {
+  const byNight = new Map<string, { ts: number; waterTank: number }[]>();
+
+  for (const p of tankData) {
+    if (p.waterTank == null) continue;
+    const d = new Date(p.ts);
+    const h = d.getHours();
+    if (h >= 6) continue;
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (!byNight.has(dateKey)) byNight.set(dateKey, []);
+    byNight.get(dateKey)!.push({ ts: p.ts, waterTank: p.waterTank });
+  }
+
+  return [...byNight.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, points]) => {
+      if (points.length < 2) return { date, ratePerHour: null };
+      points.sort((a, b) => a.ts - b.ts);
+      const first = points[0]!;
+      const last = points[points.length - 1]!;
+      const hoursDiff = (last.ts - first.ts) / 3600000;
+      if (hoursDiff < 0.5) return { date, ratePerHour: null };
+      const dropCm = (first.waterTank - last.waterTank) * 100;
+      return { date, ratePerHour: dropCm / hoursDiff };
+    });
+}
+
+function LeakageAnalysis({ tankData }: { tankData: { ts: number; waterTank?: number | null }[] }) {
+  const all = computeLeakageRates(tankData);
+  const rates = all.slice(-3);
+
+  if (rates.length === 0) return null;
+
+  function TrendIcon({ curr, prev }: { curr: number | null; prev: number | null }) {
+    if (curr == null || prev == null) return <Minus className="w-3 h-3 text-muted-foreground" />;
+    const delta = curr - prev;
+    if (delta > 0.2) return <TrendingUp className="w-3 h-3 text-red-500" />;
+    if (delta < -0.2) return <TrendingDown className="w-3 h-3 text-green-500" />;
+    return <Minus className="w-3 h-3 text-muted-foreground" />;
+  }
+
+  return (
+    <div className="mt-3 border-t border-border/50 pt-3 px-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+        Overnight Leakage (midnight–6 am)
+      </p>
+      <div className="space-y-1">
+        {rates.map((r, i) => {
+          const prev = rates[i - 1] ?? null;
+          const isLatest = i === rates.length - 1;
+          return (
+            <div key={r.date} className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground font-mono">
+                {new Date(r.date + "T00:00:00").toLocaleDateString("en-GB", {
+                  day: "numeric",
+                  month: "short",
+                })}
+              </span>
+              <div className="flex items-center gap-1.5">
+                {r.ratePerHour != null ? (
+                  <span
+                    className={
+                      isLatest
+                        ? "font-mono font-semibold text-foreground"
+                        : "font-mono text-muted-foreground"
+                    }
+                  >
+                    {r.ratePerHour > 0
+                      ? `↓ ${r.ratePerHour.toFixed(2)} cm/hr`
+                      : r.ratePerHour < -0.05
+                        ? `↑ ${Math.abs(r.ratePerHour).toFixed(2)} cm/hr (fill)`
+                        : "≈ 0 cm/hr"}
+                  </span>
+                ) : (
+                  <span className="font-mono text-muted-foreground">— no data</span>
+                )}
+                {isLatest && <TrendIcon curr={r.ratePerHour} prev={prev?.ratePerHour ?? null} />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const RANGE_OPTIONS = [
   { label: "1 day", value: 1 },
@@ -304,6 +397,7 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
               )}
             </LineChart>
           </ResponsiveContainer>
+          <LeakageAnalysis tankData={tankData} />
         </ChartSection>
       )}
 
