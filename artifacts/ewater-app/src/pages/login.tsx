@@ -1,5 +1,6 @@
 import { useSaveCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { markAuthenticated } from "@/App";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -25,6 +26,7 @@ export default function Login() {
   function onSubmit(values: z.infer<typeof formSchema>) {
     saveMutation.mutate({ data: values }, {
       onSuccess: () => {
+        markAuthenticated();
         queryClient.invalidateQueries({ queryKey: getGetCredentialsStatusQueryKey() });
       },
       onError: () => {

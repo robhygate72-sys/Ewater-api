@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -14,6 +14,8 @@ import Login from "@/pages/login";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
+
+const AUTH_KEY = "ewm-authenticated";
 
 export type LifecycleFilter = "PreInstallation" | "Staged" | "Active" | "Test";
 
@@ -42,10 +44,30 @@ const queryClient = new QueryClient({
   },
 });
 
+export function markAuthenticated() {
+  localStorage.setItem(AUTH_KEY, "1");
+}
+
+export function clearAuthenticated() {
+  localStorage.removeItem(AUTH_KEY);
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
+  const [optimistic] = useState(() => localStorage.getItem(AUTH_KEY) === "1");
   const { data: status, isLoading } = useGetCredentialsStatus();
 
+  useEffect(() => {
+    if (status?.isConfigured) {
+      markAuthenticated();
+    } else if (status && !status.isConfigured) {
+      clearAuthenticated();
+    }
+  }, [status]);
+
+  // While the server check is in flight, trust localStorage so returning
+  // users see the app immediately with no flicker or login screen.
   if (isLoading) {
+    if (optimistic) return <>{children}</>;
     return (
       <div className="min-h-[100dvh] flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -70,6 +92,7 @@ export function useLogout() {
   const clearMutation = useClearCredentials();
 
   return () => {
+    clearAuthenticated();
     clearMutation.mutate(undefined, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetCredentialsStatusQueryKey() });
