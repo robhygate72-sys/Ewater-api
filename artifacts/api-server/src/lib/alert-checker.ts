@@ -321,11 +321,21 @@ export async function checkAlerts(): Promise<{ checked: number; notified: number
           });
         }
       } else {
+        const missing = [
+          ewcFcf == null && "FCF",
+          ewcLcf == null && "LCF",
+          ewcFx == null && "FX",
+        ].filter(Boolean).join(", ");
         logRows.push({
           runId, checkedAt,
           assetId: fav.assetId, assetName: fav.assetName,
-          alertType: "price_water", enabled: true, triggered: false, notified: false,
-          detail: "SKIP — EWC settings (FCF/LCF/FX) not available from API",
+          alertType: "ewc_missing", enabled: true, triggered: true, notified: false,
+          detail: `FAIL — EWC calibration values missing: ${missing}`,
+        });
+        alerts.push({
+          type: "ewc_missing",
+          title: `⚙️ EWC Config Missing: ${fav.assetName}`,
+          body: `Calibration values unavailable (${missing}) — price of water cannot be calculated`,
         });
       }
     }
