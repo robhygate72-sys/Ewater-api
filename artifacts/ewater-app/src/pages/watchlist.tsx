@@ -1,15 +1,18 @@
+import { useState } from "react";
 import { useFavourites } from "@/contexts/FavouritesContext";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
-import { Star, ChevronRight, Battery, Droplet, ShieldAlert, Zap, TrendingDown, CircleDollarSign } from "lucide-react";
+import { Star, ChevronRight, Battery, Droplet, ShieldAlert, Zap, TrendingDown, CircleDollarSign, ClipboardCopy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
 import { formatTimeAgo } from "@/lib/date";
-import { useState, useEffect, useRef } from "react";
+import { useState as useStateRef, useEffect, useRef } from "react";
 
 function hasFlag(flags: string | null | undefined, flag: string) {
   if (!flags) return false;
@@ -17,7 +20,7 @@ function hasFlag(flags: string | null | undefined, flag: string) {
 }
 
 function AssetEwcBadge({ assetId }: { assetId: string }) {
-  const [isVisible, setIsVisible] = useState(false);
+  const [isVisible, setIsVisible] = useStateRef(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,12 +67,72 @@ export default function Watchlist() {
   const { favourites, isLoading: isLoadingFavs } = useFavourites();
   const { data: allAssets, isLoading: isLoadingAssets } = useListAssets();
 
-  const assetMap = new Map((allAssets ?? []).map((a) => [a.id, a]));
+  const [copySheetOpen, setCopySheetOpen] = useState(false);
+  const [sourceId, setSourceId] = useState<string>("");
+  const [targetIds, setTargetIds] = useState<Set<string>>(new Set());
+  const [isCopying, setIsCopying] = useState(false);
+  const [copyDone, setCopyDone] = useState(false);
 
+  const assetMap = new Map((allAssets ?? []).map((a) => [a.id, a]));
   const isLoading = isLoadingFavs || isLoadingAssets;
 
+  function openCopySheet() {
+    setSourceId(favourites[0]?.assetId ?? "");
+    setTargetIds(new Set());
+    setCopyDone(false);
+    setCopySheetOpen(true);
+  }
+
+  function toggleTarget(assetId: string) {
+    setTargetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  }
+
+  function selectAllTargets() {
+    setTargetIds(new Set(favourites.filter((f) => f.assetId !== sourceId).map((f) => f.assetId)));
+  }
+
+  async function handleCopy() {
+    if (!sourceId || targetIds.size === 0) return;
+    setIsCopying(true);
+    try {
+      const res = await fetch("/api/ewater/alert-rules/copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromAssetId: sourceId, toAssetIds: [...targetIds] }),
+      });
+      if (!res.ok) throw new Error("Copy failed");
+      setCopyDone(true);
+      setTimeout(() => setCopySheetOpen(false), 1200);
+    } catch {
+      // keep sheet open on error
+    } finally {
+      setIsCopying(false);
+    }
+  }
+
+  const sourceName = favourites.find((f) => f.assetId === sourceId)?.assetName ?? sourceId;
+  const validTargets = favourites.filter((f) => f.assetId !== sourceId);
+
   return (
-    <Layout title="Watchlist">
+    <Layout
+      title="Watchlist"
+      headerActions={
+        favourites.length >= 2 ? (
+          <button
+            onClick={openCopySheet}
+            className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors text-primary-foreground"
+            title="Copy alert settings to multiple assets"
+          >
+            <ClipboardCopy className="w-5 h-5" />
+          </button>
+        ) : undefined
+      }
+    >
       <div className="space-y-3">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
@@ -192,6 +255,127 @@ export default function Watchlist() {
           </>
         )}
       </div>
+
+      {/* Copy alert settings sheet */}
+      <Sheet open={copySheetOpen} onOpenChange={setCopySheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[85dvh] flex flex-col">
+          <SheetHeader className="pb-2">
+            <SheetTitle className="flex items-center gap-2">
+              <ClipboardCopy className="w-4 h-4 text-primary" />
+              Copy Alert Settings
+            </SheetTitle>
+            <p className="text-xs text-muted-foreground text-left">
+              Apply one asset's alert rules to other watchlist assets.
+            </p>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 py-2">
+            {/* Source picker */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Copy FROM</p>
+              <div className="space-y-1.5">
+                {favourites.map((fav) => (
+                  <button
+                    key={fav.assetId}
+                    onClick={() => {
+                      setSourceId(fav.assetId);
+                      setTargetIds((prev) => {
+                        const next = new Set(prev);
+                        next.delete(fav.assetId);
+                        return next;
+                      });
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors",
+                      sourceId === fav.assetId
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-foreground/20 bg-card",
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center",
+                      sourceId === fav.assetId ? "border-primary bg-primary" : "border-muted-foreground/40",
+                    )}>
+                      {sourceId === fav.assetId && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <span className="text-sm font-medium truncate">{fav.assetName}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Target picker */}
+            {sourceId && validTargets.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Apply TO</p>
+                  {targetIds.size < validTargets.length ? (
+                    <button onClick={selectAllTargets} className="text-xs font-medium text-primary">
+                      Select all {validTargets.length}
+                    </button>
+                  ) : (
+                    <button onClick={() => setTargetIds(new Set())} className="text-xs font-medium text-muted-foreground">
+                      Deselect all
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  {validTargets.map((fav) => {
+                    const checked = targetIds.has(fav.assetId);
+                    return (
+                      <button
+                        key={fav.assetId}
+                        onClick={() => toggleTarget(fav.assetId)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors",
+                          checked
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-foreground/20 bg-card",
+                        )}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center",
+                          checked ? "border-primary bg-primary" : "border-muted-foreground/40",
+                        )}>
+                          {checked && <Check className="w-2.5 h-2.5 text-white" />}
+                        </div>
+                        <span className="text-sm truncate">{fav.assetName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {sourceId && validTargets.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Add more assets to your watchlist to copy alerts between them.
+              </p>
+            )}
+          </div>
+
+          <div className="pt-3 border-t shrink-0">
+            {copyDone ? (
+              <div className="flex items-center justify-center gap-2 py-3 text-emerald-600 font-medium text-sm">
+                <Check className="w-4 h-4" />
+                Copied to {targetIds.size} asset{targetIds.size !== 1 ? "s" : ""}
+              </div>
+            ) : (
+              <Button
+                className="w-full"
+                disabled={!sourceId || targetIds.size === 0 || isCopying}
+                onClick={handleCopy}
+              >
+                {isCopying
+                  ? "Copying…"
+                  : targetIds.size > 0
+                    ? `Copy settings from "${sourceName}" to ${targetIds.size} asset${targetIds.size !== 1 ? "s" : ""}`
+                    : "Select assets to apply to"}
+              </Button>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </Layout>
   );
 }

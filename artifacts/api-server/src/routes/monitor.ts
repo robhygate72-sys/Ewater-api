@@ -5,7 +5,7 @@ import {
   pushSubscriptionsTable,
   alertRulesTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { sendPush, isPushEnabled } from "../lib/push-client";
 import { checkAlerts, getCheckLog } from "../lib/alert-checker";
@@ -38,6 +38,33 @@ router.delete("/ewater/favourites/:assetId", async (req, res): Promise<void> => 
   const { assetId } = req.params;
   await db.delete(assetFavouritesTable).where(eq(assetFavouritesTable.assetId, assetId));
   res.json({ ok: true });
+});
+
+const BulkAddFavouritesBody = z.object({
+  assets: z.array(z.object({ assetId: z.string(), assetName: z.string() })).min(1).max(500),
+});
+
+router.post("/ewater/favourites/bulk", async (req, res): Promise<void> => {
+  const parsed = BulkAddFavouritesBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  for (const asset of parsed.data.assets) {
+    await db.insert(assetFavouritesTable).values(asset).onConflictDoUpdate({
+      target: assetFavouritesTable.assetId,
+      set: { assetName: asset.assetName },
+    });
+  }
+  res.json({ ok: true, count: parsed.data.assets.length });
+});
+
+const BulkRemoveFavouritesBody = z.object({
+  assetIds: z.array(z.string()).min(1).max(500),
+});
+
+router.delete("/ewater/favourites/bulk", async (req, res): Promise<void> => {
+  const parsed = BulkRemoveFavouritesBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  await db.delete(assetFavouritesTable).where(inArray(assetFavouritesTable.assetId, parsed.data.assetIds));
+  res.json({ ok: true, count: parsed.data.assetIds.length });
 });
 
 // ---------------------------------------------------------------------------
@@ -90,6 +117,28 @@ const AlertRulesBody = z.object({
   targetPrice: z.number().positive().optional(),
   priceDeviancePercent: z.number().min(0).optional(),
   cooldownMinutes: z.number().optional(),
+});
+
+const CopyAlertRulesBody = z.object({
+  fromAssetId: z.string(),
+  toAssetIds: z.array(z.string()).min(1).max(500),
+});
+
+router.post("/ewater/alert-rules/copy", async (req, res): Promise<void> => {
+  const parsed = CopyAlertRulesBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const { fromAssetId, toAssetIds } = parsed.data;
+  const sourceRows = await db.select().from(alertRulesTable).where(eq(alertRulesTable.assetId, fromAssetId)).limit(1);
+  const rulesToCopy = sourceRows.length > 0 ? rowToJson(sourceRows[0]!) : DEFAULT_RULES;
+  for (const toAssetId of toAssetIds) {
+    const existing = await db.select({ id: alertRulesTable.id }).from(alertRulesTable).where(eq(alertRulesTable.assetId, toAssetId)).limit(1);
+    if (existing.length === 0) {
+      await db.insert(alertRulesTable).values({ assetId: toAssetId, ...rulesToCopy });
+    } else {
+      await db.update(alertRulesTable).set(rulesToCopy).where(eq(alertRulesTable.assetId, toAssetId));
+    }
+  }
+  res.json({ ok: true, count: toAssetIds.length });
 });
 
 router.put("/ewater/alert-rules/:assetId", async (req, res): Promise<void> => {
