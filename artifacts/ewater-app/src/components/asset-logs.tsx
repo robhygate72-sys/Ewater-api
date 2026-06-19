@@ -33,6 +33,17 @@ async function fetchLogPage(
   return res.json();
 }
 
+function base64ToHex(b64: string): string {
+  try {
+    const binary = atob(b64);
+    return Array.from(binary)
+      .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
+      .join(" ");
+  } catch {
+    return b64;
+  }
+}
+
 function protocolClass(protocol: string | null): string {
   if (!protocol) return "text-muted-foreground bg-muted/40 border-border";
   const p = protocol.toLowerCase();
@@ -44,7 +55,8 @@ function protocolClass(protocol: string | null): string {
 
 function LogRow({ entry }: { entry: LogEntry }) {
   const [expanded, setExpanded] = useState(false);
-  const message = entry.message ?? "—";
+  const raw = entry.message ?? "";
+  const message = raw ? base64ToHex(raw) : "—";
   const long = message.length > 80;
 
   return (
