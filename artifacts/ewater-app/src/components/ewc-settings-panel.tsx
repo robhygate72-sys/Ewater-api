@@ -57,8 +57,8 @@ export function EwcSettingsPanel({ assetId }: EwcSettingsPanelProps) {
           <Settings className="w-3.5 h-3.5 text-muted-foreground" />
           EWC Settings
           {data?.settingsDate && (
-            <span className="ml-auto text-[10px] font-normal text-muted-foreground">
-              as of {data.settingsDate.slice(0, 10)}
+            <span className="ml-auto text-[10px] font-normal text-muted-foreground font-mono">
+              as of {data.settingsDate.slice(0, 19).replace("T", " ")}
             </span>
           )}
         </CardTitle>
