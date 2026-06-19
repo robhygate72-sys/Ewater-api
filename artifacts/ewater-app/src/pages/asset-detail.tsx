@@ -603,7 +603,7 @@ export default function AssetDetail() {
             <Activity className="w-3.5 h-3.5 text-muted-foreground" />
             <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Protocol Logs</h3>
           </div>
-          <AssetLogs assetId={id} />
+          <AssetLogs assetId={id} isEsense={tech.purpose?.toLowerCase() === "esense"} />
         </section>
       </div>
     </Layout>

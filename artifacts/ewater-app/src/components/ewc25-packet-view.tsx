@@ -55,6 +55,45 @@ function Divider() {
   return <div className="border-t border-border/40 my-1" />;
 }
 
+// ─── eSENSE VSEN helpers ──────────────────────────────────────────────────────
+
+function vsenDepth(adc: number): string {
+  if (adc < 51) return `ADC ${adc} — no sensor / power off`;
+  const depth = ((adc - 51) * 5) / 203;
+  return `${depth.toFixed(2)} m (ADC ${adc})`;
+}
+
+function vwatDesc(adc: number): string {
+  if (adc === 0) return "0 (OK / pressure present)";
+  return `ADC ${adc} — no pressure / sensor active`;
+}
+
+function ESenseFields({ d }: { d: Ewc25Decoded }) {
+  // uid bytes 0-5 (3×2 hex chars) = VSEN1, VSEN2, VSEN3; bytes 6-7 = RS
+  const vsen1 = parseInt(d.uid.slice(0, 2), 16);
+  const vsen2 = parseInt(d.uid.slice(2, 4), 16);
+  const vsen3 = parseInt(d.uid.slice(4, 6), 16);
+
+  return (
+    <>
+      <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
+      <Divider />
+      <Field label="VSEN1 (tank depth)" value={vsenDepth(vsen1)} />
+      <Field label="VSEN2" value={vsenDepth(vsen2)} />
+      <Field label="VSEN3" value={vsenDepth(vsen3)} />
+      <Field label="VWAT" value={vwatDesc(d.rs)} dim={d.rs === 0} />
+      {(d.flowTicks > 0 || d.flowTimeSecs > 0) && (
+        <>
+          <Divider />
+          <Field label="Hall-effect ticks" value={d.flowTicks.toLocaleString()} mono />
+          <Field label="Flow time" value={`${d.flowTimeSecs} s`} />
+        </>
+      )}
+      <Field label="Usage counter" value={d.usageCounter} mono />
+    </>
+  );
+}
+
 // ─── EWC2.5 datalog section renderers ─────────────────────────────────────────
 
 function StandardFields({ d }: { d: Ewc25Decoded }) {
@@ -174,7 +213,7 @@ function HealthStateFields({ d }: { d: Ewc25Decoded }) {
 
 // ─── EWC2.5 datalog packet (0x44) ─────────────────────────────────────────────
 
-export function Ewc25PacketView({ hexPayload }: { hexPayload: string }) {
+export function Ewc25PacketView({ hexPayload, isEsense = false }: { hexPayload: string; isEsense?: boolean }) {
   const [showRaw, setShowRaw] = useState(false);
   const result = decodeEwc25(hexPayload);
 
@@ -189,24 +228,33 @@ export function Ewc25PacketView({ hexPayload }: { hexPayload: string }) {
   const d = result;
   const catStyle = categoryStyle(d.category);
 
+  // For eSENSE: events that use the UID field as VSEN data (everything except 0x18 tamper, 0x16 startup, 0x19 health-state)
+  const esenseDataEvent = isEsense && ![0x18, 0x16, 0x19].includes(d.event);
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", catStyle)}>
           {d.eventName}
         </span>
+        {isEsense && (
+          <span className="text-[10px] px-1 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+            eSENSE
+          </span>
+        )}
         <span className="text-[10px] font-mono text-muted-foreground">{d.deviceTimeStr}</span>
         <span className="ml-auto text-[10px] font-mono text-muted-foreground/50">EWC {d.ewcIdHex}</span>
         {!d.xorValid && <span className="text-[10px] text-red-500 font-semibold">XOR ERR</span>}
       </div>
 
       <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
-        {d.event === 0x01 && <NoCreditFields d={d} />}
-        {d.event === 0x18 && <TamperFields d={d} />}
-        {d.event === 0x13 && <PressureFields d={d} />}
+        {esenseDataEvent && <ESenseFields d={d} />}
+        {!esenseDataEvent && d.event === 0x01 && <NoCreditFields d={d} />}
+        {!esenseDataEvent && d.event === 0x18 && <TamperFields d={d} />}
+        {!esenseDataEvent && d.event === 0x13 && <PressureFields d={d} />}
         {d.event === 0x16 && <StartUpFields d={d} />}
         {d.event === 0x19 && <HealthStateFields d={d} />}
-        {![0x01, 0x18, 0x13, 0x16, 0x19].includes(d.event) && <StandardFields d={d} />}
+        {!esenseDataEvent && ![0x01, 0x18, 0x13, 0x16, 0x19].includes(d.event) && <StandardFields d={d} />}
         <Divider />
         <Field label="FCF (ticks/credit)" value={d.fcf} mono dim />
         <Field label="Log pointer" value={d.datalogPointer} mono dim />

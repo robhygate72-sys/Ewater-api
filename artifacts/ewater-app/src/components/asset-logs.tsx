@@ -93,7 +93,7 @@ function firstByte(b64: string): number | null {
 
 // ─── log row ──────────────────────────────────────────────────────────────────
 
-function LogRow({ entry }: { entry: LogEntry }) {
+function LogRow({ entry, isEsense }: { entry: LogEntry; isEsense: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const raw = entry.message ?? "";
   const hexStr = raw ? base64ToHex(raw) : "—";
@@ -130,7 +130,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
       </div>
 
       {isDatalog && raw ? (
-        <Ewc25PacketView hexPayload={hexStr} />
+        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} />
       ) : isReply && raw ? (
         <EwcReplyView hexPayload={hexStr} />
       ) : isCommandApi && raw ? (
@@ -159,7 +159,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-export function AssetLogs({ assetId }: { assetId: string }) {
+export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEsense?: boolean }) {
   const [category, setCategory] = useState<LogCategory | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -276,7 +276,7 @@ export function AssetLogs({ assetId }: { assetId: string }) {
               )}
             </div>
           ) : (
-            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} />)
+            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} />)
           )}
         </div>
       </Card>
