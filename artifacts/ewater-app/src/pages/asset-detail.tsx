@@ -14,7 +14,7 @@ import { formatDateTime, formatTimeAgo } from "@/lib/date";
 import {
   MapPin, Battery, Signal, Wifi, WifiOff, ShieldAlert, ShieldCheck,
   TrendingDown, TrendingUp, Minus, Droplet, Zap, Cpu, Radio,
-  Terminal, AlertTriangle, CheckCircle2, Clock, Activity, Info,
+  AlertTriangle, CheckCircle2, Clock, Activity, Info,
   Bell, Lock, RefreshCw, Star, CircleDollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -588,33 +588,6 @@ export default function AssetDetail() {
                     <span className="text-[10px] text-muted-foreground font-mono">{formatDateTime(fw.lastKnownDate)}</span>
                   )}
                 </div>
-              </div>
-            ))}
-          </SectionCard>
-        )}
-
-        {/* Recent Commands */}
-        {tech.recentCommands && tech.recentCommands.length > 0 && (
-          <SectionCard title="Recent Commands" icon={<Terminal className="w-3.5 h-3.5" />}>
-            {tech.recentCommands.map((cmd) => (
-              <div key={cmd.id} className="py-2 border-b border-border/40 last:border-0">
-                <div className="flex justify-between items-start gap-2">
-                  <span className="text-xs font-medium">{cmd.command ?? "Unknown"}</span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] h-4 px-1.5 font-mono shrink-0",
-                      cmd.phase?.toLowerCase() === "idle" && "text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-                      cmd.phase?.toLowerCase() === "pending" && "text-amber-600 dark:text-amber-400 border-amber-500/30",
-                      cmd.phase?.toLowerCase() === "failed" && "text-red-600 dark:text-red-400 border-red-500/30",
-                    )}
-                  >
-                    {cmd.phase ?? "—"}
-                  </Badge>
-                </div>
-                {cmd.createdDt && (
-                  <span className="text-[10px] text-muted-foreground font-mono">{formatDateTime(cmd.createdDt)}</span>
-                )}
               </div>
             ))}
           </SectionCard>

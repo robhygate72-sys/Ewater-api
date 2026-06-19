@@ -22,17 +22,59 @@ interface LogPage {
   hasMore: boolean;
 }
 
-async function fetchLogPage(
-  assetId: string,
-  before: string,
-  protocol: string | null,
-): Promise<LogPage> {
+// ─── category system ───────────────────────────────────────────────────────────
+
+type LogCategory = "commands" | "health-state" | "ewc-other" | "gadwall" | "other";
+
+const CATEGORIES: { id: LogCategory; label: string }[] = [
+  { id: "commands",      label: "Commands" },
+  { id: "health-state",  label: "Health State" },
+  { id: "ewc-other",     label: "EWC Other" },
+  { id: "gadwall",       label: "Gadwall" },
+  { id: "other",         label: "Other" },
+];
+
+function msgByte(b64: string, idx: number): number | null {
+  try {
+    const s = atob(b64);
+    return s.length > idx ? s.charCodeAt(idx) : null;
+  } catch {
+    return null;
+  }
+}
+
+function categorizeEntry(entry: LogEntry): LogCategory {
+  const protocol = entry.protocol ?? "";
+  const msg = entry.message ?? "";
+  const isEwc = protocol.toLowerCase().startsWith("ewc");
+
+  if (protocol === "CommandApi_1") return "commands";
+
+  if (isEwc) {
+    const b0 = msg ? msgByte(msg, 0) : null;
+    if (b0 === 0x80 || b0 === 0x88) return "commands";
+    if (b0 === 0x44) {
+      const eventByte = msgByte(msg, 5);
+      return eventByte === 0x19 ? "health-state" : "ewc-other";
+    }
+    return "other";
+  }
+
+  if (protocol === "4CCv1") return "gadwall";
+
+  return "other";
+}
+
+// ─── fetch (no server-side protocol filter — all filtering is client-side) ────
+
+async function fetchLogPage(assetId: string, before: string): Promise<LogPage> {
   const params = new URLSearchParams({ before, limit: "50" });
-  if (protocol) params.set("protocol", protocol);
   const res = await fetch(`/api/ewater/assets/${encodeURIComponent(assetId)}/logs?${params}`);
   if (!res.ok) throw new Error("Failed to fetch logs");
   return res.json();
 }
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function base64ToHex(b64: string): string {
   try {
@@ -45,23 +87,11 @@ function base64ToHex(b64: string): string {
   }
 }
 
-function protocolClass(protocol: string | null): string {
-  if (!protocol) return "text-muted-foreground bg-muted/40 border-border";
-  const p = protocol.toLowerCase();
-  if (p.startsWith("ewc")) return "text-primary bg-primary/10 border-primary/20";
-  if (p.startsWith("4cc")) return "text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/20";
-  if (p.startsWith("command")) return "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20";
-  return "text-muted-foreground bg-muted/40 border-border";
+function firstByte(b64: string): number | null {
+  return msgByte(b64, 0);
 }
 
-function firstByte(b64: string): number | null {
-  try {
-    const s = atob(b64);
-    return s.charCodeAt(0);
-  } catch {
-    return null;
-  }
-}
+// ─── log row ──────────────────────────────────────────────────────────────────
 
 function LogRow({ entry }: { entry: LogEntry }) {
   const [expanded, setExpanded] = useState(false);
@@ -72,20 +102,14 @@ function LogRow({ entry }: { entry: LogEntry }) {
   const isEwcProtocol = protocol.toLowerCase().startsWith("ewc");
   const isCommandApi = protocol === "CommandApi_1";
 
-  // Distinguish Ewc2_5 datalog (0x44) from reply (0x80/0x88)
   const fb = raw ? firstByte(raw) : null;
   const isDatalog = isEwcProtocol && fb === 0x44;
   const isReply   = isEwcProtocol && (fb === 0x80 || fb === 0x88);
-
   const isDecoded = isDatalog || isReply || isCommandApi;
   const long = !isDecoded && hexStr.length > 80;
 
-  // Show protocol badge only for non-decoded non-Ewc entries
-  const showBadge = protocol && !isEwcProtocol && !isCommandApi;
-
   return (
     <div className="px-3 py-2.5 hover:bg-muted/30 transition-colors">
-      {/* Time + source + protocol badge */}
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         <span className="font-mono text-[10px] text-muted-foreground shrink-0">
           {formatDateTime(entry.timestamp)}
@@ -98,17 +122,13 @@ function LogRow({ entry }: { entry: LogEntry }) {
             </span>
           </>
         )}
-        {showBadge && (
-          <span className={cn(
-            "ml-auto text-[10px] font-mono px-1.5 py-0 rounded border shrink-0",
-            protocolClass(protocol),
-          )}>
+        {protocol && !isEwcProtocol && !isCommandApi && (
+          <span className="ml-auto text-[10px] font-mono px-1.5 py-0 rounded border shrink-0 text-muted-foreground bg-muted/40 border-border">
             {protocol}
           </span>
         )}
       </div>
 
-      {/* Routed packet view */}
       {isDatalog && raw ? (
         <Ewc25PacketView hexPayload={hexStr} />
       ) : isReply && raw ? (
@@ -137,8 +157,10 @@ function LogRow({ entry }: { entry: LogEntry }) {
   );
 }
 
+// ─── main component ───────────────────────────────────────────────────────────
+
 export function AssetLogs({ assetId }: { assetId: string }) {
-  const [protocol, setProtocol] = useState<string | null>(null);
+  const [category, setCategory] = useState<LogCategory | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -149,15 +171,14 @@ export function AssetLogs({ assetId }: { assetId: string }) {
     isLoading,
     isError,
   } = useInfiniteQuery<LogPage, Error>({
-    queryKey: ["asset-logs", assetId, protocol],
+    queryKey: ["asset-logs", assetId],
     queryFn: ({ pageParam }) =>
-      fetchLogPage(assetId, (pageParam as string | undefined) ?? new Date().toISOString(), protocol),
+      fetchLogPage(assetId, (pageParam as string | undefined) ?? new Date().toISOString()),
     getNextPageParam: (last) => (last.hasMore && last.nextBefore ? last.nextBefore : undefined),
     initialPageParam: new Date().toISOString(),
     staleTime: 60_000,
   });
 
-  // Infinite scroll: fire when sentinel enters viewport
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -175,43 +196,55 @@ export function AssetLogs({ assetId }: { assetId: string }) {
 
   const allEntries = data?.pages.flatMap((p) => p.entries) ?? [];
 
-  // Collect unique protocols across all fetched pages for filter chips
-  const seenProtocols = [...new Set(
-    data?.pages.flatMap((p) => p.entries.map((e) => e.protocol).filter(Boolean)) ?? []
-  )] as string[];
+  // Count entries per category (from what's loaded so far)
+  const counts = allEntries.reduce<Record<LogCategory, number>>(
+    (acc, e) => { const cat = categorizeEntry(e); acc[cat]++; return acc; },
+    { commands: 0, "health-state": 0, "ewc-other": 0, gadwall: 0, other: 0 },
+  );
+
+  const visibleEntries = category
+    ? allEntries.filter((e) => categorizeEntry(e) === category)
+    : allEntries;
 
   return (
     <div className="space-y-2">
-      {/* Protocol filter chips — shown once we have data */}
-      {seenProtocols.length > 1 && (
-        <div className="flex gap-1.5 flex-wrap">
+      {/* Semantic category filter chips — always visible */}
+      <div className="flex gap-1.5 flex-wrap">
+        <button
+          onClick={() => setCategory(null)}
+          className={cn(
+            "text-xs px-2.5 py-1 rounded-full border transition-colors",
+            category === null
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-background text-muted-foreground border-border hover:border-foreground/30",
+          )}
+        >
+          All
+        </button>
+        {CATEGORIES.map(({ id, label }) => (
           <button
-            onClick={() => setProtocol(null)}
+            key={id}
+            onClick={() => setCategory(category === id ? null : id)}
             className={cn(
               "text-xs px-2.5 py-1 rounded-full border transition-colors",
-              protocol === null
+              category === id
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-background text-muted-foreground border-border hover:border-foreground/30",
+              !isLoading && counts[id] === 0 && "opacity-40",
             )}
           >
-            All
+            {label}
+            {!isLoading && counts[id] > 0 && (
+              <span className={cn(
+                "ml-1 text-[10px] opacity-60",
+                category === id && "opacity-80",
+              )}>
+                {counts[id]}
+              </span>
+            )}
           </button>
-          {seenProtocols.map((p) => (
-            <button
-              key={p}
-              onClick={() => setProtocol(protocol === p ? null : p)}
-              className={cn(
-                "text-xs px-2.5 py-1 rounded-full border transition-colors font-mono",
-                protocol === p
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-muted-foreground border-border hover:border-foreground/30",
-              )}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
 
       {/* Log list */}
       <Card className="shadow-sm border overflow-hidden">
@@ -228,18 +261,22 @@ export function AssetLogs({ assetId }: { assetId: string }) {
               <Info className="w-6 h-6 opacity-40" />
               <span className="text-sm">Failed to load logs</span>
             </div>
-          ) : allEntries.length === 0 ? (
+          ) : visibleEntries.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
               <Info className="w-6 h-6 opacity-40" />
-              <span className="text-sm">No log entries in the last 7 days</span>
-              {protocol && (
-                <button onClick={() => setProtocol(null)} className="text-xs text-primary underline">
+              <span className="text-sm">
+                {category
+                  ? `No "${CATEGORIES.find(c => c.id === category)?.label}" entries in the loaded window`
+                  : "No log entries in the last 7 days"}
+              </span>
+              {category && (
+                <button onClick={() => setCategory(null)} className="text-xs text-primary underline">
                   Clear filter
                 </button>
               )}
             </div>
           ) : (
-            allEntries.map((entry) => <LogRow key={entry.id} entry={entry} />)
+            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} />)
           )}
         </div>
       </Card>
