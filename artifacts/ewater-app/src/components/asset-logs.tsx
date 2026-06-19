@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { Info, Loader2 } from "lucide-react";
+import { Ewc25PacketView } from "@/components/ewc25-packet-view";
 
 interface LogEntry {
   id: string;
@@ -56,16 +57,14 @@ function protocolClass(protocol: string | null): string {
 function LogRow({ entry }: { entry: LogEntry }) {
   const [expanded, setExpanded] = useState(false);
   const raw = entry.message ?? "";
-  const message = raw ? base64ToHex(raw) : "—";
-  const long = message.length > 80;
+  const hexStr = raw ? base64ToHex(raw) : "—";
+  const isEwc25 = entry.protocol?.toLowerCase().startsWith("ewc");
+  const long = !isEwc25 && hexStr.length > 80;
 
   return (
-    <div
-      className={cn("px-3 py-2.5 hover:bg-muted/30 transition-colors", long && "cursor-pointer")}
-      onClick={() => long && setExpanded((v) => !v)}
-    >
+    <div className="px-3 py-2.5 hover:bg-muted/30 transition-colors">
       {/* Time + source + protocol */}
-      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         <span className="font-mono text-[10px] text-muted-foreground shrink-0">
           {formatDateTime(entry.timestamp)}
         </span>
@@ -77,7 +76,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
             </span>
           </>
         )}
-        {entry.protocol && (
+        {entry.protocol && !isEwc25 && (
           <span className={cn(
             "ml-auto text-[10px] font-mono px-1.5 py-0 rounded border shrink-0",
             protocolClass(entry.protocol),
@@ -86,17 +85,27 @@ function LogRow({ entry }: { entry: LogEntry }) {
           </span>
         )}
       </div>
-      {/* Hex message */}
-      <p className={cn(
-        "text-[11px] font-mono break-all leading-relaxed text-foreground/80",
-        !expanded && long && "line-clamp-2",
-      )}>
-        {message}
-      </p>
-      {long && (
-        <span className="text-[10px] text-primary mt-0.5 block">
-          {expanded ? "Show less" : "Show more"}
-        </span>
+
+      {/* Decoded EWC2.5 view */}
+      {isEwc25 && raw ? (
+        <Ewc25PacketView hexPayload={hexStr} />
+      ) : (
+        <div
+          className={cn(long && "cursor-pointer")}
+          onClick={() => long && setExpanded((v) => !v)}
+        >
+          <p className={cn(
+            "text-[11px] font-mono break-all leading-relaxed text-foreground/80",
+            !expanded && long && "line-clamp-2",
+          )}>
+            {hexStr}
+          </p>
+          {long && (
+            <span className="text-[10px] text-primary mt-0.5 block">
+              {expanded ? "Show less" : "Show more"}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
