@@ -975,7 +975,7 @@ router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
         assetId: Number(assetId),
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
-        pipeline: protocolFilter ?? null,
+        pipeline: null, // eWater "pipeline" = transport (UDP/CmdApi), not protocol name — filter client-side
       }),
     });
 
