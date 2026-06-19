@@ -57,10 +57,13 @@ function Divider() {
 
 // ─── eSENSE VSEN helpers ──────────────────────────────────────────────────────
 
-function vsenDepth(adc: number): string {
-  if (adc < 51) return `ADC ${adc} — no sensor / power off`;
-  const depth = ((adc - 51) * 5) / 203;
-  return `${depth.toFixed(2)} m (ADC ${adc})`;
+// VSEN0 = 51 (4mA zero depth), VSEN5 = 254 (20mA full depth)
+// Range-independent: show % of sensor full-scale (works for 2m, 3m, 5m etc)
+function vsenDisplay(adc: number): string {
+  if (adc === 0)  return `ADC ${adc} — sensor off / not connected`;
+  if (adc < 51)   return `ADC ${adc} — below 4mA (${((adc / 255) * 5 * 1000 / 249).toFixed(2)} mA)`;
+  const pct = ((adc - 51) / 203) * 100;
+  return `ADC ${adc} — ${pct.toFixed(1)}% of sensor range`;
 }
 
 function vwatDesc(adc: number): string {
@@ -78,9 +81,9 @@ function ESenseFields({ d }: { d: Ewc25Decoded }) {
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Divider />
-      <Field label="VSEN1 (tank depth)" value={vsenDepth(vsen1)} />
-      <Field label="VSEN2" value={vsenDepth(vsen2)} />
-      <Field label="VSEN3" value={vsenDepth(vsen3)} />
+      <Field label="VSEN1 (tank depth)" value={vsenDisplay(vsen1)} />
+      <Field label="VSEN2" value={vsenDisplay(vsen2)} />
+      <Field label="VSEN3" value={vsenDisplay(vsen3)} />
       <Field label="VWAT" value={vwatDesc(d.rs)} dim={d.rs === 0} />
       {(d.flowTicks > 0 || d.flowTimeSecs > 0) && (
         <>
