@@ -11,6 +11,7 @@ interface LogEntry {
   timestamp: string;
   source: string | null;
   protocol: string | null;
+  pipeline: string | null;
   message: string | null;
 }
 

@@ -991,9 +991,10 @@ router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
       return tb - ta;
     });
 
+    // "protocol" field = Ewc2_5 / 4CCv1 / CmdApi etc. (NOT "pipeline" which is UDP/MQTT transport)
     const filtered = protocolFilter
       ? sorted.filter((l) => {
-          const p = strOrNull(l["pipeline"]) ?? "";
+          const p = strOrNull(l["protocol"]) ?? "";
           return p.toLowerCase() === protocolFilter.toLowerCase();
         })
       : sorted;
@@ -1004,13 +1005,27 @@ router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
       ? strOrNull(page[page.length - 1]!["timeReceived"])
       : null;
 
-    const entries = page.map((l) => ({
-      id: String(l["id"] ?? crypto.randomUUID()),
-      timestamp: String(l["timeReceived"] ?? new Date().toISOString()),
-      source: strOrNull(l["source"]) ?? strOrNull(l["sourceDevice"]) ?? strOrNull(l["imei"]) ?? strOrNull(l["deviceImei"]),
-      protocol: strOrNull(l["pipeline"]),
-      message: strOrNull(l["payload"]),
-    }));
+    const entries = page.map((l) => {
+      // source is a JSON string like {"IMEI":"869595067005701","Ledger":"20470"} — extract IMEI
+      const rawSource = strOrNull(l["source"]);
+      let imei: string | null = null;
+      if (rawSource) {
+        try {
+          const parsed = JSON.parse(rawSource) as Record<string, unknown>;
+          imei = strOrNull(parsed["IMEI"]) ?? strOrNull(parsed["imei"]) ?? strOrNull(parsed["DeviceId"]);
+        } catch {
+          imei = rawSource;
+        }
+      }
+      return {
+        id: String(l["id"] ?? crypto.randomUUID()),
+        timestamp: String(l["timeReceived"] ?? new Date().toISOString()),
+        source: imei,
+        protocol: strOrNull(l["protocol"]),
+        pipeline: strOrNull(l["pipeline"]),
+        message: strOrNull(l["payload"]),
+      };
+    });
 
     res.json({ entries, nextBefore, hasMore });
   } catch (err) {
