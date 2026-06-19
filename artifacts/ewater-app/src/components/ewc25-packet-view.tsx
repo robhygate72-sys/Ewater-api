@@ -2,9 +2,14 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   decodeEwc25,
+  decodeEwcReply,
+  decodeCommandApiPayload,
   EWC25_EVENT_NAMES,
   eventCategory,
   type Ewc25Decoded,
+  type EwcReplyDecoded,
+  type EwcReplyData,
+  type CommandApiDecoded,
   type EventCategory,
 } from "@/lib/ewc25";
 
@@ -50,17 +55,17 @@ function Divider() {
   return <div className="border-t border-border/40 my-1" />;
 }
 
-// ─── section renderers ────────────────────────────────────────────────────────
+// ─── EWC2.5 datalog section renderers ─────────────────────────────────────────
 
 function StandardFields({ d }: { d: Ewc25Decoded }) {
   const creditUsed = d.creditUsedMits;
-  const dispensed = d.endCreditMits === 0xFFFFFFFF; // credit not written back
+  const dispensed = d.endCreditMits === 0xFFFFFFFF;
 
   return (
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Field label="Tag UID" value={d.uid} mono />
-      {d.event !== 0x02 && d.event !== 0x07 && ( // skip credit/flow for format events
+      {d.event !== 0x02 && d.event !== 0x07 && (
         <>
           <Divider />
           <Field
@@ -76,10 +81,7 @@ function StandardFields({ d }: { d: Ewc25Decoded }) {
             />
           )}
           {creditUsed > 0 && !dispensed && (
-            <Field
-              label="Credit used"
-              value={`${mitsToCredits(creditUsed)} credits`}
-            />
+            <Field label="Credit used" value={`${mitsToCredits(creditUsed)} credits`} />
           )}
           <Divider />
           <Field label="Flow ticks" value={d.flowTicks.toLocaleString()} mono />
@@ -100,24 +102,14 @@ function NoCreditFields({ d }: { d: Ewc25Decoded }) {
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Field label="Tag UID" value={d.uid} mono />
       <Divider />
-      <Field
-        label="Start credit"
-        value={`${mitsToCredits(d.startCreditMits)} credits`}
-      />
-      <Field
-        label="End credit"
-        value={`${mitsToCredits(d.endCreditMits)} credits`}
-      />
+      <Field label="Start credit" value={`${mitsToCredits(d.startCreditMits)} credits`} />
+      <Field label="End credit" value={`${mitsToCredits(d.endCreditMits)} credits`} />
       <Divider />
       <Field label="Flow ticks" value={d.flowTicks.toLocaleString()} mono />
       <Field label="Litres dispensed" value={`~${d.litres.toFixed(2)} L`} />
       <Field label="Flow time" value={`${d.flowTimeSecs} s`} />
       {d.unmeteredFlowTicks !== undefined && (
-        <Field
-          label="Unmetered ticks (valve close)"
-          value={d.unmeteredFlowTicks.toLocaleString()}
-          mono
-        />
+        <Field label="Unmetered ticks (valve close)" value={d.unmeteredFlowTicks.toLocaleString()} mono />
       )}
     </>
   );
@@ -128,16 +120,8 @@ function TamperFields({ d }: { d: Ewc25Decoded }) {
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Divider />
-      <Field
-        label="Tamper 1 (solar board)"
-        value={d.tamper?.tamp1Open ? "OPEN ⚠" : "Closed"}
-        dim={!d.tamper?.tamp1Open}
-      />
-      <Field
-        label="Tamper 2 (bottom case)"
-        value={d.tamper?.tamp2Open ? "OPEN ⚠" : "Closed"}
-        dim={!d.tamper?.tamp2Open}
-      />
+      <Field label="Tamper 1 (solar board)" value={d.tamper?.tamp1Open ? "OPEN ⚠" : "Closed"} dim={!d.tamper?.tamp1Open} />
+      <Field label="Tamper 2 (bottom case)" value={d.tamper?.tamp2Open ? "OPEN ⚠" : "Closed"} dim={!d.tamper?.tamp2Open} />
     </>
   );
 }
@@ -147,11 +131,7 @@ function PressureFields({ d }: { d: Ewc25Decoded }) {
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Divider />
-      <Field
-        label="Pressure status"
-        value={d.pressureOk ? "OK (pressure detected)" : "NO PRESSURE"}
-        dim={d.pressureOk}
-      />
+      <Field label="Pressure status" value={d.pressureOk ? "OK (pressure detected)" : "NO PRESSURE"} dim={d.pressureOk} />
       <Field label="Vwater ADC raw" value={`0x${d.rs.toString(16).padStart(2, "0").toUpperCase()}`} mono />
     </>
   );
@@ -192,7 +172,7 @@ function HealthStateFields({ d }: { d: Ewc25Decoded }) {
   );
 }
 
-// ─── main component ───────────────────────────────────────────────────────────
+// ─── EWC2.5 datalog packet (0x44) ─────────────────────────────────────────────
 
 export function Ewc25PacketView({ hexPayload }: { hexPayload: string }) {
   const [showRaw, setShowRaw] = useState(false);
@@ -211,41 +191,27 @@ export function Ewc25PacketView({ hexPayload }: { hexPayload: string }) {
 
   return (
     <div className="space-y-1.5">
-      {/* Event badge + device timestamp */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className={cn(
-          "text-[10px] font-semibold px-1.5 py-0.5 rounded border",
-          catStyle,
-        )}>
+        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", catStyle)}>
           {d.eventName}
         </span>
-        <span className="text-[10px] font-mono text-muted-foreground">
-          {d.deviceTimeStr}
-        </span>
-        <span className="ml-auto text-[10px] font-mono text-muted-foreground/50">
-          EWC {d.ewcIdHex}
-        </span>
-        {!d.xorValid && (
-          <span className="text-[10px] text-red-500 font-semibold">XOR ERR</span>
-        )}
+        <span className="text-[10px] font-mono text-muted-foreground">{d.deviceTimeStr}</span>
+        <span className="ml-auto text-[10px] font-mono text-muted-foreground/50">EWC {d.ewcIdHex}</span>
+        {!d.xorValid && <span className="text-[10px] text-red-500 font-semibold">XOR ERR</span>}
       </div>
 
-      {/* Decoded fields */}
       <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
         {d.event === 0x01 && <NoCreditFields d={d} />}
         {d.event === 0x18 && <TamperFields d={d} />}
         {d.event === 0x13 && <PressureFields d={d} />}
         {d.event === 0x16 && <StartUpFields d={d} />}
         {d.event === 0x19 && <HealthStateFields d={d} />}
-        {![0x01, 0x18, 0x13, 0x16, 0x19].includes(d.event) && (
-          <StandardFields d={d} />
-        )}
+        {![0x01, 0x18, 0x13, 0x16, 0x19].includes(d.event) && <StandardFields d={d} />}
         <Divider />
         <Field label="FCF (ticks/credit)" value={d.fcf} mono dim />
         <Field label="Log pointer" value={d.datalogPointer} mono dim />
       </div>
 
-      {/* Raw hex toggle */}
       <button
         className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
         onClick={() => setShowRaw((v) => !v)}
@@ -261,5 +227,208 @@ export function Ewc25PacketView({ hexPayload }: { hexPayload: string }) {
   );
 }
 
-// Export event names for potential future use
+// ─── EWC reply data fields ─────────────────────────────────────────────────────
+
+function ReplyDataFields({ data }: { data: EwcReplyData }) {
+  switch (data.kind) {
+    case "get-status":
+      return (
+        <>
+          <Field label="Device time" value={data.deviceTimeStr} mono />
+          <Field label="Tag UID" value={data.uid === "00000000" ? "No tag" : data.uid} mono dim={data.uid === "00000000"} />
+          <Field label="Battery" value={`${data.batteryVolts.toFixed(2)} V`} />
+          <Field label="Pressure" value={data.pressureOk ? "OK" : "NO PRESSURE"} dim={data.pressureOk} />
+          <Divider />
+          <Field label="Valve" value={data.valveOn ? "ON" : "Off"} dim={!data.valveOn} />
+          <Field label="RFID" value={data.rfidDisabled ? "Disabled (host mode)" : "Enabled"} dim={!data.rfidDisabled} />
+          <Field label="Low battery" value={data.lowBattery ? "Yes ⚠" : "No"} dim={!data.lowBattery} />
+          <Field label="Tamper 1" value={data.tamp1 ? "Open ⚠" : "Closed"} dim={!data.tamp1} />
+          <Field label="Tamper 2" value={data.tamp2 ? "Open ⚠" : "Closed"} dim={!data.tamp2} />
+          {data.samplePeriodMs > 0 && (
+            <>
+              <Divider />
+              <Field label="Flow sample count" value={data.flowCount} mono />
+              <Field label="Sample period" value={`${data.samplePeriodMs} ms`} dim />
+            </>
+          )}
+        </>
+      );
+
+    case "read-log": {
+      const dl = data.datalog;
+      if (!dl.valid) {
+        return (
+          <>
+            <Field label="Log #" value={data.logNumber} mono />
+            <Field label="Datalog" value={`Decode error: ${dl.reason}`} dim />
+          </>
+        );
+      }
+      const catStyle = categoryStyle(dl.category);
+      return (
+        <>
+          <Field label="Log #" value={data.logNumber} mono />
+          <div className="flex items-center gap-1.5 flex-wrap py-0.5">
+            <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", catStyle)}>
+              {dl.eventName}
+            </span>
+            <span className="text-[10px] font-mono text-muted-foreground">{dl.deviceTimeStr}</span>
+          </div>
+          <Divider />
+          {dl.event === 0x01 && <NoCreditFields d={dl} />}
+          {dl.event === 0x18 && <TamperFields d={dl} />}
+          {dl.event === 0x13 && <PressureFields d={dl} />}
+          {dl.event === 0x16 && <StartUpFields d={dl} />}
+          {dl.event === 0x19 && <HealthStateFields d={dl} />}
+          {![0x01, 0x18, 0x13, 0x16, 0x19].includes(dl.event) && <StandardFields d={dl} />}
+        </>
+      );
+    }
+
+    case "valve-on":
+      return (
+        <Field
+          label="Start credit loaded"
+          value={`${mitsToCredits(data.creditMits)} credits (${data.creditMits.toLocaleString()} MITs)`}
+        />
+      );
+
+    case "valve-off":
+    case "top-up":
+      return (
+        <Field
+          label={data.kind === "top-up" ? "Accumulated credit" : "Remaining credit"}
+          value={`${mitsToCredits(data.creditMits)} credits (${data.creditMits.toLocaleString()} MITs)`}
+        />
+      );
+
+    case "eeprom-read":
+      return (
+        <>
+          <Field label="EEPROM address" value={`0x${data.addr.toString(16).padStart(2, "0").toUpperCase()}`} mono />
+          <Field label="Value" value={`0x${data.value.toString(16).padStart(2, "0").toUpperCase()} (${data.value})`} mono />
+        </>
+      );
+
+    case "eeprom-word-read":
+      return (
+        <>
+          <Field label="EEPROM address" value={`0x${data.addr.toString(16).padStart(2, "0").toUpperCase()}`} mono />
+          <Field label="Value (word)" value={`0x${data.value.toString(16).padStart(4, "0").toUpperCase()} (${data.value})`} mono />
+        </>
+      );
+
+    case "tick-accumulator":
+      return <Field label="Tick accumulator" value={data.hex} mono />;
+
+    case "generic":
+      return <Field label="Data" value={data.rawHex} mono dim />;
+  }
+}
+
+// ─── EWC reply packet view (0x80 / 0x88) ──────────────────────────────────────
+
+export function EwcReplyView({ hexPayload }: { hexPayload: string }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const result = decodeEwcReply(hexPayload);
+
+  if (!result.valid) {
+    return (
+      <p className="text-[11px] font-mono text-muted-foreground break-all leading-relaxed">
+        {hexPayload}
+      </p>
+    );
+  }
+
+  const r: EwcReplyDecoded = result;
+  const badgeStyle = r.ok
+    ? "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20"
+    : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", badgeStyle)}>
+          {r.ok ? "← Reply" : "← Error"}
+        </span>
+        <span className="text-[10px] text-muted-foreground">{r.cmdName}</span>
+        {!r.xorValid && <span className="text-[10px] text-red-500 font-semibold">XOR ERR</span>}
+      </div>
+
+      <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
+        <ReplyDataFields data={r.data} />
+      </div>
+
+      <button
+        className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        onClick={() => setShowRaw((v) => !v)}
+      >
+        {showRaw ? "Hide raw hex ▲" : "Raw hex ▼"}
+      </button>
+      {showRaw && (
+        <p className="text-[10px] font-mono break-all leading-relaxed text-muted-foreground bg-muted/20 rounded px-2 py-1.5">
+          {hexPayload}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── CommandApi_1 packet view ──────────────────────────────────────────────────
+
+export function CommandApiPacketView({ base64Payload }: { base64Payload: string }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const decoded: CommandApiDecoded | null = decodeCommandApiPayload(base64Payload);
+
+  if (!decoded) {
+    return (
+      <p className="text-[11px] font-mono text-muted-foreground break-all leading-relaxed">
+        {base64Payload}
+      </p>
+    );
+  }
+
+  const label = decoded.cmdName
+    ? (decoded.logNumber !== undefined ? `${decoded.cmdName} #${decoded.logNumber}` : decoded.cmdName)
+    : "Unknown command";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
+          → Command
+        </span>
+        <span className="text-[10px] text-muted-foreground">{label}</span>
+        {decoded.retry && (
+          <span className="text-[10px] px-1 rounded bg-muted text-muted-foreground border border-border">retry</span>
+        )}
+        {decoded.priority && decoded.priority !== "Normal" && (
+          <span className="text-[10px] text-muted-foreground/60">{decoded.priority}</span>
+        )}
+      </div>
+
+      <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
+        {decoded.outgoingPipeline && (
+          <Field label="Pipeline" value={decoded.outgoingPipeline} mono dim />
+        )}
+        {decoded.priority && (
+          <Field label="Priority" value={decoded.priority} dim />
+        )}
+      </div>
+
+      <button
+        className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        onClick={() => setShowRaw((v) => !v)}
+      >
+        {showRaw ? "Hide inner hex ▲" : "Inner hex ▼"}
+      </button>
+      {showRaw && (
+        <p className="text-[10px] font-mono break-all leading-relaxed text-muted-foreground bg-muted/20 rounded px-2 py-1.5">
+          {decoded.rawInnerHex}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export { EWC25_EVENT_NAMES, eventCategory };

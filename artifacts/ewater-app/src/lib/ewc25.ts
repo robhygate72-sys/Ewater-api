@@ -289,3 +289,239 @@ export function decodeEwc25(hexPayload: string): Ewc25Result {
 
   return base as Ewc25Decoded;
 }
+
+// ─── EWC command names (shared by reply + command-api decoders) ────────────────
+
+export const EWC_CMD_NAMES: Record<number, string> = {
+  0x41: "Read Tick Accumulator",
+  0x43: "Set Clock",
+  0x45: "Read EEPROM",
+  0x46: "Factory Reset",
+  0x4B: "Request to Program",
+  0x4F: "Valve OFF",
+  0x50: "Write EEPROM",
+  0x52: "Read SPI Log",
+  0x54: "Get Time",
+  0x55: "Tap Top-Up",
+  0x56: "Valve ON",
+  0x58: "Get Status",
+  0x65: "Read EEPROM Word",
+  0x70: "Write EEPROM Word",
+  0x72: "Read Log Pointer",
+  0x77: "Write Log Pointer",
+};
+
+// ─── Decode 28-byte embedded datalog (bytes 4-31 of a READ SPI LOG reply) ─────
+
+function decodeDatalog28(b: number[]): Ewc25Result {
+  if (b.length < 28) return { valid: false, reason: `Expected 28 bytes, got ${b.length}` };
+  const event = b[0]!;
+  const eventName = EWC25_EVENT_NAMES[event] ?? `Unknown (0x${event.toString(16)})`;
+  const category = eventCategory(event);
+  const deviceTime: Ewc25DeviceTime = {
+    seconds: bcd(b[1]!), minutes: bcd(b[2]!), hours: bcd(b[3]!),
+    day: bcd(b[4]!), month: bcd(b[5]!), year: bcd(b[6]!),
+  };
+  const dt = deviceTime;
+  const deviceTimeStr =
+    `${String(dt.hours).padStart(2, "0")}:${String(dt.minutes).padStart(2, "0")}:${String(dt.seconds).padStart(2, "0")} ` +
+    `${String(dt.day).padStart(2, "0")}/${String(dt.month).padStart(2, "0")}/${dt.year + 2000}`;
+  const uid = hexStr([b[7]!, b[8]!, b[9]!, b[10]!]);
+  const batteryAdcRaw = b[11]!;
+  const batteryVolts = Math.round((batteryAdcRaw / 256) * 15 * 100) / 100;
+  const rs = b[12]!;
+
+  if (event === 0x19) {
+    // Health State: different byte layout from offset 11 onward
+    const vbatAdcRaw = b[11]!;
+    const vwatAdcRaw = b[12]!;
+    const vsen1 = b[13]!;
+    const vsen2 = b[14]!;
+    const vsen3 = b[15]!;
+    const taccBytes = b.slice(16, 24);
+    const tickAccumulatorHex = hexStr(taccBytes);
+    const flg0 = b[24]!;
+    const flags = {
+      tamp2: !!(flg0 & 0x01), tamp1: !!(flg0 & 0x02),
+      gsmNotLocked: !!(flg0 & 0x04), valveOn: !!(flg0 & 0x08),
+      lockFlag: !!(flg0 & 0x10), proxFlag: !!(flg0 & 0x20),
+      lowBattery: !!(flg0 & 0x40), rfidDisabled: !!(flg0 & 0x80),
+    };
+    return {
+      valid: true, ewcId: 0, ewcIdHex: "00000000",
+      event, eventName, category, deviceTime, deviceTimeStr, uid,
+      batteryAdcRaw: vbatAdcRaw,
+      batteryVolts: Math.round((vbatAdcRaw / 256) * 15 * 100) / 100,
+      rs: 0, usageCounter: 0,
+      startCreditMits: 0, endCreditMits: 0, creditUsedMits: 0,
+      flowTicks: 0, litres: 0, flowTimeSecs: 0,
+      fcf: 0, datalogPointer: 0, xorValid: true,
+      healthState: { vbatAdcRaw, vwatAdcRaw, vsen1, vsen2, vsen3, tickAccumulatorHex, flags },
+    };
+  }
+
+  const usageCounter = uint16(b[13]!, b[14]!);
+  const startCreditMits = uint32(b[15]!, b[16]!, b[17]!, b[18]!);
+  const endCreditMits = uint32(b[19]!, b[20]!, b[21]!, b[22]!);
+  const creditUsedMits = startCreditMits >= endCreditMits ? startCreditMits - endCreditMits : 0;
+  const flowTicks = uint24(b[23]!, b[24]!, b[25]!);
+  const litres = Math.round((flowTicks / 360) * 100) / 100;
+  const flowTimeSecs = uint16(b[26]!, b[27]!);
+
+  const base: Omit<Ewc25Decoded, "tamper" | "pressureOk" | "startUp" | "healthState" | "unmeteredFlowTicks"> = {
+    valid: true, ewcId: 0, ewcIdHex: "00000000",
+    event, eventName, category, deviceTime, deviceTimeStr, uid,
+    batteryAdcRaw, batteryVolts, rs, usageCounter,
+    startCreditMits, endCreditMits, creditUsedMits,
+    flowTicks, litres, flowTimeSecs,
+    fcf: 0, datalogPointer: 0, xorValid: true,
+  };
+
+  if (event === 0x18) return { ...base, tamper: { tamp1Open: !!(rs & 0x01), tamp2Open: !!(rs & 0x02) } };
+  if (event === 0x13) return { ...base, pressureOk: rs === 0 };
+  if (event === 0x01) return { ...base, usageCounter: 0, unmeteredFlowTicks: usageCounter };
+  if (event === 0x16) {
+    return {
+      ...base, startCreditMits: 0,
+      startUp: {
+        powerUpCount: b[15]!,
+        firmwareDateStr: `${String(bcd(b[16]!)).padStart(2, "0")}/${String(bcd(b[17]!)).padStart(2, "0")}/${bcd(b[18]!) + 2000}`,
+      },
+    };
+  }
+  return base as Ewc25Decoded;
+}
+
+// ─── EWC reply packet decoder (0x80 / 0x88) ────────────────────────────────────
+
+export type EwcReplyData =
+  | {
+      kind: "get-status";
+      deviceTime: Ewc25DeviceTime; deviceTimeStr: string; uid: string;
+      batteryVolts: number; pressureOk: boolean;
+      valveOn: boolean; tamp1: boolean; tamp2: boolean;
+      lowBattery: boolean; rfidDisabled: boolean;
+      flowCount: number; samplePeriodMs: number;
+    }
+  | { kind: "read-log"; logNumber: number; datalog: Ewc25Result }
+  | { kind: "tick-accumulator"; hex: string }
+  | { kind: "valve-on" | "valve-off" | "top-up"; creditMits: number }
+  | { kind: "eeprom-read"; addr: number; value: number }
+  | { kind: "eeprom-word-read"; addr: number; value: number }
+  | { kind: "generic"; rawHex: string };
+
+export interface EwcReplyDecoded {
+  valid: true;
+  ok: boolean; // true = 0x80, false = 0x88 (error)
+  cmdByte: number;
+  cmdName: string;
+  xorValid: boolean;
+  data: EwcReplyData;
+}
+
+export interface EwcReplyInvalid { valid: false; reason: string; }
+export type EwcReplyResult = EwcReplyDecoded | EwcReplyInvalid;
+
+export function decodeEwcReply(hexPayload: string): EwcReplyResult {
+  const bytes = parseHex(hexPayload);
+  if (!bytes) return { valid: false, reason: "Cannot parse hex" };
+  if (bytes.length < 4) return { valid: false, reason: `Too short: ${bytes.length} bytes` };
+  const b0 = bytes[0]!;
+  if (b0 !== 0x80 && b0 !== 0x88) return { valid: false, reason: `Not a reply: 0x${b0.toString(16)}` };
+
+  const ok = b0 === 0x80;
+  const cmdByte = bytes[1]!;
+  const cmdName = EWC_CMD_NAMES[cmdByte] ?? `Unknown (0x${cmdByte.toString(16)})`;
+  const xorCalc = xorAll(bytes.slice(0, bytes.length - 1));
+  const xorValid = xorCalc === bytes[bytes.length - 1];
+
+  let data: EwcReplyData;
+
+  if (cmdByte === 0x58 && bytes.length === 26) {
+    // GET_STATUS reply: 80 58 SS MM HH DD MN YY UID[4] VBAT VWAT RS2 RS3 RS4 RS0 RS1 FLG0 FLG1 FC0 FC1 FT ETX XOR
+    const deviceTime: Ewc25DeviceTime = {
+      seconds: bcd(bytes[2]!), minutes: bcd(bytes[3]!), hours: bcd(bytes[4]!),
+      day: bcd(bytes[5]!), month: bcd(bytes[6]!), year: bcd(bytes[7]!),
+    };
+    const dt = deviceTime;
+    const deviceTimeStr =
+      `${String(dt.hours).padStart(2, "0")}:${String(dt.minutes).padStart(2, "0")}:${String(dt.seconds).padStart(2, "0")} ` +
+      `${String(dt.day).padStart(2, "0")}/${String(dt.month).padStart(2, "0")}/${dt.year + 2000}`;
+    const uid = hexStr([bytes[8]!, bytes[9]!, bytes[10]!, bytes[11]!]);
+    const batteryVolts = Math.round((bytes[12]! / 256) * 15 * 100) / 100;
+    const flg0 = bytes[19]!;
+    data = {
+      kind: "get-status",
+      deviceTime, deviceTimeStr, uid, batteryVolts,
+      pressureOk: bytes[13] === 0,
+      valveOn: !!(flg0 & 0x08),
+      tamp1: !!(flg0 & 0x02),
+      tamp2: !!(flg0 & 0x01),
+      lowBattery: !!(flg0 & 0x40),
+      rfidDisabled: !!(flg0 & 0x80),
+      flowCount: uint16(bytes[21]!, bytes[22]!),
+      samplePeriodMs: bytes[23]! * 20,
+    };
+  } else if (cmdByte === 0x52 && bytes.length === 34) {
+    // READ SPI LOG reply: 80 52 DLH DLL <28-byte datalog> ETX XOR
+    const logNumber = uint16(bytes[2]!, bytes[3]!);
+    const datalog = decodeDatalog28([...bytes.slice(4, 32)]);
+    data = { kind: "read-log", logNumber, datalog };
+  } else if ((cmdByte === 0x56 || cmdByte === 0x4F || cmdByte === 0x55) && bytes.length === 8) {
+    // Valve ON / OFF / Top-Up reply: 80 XX CR[4] ETX XOR
+    const creditMits = uint32(bytes[2]!, bytes[3]!, bytes[4]!, bytes[5]!);
+    data = { kind: cmdByte === 0x56 ? "valve-on" : cmdByte === 0x4F ? "valve-off" : "top-up", creditMits };
+  } else if (cmdByte === 0x45 && bytes.length === 6) {
+    // READ EEPROM: 80 45 ADR DATA ETX XOR
+    data = { kind: "eeprom-read", addr: bytes[2]!, value: bytes[3]! };
+  } else if (cmdByte === 0x65 && bytes.length === 7) {
+    // READ EEPROM WORD: 80 65 ADR HI LO ETX XOR
+    data = { kind: "eeprom-word-read", addr: bytes[2]!, value: uint16(bytes[3]!, bytes[4]!) };
+  } else if (cmdByte === 0x41 && bytes.length === 12) {
+    // READ TICK ACC: 80 41 TACC[8] ETX XOR
+    data = { kind: "tick-accumulator", hex: hexStr([...bytes.slice(2, 10)]) };
+  } else {
+    data = { kind: "generic", rawHex: hexStr([...bytes]) };
+  }
+
+  return { valid: true, ok, cmdByte, cmdName, xorValid, data };
+}
+
+// ─── CommandApi_1 outer JSON decoder ──────────────────────────────────────────
+
+export interface CommandApiDecoded {
+  outgoingPipeline: string | null;
+  priority: string | null;
+  retry: boolean;
+  cmdByte: number | null;
+  cmdName: string | null;
+  logNumber?: number; // for 0x52 READ LOG
+  rawInnerHex: string;
+}
+
+export function decodeCommandApiPayload(base64Json: string): CommandApiDecoded | null {
+  try {
+    const jsonStr = atob(base64Json);
+    const json = JSON.parse(jsonStr) as Record<string, unknown>;
+    const innerB64 = json["Payload"] as string | undefined;
+    if (!innerB64) return null;
+    const innerBytes = Array.from(atob(innerB64), (c) => c.charCodeAt(0));
+    const cmdByte = innerBytes[0] ?? null;
+    const cmdName = cmdByte !== null
+      ? (EWC_CMD_NAMES[cmdByte] ?? `Unknown (0x${cmdByte.toString(16)})`)
+      : null;
+    let logNumber: number | undefined;
+    if (cmdByte === 0x52 && innerBytes.length >= 3) {
+      logNumber = uint16(innerBytes[1]!, innerBytes[2]!);
+    }
+    const rawInnerHex = innerBytes.map((b) => b.toString(16).padStart(2, "0")).join(" ");
+    return {
+      outgoingPipeline: (json["OutgoingPipeline"] as string) ?? null,
+      priority: (json["Priority"] as string) ?? null,
+      retry: (json["Retry"] as boolean) ?? false,
+      cmdByte, cmdName, logNumber, rawInnerHex,
+    };
+  } catch {
+    return null;
+  }
+}

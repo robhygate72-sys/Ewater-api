@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { Info, Loader2 } from "lucide-react";
-import { Ewc25PacketView } from "@/components/ewc25-packet-view";
+import { Ewc25PacketView, EwcReplyView, CommandApiPacketView } from "@/components/ewc25-packet-view";
 
 interface LogEntry {
   id: string;
@@ -54,16 +54,38 @@ function protocolClass(protocol: string | null): string {
   return "text-muted-foreground bg-muted/40 border-border";
 }
 
+function firstByte(b64: string): number | null {
+  try {
+    const s = atob(b64);
+    return s.charCodeAt(0);
+  } catch {
+    return null;
+  }
+}
+
 function LogRow({ entry }: { entry: LogEntry }) {
   const [expanded, setExpanded] = useState(false);
   const raw = entry.message ?? "";
   const hexStr = raw ? base64ToHex(raw) : "—";
-  const isEwc25 = entry.protocol?.toLowerCase().startsWith("ewc");
-  const long = !isEwc25 && hexStr.length > 80;
+
+  const protocol = entry.protocol ?? "";
+  const isEwcProtocol = protocol.toLowerCase().startsWith("ewc");
+  const isCommandApi = protocol === "CommandApi_1";
+
+  // Distinguish Ewc2_5 datalog (0x44) from reply (0x80/0x88)
+  const fb = raw ? firstByte(raw) : null;
+  const isDatalog = isEwcProtocol && fb === 0x44;
+  const isReply   = isEwcProtocol && (fb === 0x80 || fb === 0x88);
+
+  const isDecoded = isDatalog || isReply || isCommandApi;
+  const long = !isDecoded && hexStr.length > 80;
+
+  // Show protocol badge only for non-decoded non-Ewc entries
+  const showBadge = protocol && !isEwcProtocol && !isCommandApi;
 
   return (
     <div className="px-3 py-2.5 hover:bg-muted/30 transition-colors">
-      {/* Time + source + protocol */}
+      {/* Time + source + protocol badge */}
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         <span className="font-mono text-[10px] text-muted-foreground shrink-0">
           {formatDateTime(entry.timestamp)}
@@ -76,19 +98,23 @@ function LogRow({ entry }: { entry: LogEntry }) {
             </span>
           </>
         )}
-        {entry.protocol && !isEwc25 && (
+        {showBadge && (
           <span className={cn(
             "ml-auto text-[10px] font-mono px-1.5 py-0 rounded border shrink-0",
-            protocolClass(entry.protocol),
+            protocolClass(protocol),
           )}>
-            {entry.protocol}
+            {protocol}
           </span>
         )}
       </div>
 
-      {/* Decoded EWC2.5 view */}
-      {isEwc25 && raw ? (
+      {/* Routed packet view */}
+      {isDatalog && raw ? (
         <Ewc25PacketView hexPayload={hexStr} />
+      ) : isReply && raw ? (
+        <EwcReplyView hexPayload={hexStr} />
+      ) : isCommandApi && raw ? (
+        <CommandApiPacketView base64Payload={raw} />
       ) : (
         <div
           className={cn(long && "cursor-pointer")}
