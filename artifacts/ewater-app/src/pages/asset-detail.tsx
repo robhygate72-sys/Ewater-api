@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/layout";
 import { ESenseCharts } from "@/components/esense-charts";
-import { useGetAssetTech, getGetAssetTechQueryKey, useFetchAssetTelemetry, getFetchAssetTelemetryQueryKey } from "@workspace/api-client-react";
+import { useGetAssetTech, getGetAssetTechQueryKey } from "@workspace/api-client-react";
+import { AssetLogs } from "@/components/asset-logs";
 import { useRoute } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -332,12 +333,6 @@ export default function AssetDetail() {
     query: { enabled: !!id, queryKey: getGetAssetTechQueryKey(id) },
   });
 
-  const { data: telemetry, isLoading: isLoadingTelemetry } = useFetchAssetTelemetry(id, {
-    query: {
-      enabled: !!id,
-      queryKey: getFetchAssetTelemetryQueryKey(id),
-    },
-  });
 
   if (isLoadingTech) {
     return (
@@ -625,44 +620,13 @@ export default function AssetDetail() {
           </SectionCard>
         )}
 
-        {/* Raw telemetry logs */}
+        {/* Protocol logs */}
         <section>
           <div className="flex items-center gap-2 mb-2 px-0.5">
             <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-            <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Telemetry Logs</h3>
+            <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Protocol Logs</h3>
           </div>
-          <Card className="shadow-sm border">
-            <div className="divide-y divide-border">
-              {isLoadingTelemetry ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="p-4">
-                    <Skeleton className="h-10 w-full" />
-                  </div>
-                ))
-              ) : telemetry && telemetry.length > 0 ? (
-                telemetry.map((entry) => (
-                  <div key={entry.id} className="p-3 text-sm hover:bg-muted/30 transition-colors">
-                    <div className="flex justify-between items-start mb-1.5 gap-2">
-                      <span className="font-mono text-[10px] text-muted-foreground">{formatDateTime(entry.timestamp)}</span>
-                      {entry.pipeline && (
-                        <Badge variant="outline" className="text-[10px] h-4 py-0 px-1.5 font-mono bg-background shrink-0">
-                          {entry.pipeline}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="bg-muted p-2 rounded text-[11px] font-mono break-all whitespace-pre-wrap max-h-28 overflow-y-auto">
-                      {entry.payload ?? "No payload"}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                  <Info className="w-7 h-7 opacity-40 mb-2" />
-                  <span className="text-sm">No telemetry available</span>
-                </div>
-              )}
-            </div>
-          </Card>
+          <AssetLogs assetId={id} />
         </section>
       </div>
     </Layout>

@@ -949,6 +949,77 @@ function healthRatingIsFault(rating: string | null): boolean | null {
   return r === "poor" || r === "bad" || r === "critical" || r === "fault";
 }
 
+// ---------------------------------------------------------------------------
+// Asset logs — paginated, cursor-based
+// GET /api/ewater/assets/:assetId/logs
+// Query: before (ISO), protocol (filter), limit (1-100), windowDays (1-30)
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
+  const assetId = req.params["assetId"];
+  if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const beforeRaw = typeof req.query["before"] === "string" ? req.query["before"] : null;
+  const protocolFilter = typeof req.query["protocol"] === "string" ? req.query["protocol"] : null;
+  const limit = Math.min(Math.max(Number(req.query["limit"] ?? 50), 1), 100);
+  const windowDays = Math.min(Math.max(Number(req.query["windowDays"] ?? 7), 1), 30);
+
+  const endDate = beforeRaw ? new Date(beforeRaw) : new Date();
+  const startDate = new Date(endDate.getTime() - windowDays * 24 * 3600 * 1000);
+
+  try {
+    const result = await ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+      method: "POST",
+      body: JSON.stringify({
+        assetId: Number(assetId),
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        pipeline: protocolFilter ?? null,
+      }),
+    });
+
+    if (result.status !== 200) { res.json({ entries: [], nextBefore: null, hasMore: false }); return; }
+
+    const body = result.data as Record<string, unknown>;
+    const lines = Array.isArray(body["logLines"]) ? (body["logLines"] as Record<string, unknown>[]) : [];
+
+    // Sort descending (most recent first) and filter client-side too (in case the API ignores pipeline)
+    const sorted = [...lines].sort((a, b) => {
+      const ta = new Date(String(a["timeReceived"] ?? 0)).getTime();
+      const tb = new Date(String(b["timeReceived"] ?? 0)).getTime();
+      return tb - ta;
+    });
+
+    const filtered = protocolFilter
+      ? sorted.filter((l) => {
+          const p = strOrNull(l["pipeline"]) ?? "";
+          return p.toLowerCase() === protocolFilter.toLowerCase();
+        })
+      : sorted;
+
+    const page = filtered.slice(0, limit);
+    const hasMore = filtered.length > limit;
+    const nextBefore = page.length > 0
+      ? strOrNull(page[page.length - 1]!["timeReceived"])
+      : null;
+
+    const entries = page.map((l) => ({
+      id: String(l["id"] ?? crypto.randomUUID()),
+      timestamp: String(l["timeReceived"] ?? new Date().toISOString()),
+      source: strOrNull(l["source"]) ?? strOrNull(l["sourceDevice"]) ?? strOrNull(l["imei"]) ?? strOrNull(l["deviceImei"]),
+      protocol: strOrNull(l["pipeline"]),
+      message: strOrNull(l["payload"]),
+    }));
+
+    res.json({ entries, nextBefore, hasMore });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch asset logs");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
 function strOrNull(v: unknown): string | null {
   return v != null && v !== "" ? String(v) : null;
 }
