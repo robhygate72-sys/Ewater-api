@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
-import { Settings, Droplet, Zap, Radio, Battery, Clock, Lock, Cpu, ChevronRight } from "lucide-react";
+import { Settings, Droplet, Zap, Radio, Battery, Clock, Lock, Cpu, ChevronRight, Gauge, RotateCcw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface SettingDetail {
   label: string;
@@ -106,14 +109,46 @@ function rawStr(v: string | number | null | undefined): string {
 
 interface EwcSettingsPanelProps {
   assetId: string;
+  isEsense?: boolean;
 }
 
-export function EwcSettingsPanel({ assetId }: EwcSettingsPanelProps) {
+export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanelProps) {
   const { data, isLoading, isError } = useGetAssetEwc(assetId, {
     query: { queryKey: getGetAssetEwcQueryKey(assetId) },
   });
 
   const [detail, setDetail] = useState<SettingDetail | null>(null);
+  const [sensorRange, setSensorRange] = useState<number | null>(null);
+  const [detecting, setDetecting] = useState(false);
+  const [detectMsg, setDetectMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEsense) return;
+    fetch(`${BASE}/api/ewater/alert-rules/${encodeURIComponent(assetId)}`)
+      .then((r) => r.json())
+      .then((d: { sensorRangeMetres?: number | null }) => { setSensorRange(d.sensorRangeMetres ?? null); })
+      .catch(() => {});
+  }, [assetId, isEsense]);
+
+  const handleAutoDetect = async () => {
+    setDetecting(true);
+    setDetectMsg(null);
+    try {
+      const res = await fetch(`${BASE}/api/ewater/assets/${encodeURIComponent(assetId)}/detect-sensor-range`, {
+        method: "POST",
+      });
+      const d = await res.json() as { sensorRangeMetres?: number; rawRange?: number; vsen1?: number; depthMetres?: number; error?: string };
+      if (d.sensorRangeMetres != null) {
+        setSensorRange(d.sensorRangeMetres);
+        setDetectMsg(`Detected ${d.sensorRangeMetres} m (raw: ${d.rawRange?.toFixed(2)} m, ADC ${d.vsen1}, depth ${d.depthMetres?.toFixed(3)} m)`);
+      } else {
+        setDetectMsg(d.error ?? "Detection failed");
+      }
+    } catch {
+      setDetectMsg("Detection failed — network error");
+    }
+    setDetecting(false);
+  };
 
   const tap = (d: SettingDetail) => setDetail(d);
 
@@ -144,6 +179,36 @@ export function EwcSettingsPanel({ assetId }: EwcSettingsPanelProps) {
           )}
           {data && (
             <>
+              {/* eSENSE Sensor Calibration */}
+              {isEsense && (
+                <SubSection title="Sensor Calibration" icon={<Gauge className="w-3 h-3" />}>
+                  <div className="flex items-center justify-between py-2 border-b border-border/40 gap-4">
+                    <span className="text-xs text-muted-foreground shrink-0">Sensor range</span>
+                    <span className="text-xs font-mono font-medium text-right">
+                      {sensorRange != null ? `${sensorRange} m` : "— not set"}
+                    </span>
+                  </div>
+                  <div className="py-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs h-8"
+                      onClick={handleAutoDetect}
+                      disabled={detecting}
+                    >
+                      <RotateCcw className={`w-3 h-3 mr-1.5 ${detecting ? "animate-spin" : ""}`} />
+                      {detecting ? "Detecting…" : "Auto-detect from eWater API"}
+                    </Button>
+                    {detectMsg && (
+                      <p className="text-[10px] mt-1.5 text-muted-foreground leading-snug">{detectMsg}</p>
+                    )}
+                    <p className="text-[10px] mt-1.5 text-muted-foreground/60 leading-snug">
+                      Compares recent packet VSEN1 ADC vs eWater tank-height API to back-calculate the sensor's full-scale range. Saves result for packet depth display.
+                    </p>
+                  </div>
+                </SubSection>
+              )}
+
               {/* Calibration */}
               <SubSection title="Calibration" icon={<Droplet className="w-3 h-3" />}>
                 <Row label="FCF — ticks/credit" value={data.ewcFcf} rawValue={data.ewcFcf} mono onTap={tap}

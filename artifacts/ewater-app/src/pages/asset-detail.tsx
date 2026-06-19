@@ -573,7 +573,7 @@ export default function AssetDetail() {
         </SectionCard>
 
         {/* EWC Settings */}
-        <EwcSettingsPanel assetId={id} />
+        <EwcSettingsPanel assetId={id} isEsense={tech.purpose?.toLowerCase() === "esense"} />
 
         {/* Firmware */}
         {tech.firmware && tech.firmware.length > 0 && (

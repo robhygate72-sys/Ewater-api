@@ -14,6 +14,8 @@ import {
   ProxyRequestBody,
   GetESenseChartsQueryParams,
 } from "@workspace/api-zod";
+import { db, alertRulesTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -779,6 +781,140 @@ router.get("/ewater/dashboard", async (req, res): Promise<void> => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// eSense Sensor Range Auto-Detect
+// POST /api/ewater/assets/:assetId/detect-sensor-range
+// Cross-references recent packet VSEN1 ADC with eWater tank-height API to
+// back-calculate the sensor's full-scale range in metres, then persists it
+// in alert_rules.sensor_range_metres for this asset.
+// ---------------------------------------------------------------------------
+
+router.post("/ewater/assets/:assetId/detect-sensor-range", async (req, res): Promise<void> => {
+  const params = GetAssetParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const assetId = params.data.assetId;
+
+  try {
+    const now = new Date();
+    const start3h = new Date(now.getTime() - 3 * 3600 * 1000);
+    const start7d = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+
+    // Parallel fetch: recent tank height + recent logs
+    const [tankRes, logsRes] = await Promise.allSettled([
+      ewaterFetch("state", "/api/Asset/GetTankHeightHistoryByDateRange", {
+        method: "POST",
+        body: JSON.stringify({ assetId, startDate: start3h.toISOString(), endDate: now.toISOString() }),
+      }),
+      ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+        method: "POST",
+        body: JSON.stringify({
+          assetId: Number(assetId),
+          startDate: start7d.toISOString(),
+          endDate: now.toISOString(),
+          pipeline: null,
+        }),
+      }),
+    ]);
+
+    // Extract tank height points (metres, timestamp)
+    type TankPoint = { ts: number; depth: number };
+    const tankPoints: TankPoint[] = [];
+    if (tankRes.status === "fulfilled" && tankRes.value.status === 200) {
+      const body = tankRes.value.data as Record<string, unknown>;
+      const rows = Array.isArray(body["data"]) ? (body["data"] as Record<string, unknown>[]) : [];
+      for (const r of rows) {
+        const depth = Number(r["averageWaterTankHeight"]);
+        const lb = String(r["lowerBound"] ?? "");
+        if (!isNaN(depth) && depth > 0 && lb) {
+          tankPoints.push({ ts: new Date(lb).getTime(), depth });
+        }
+      }
+    }
+
+    if (tankPoints.length === 0) {
+      res.status(422).json({ error: "No recent tank-height data from eWater — cannot detect sensor range" });
+      return;
+    }
+
+    // Extract VSEN1 ADC readings from recent EWC datalog packets
+    type VsenPoint = { ts: number; vsen1: number };
+    const vsenPoints: VsenPoint[] = [];
+    if (logsRes.status === "fulfilled" && logsRes.value.status === 200) {
+      const body = logsRes.value.data as Record<string, unknown>;
+      const lines = Array.isArray(body["logLines"]) ? (body["logLines"] as Record<string, unknown>[]) : [];
+      for (const line of lines) {
+        const protocol = String(line["protocol"] ?? "");
+        if (!protocol.toLowerCase().startsWith("ewc")) continue;
+        const payload = String(line["payload"] ?? "");
+        if (!payload) continue;
+        try {
+          const raw = Buffer.from(payload, "base64");
+          if (raw.length !== 39) continue;
+          if (raw[0] !== 0x44) continue; // must be DATALOG
+          const event = raw[5]!;
+          let vsen1 = 0;
+          if (event === 0x19) {
+            vsen1 = raw[18]!; // HEALTH_STATE layout
+          } else {
+            vsen1 = raw[12]!; // standard layout — uid byte 0 = VSEN1
+          }
+          if (vsen1 > 51) { // > 4mA = sensor is connected and reading > 0
+            const ts = new Date(String(line["timeReceived"] ?? "")).getTime();
+            if (!isNaN(ts)) vsenPoints.push({ ts, vsen1 });
+          }
+        } catch {
+          // skip malformed packets
+        }
+      }
+    }
+
+    if (vsenPoints.length === 0) {
+      res.status(422).json({ error: "No valid eSENSE packet readings found in the last 7 days" });
+      return;
+    }
+
+    // Sort vsenPoints newest-first, pick the most recent
+    vsenPoints.sort((a, b) => b.ts - a.ts);
+    const best = vsenPoints[0]!;
+
+    // Find tank-height point closest in time to best vsen reading
+    let closestTank = tankPoints[0]!;
+    let minDiff = Math.abs(best.ts - closestTank.ts);
+    for (const tp of tankPoints) {
+      const diff = Math.abs(best.ts - tp.ts);
+      if (diff < minDiff) { minDiff = diff; closestTank = tp; }
+    }
+
+    // Range = depth × 203 / (vsen1 − 51)
+    const rawRange = (closestTank.depth * 203) / (best.vsen1 - 51);
+    // Round to nearest 0.5 m (sensors come in 1m, 2m, 3m, 5m, 10m)
+    const sensorRangeMetres = Math.round(rawRange * 2) / 2;
+
+    // Persist in alert_rules
+    const existing = await db.select({ id: alertRulesTable.id }).from(alertRulesTable)
+      .where(eq(alertRulesTable.assetId, assetId)).limit(1);
+    if (existing.length === 0) {
+      await db.insert(alertRulesTable).values({ assetId, sensorRangeMetres });
+    } else {
+      await db.update(alertRulesTable).set({ sensorRangeMetres }).where(eq(alertRulesTable.assetId, assetId));
+    }
+
+    res.json({
+      sensorRangeMetres,
+      rawRange: Math.round(rawRange * 100) / 100,
+      vsen1: best.vsen1,
+      depthMetres: Math.round(closestTank.depth * 1000) / 1000,
+      timeDeltaSeconds: Math.round(minDiff / 1000),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to detect sensor range");
+    res.status(502).json({ error: `Detection failed: ${msg}` });
   }
 });
 

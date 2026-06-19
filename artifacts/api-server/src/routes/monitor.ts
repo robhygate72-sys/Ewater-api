@@ -80,6 +80,7 @@ const DEFAULT_RULES = {
   stuckValveEnabled: false,
   priceCheckEnabled: false, targetPrice: 1.5, priceDeviancePercent: 0.5,
   cooldownMinutes: 60,
+  sensorRangeMetres: null as number | null,
 };
 
 function rowToJson(r: typeof DEFAULT_RULES & { assetId?: string }) {
@@ -92,6 +93,7 @@ function rowToJson(r: typeof DEFAULT_RULES & { assetId?: string }) {
     stuckValveEnabled: r.stuckValveEnabled,
     priceCheckEnabled: r.priceCheckEnabled, targetPrice: r.targetPrice, priceDeviancePercent: r.priceDeviancePercent,
     cooldownMinutes: r.cooldownMinutes,
+    sensorRangeMetres: r.sensorRangeMetres ?? null,
   };
 }
 
@@ -117,6 +119,7 @@ const AlertRulesBody = z.object({
   targetPrice: z.number().positive().optional(),
   priceDeviancePercent: z.number().min(0).optional(),
   cooldownMinutes: z.number().optional(),
+  sensorRangeMetres: z.number().positive().nullable().optional(),
 });
 
 const CopyAlertRulesBody = z.object({

@@ -58,11 +58,15 @@ function Divider() {
 // ─── eSENSE VSEN helpers ──────────────────────────────────────────────────────
 
 // VSEN0 = 51 (4mA zero depth), VSEN5 = 254 (20mA full depth)
-// Range-independent: show % of sensor full-scale (works for 2m, 3m, 5m etc)
-function vsenDisplay(adc: number): string {
+// With known range: show depth in metres. Without: show % of sensor full-scale.
+function vsenDisplay(adc: number, rangeMetres?: number | null): string {
   if (adc === 0)  return `ADC ${adc} — sensor off / not connected`;
-  if (adc < 51)   return `ADC ${adc} — below 4mA (${((adc / 255) * 5 * 1000 / 249).toFixed(2)} mA)`;
+  if (adc < 51)   return `ADC ${adc} — below 4mA`;
   const pct = ((adc - 51) / 203) * 100;
+  if (rangeMetres != null && rangeMetres > 0) {
+    const depth = (pct / 100) * rangeMetres;
+    return `${depth.toFixed(3)} m (ADC ${adc}, ${pct.toFixed(1)}% of ${rangeMetres} m range)`;
+  }
   return `ADC ${adc} — ${pct.toFixed(1)}% of sensor range`;
 }
 
@@ -71,7 +75,7 @@ function vwatDesc(adc: number): string {
   return `ADC ${adc} — no pressure / sensor active`;
 }
 
-function ESenseFields({ d }: { d: Ewc25Decoded }) {
+function ESenseFields({ d, rangeMetres }: { d: Ewc25Decoded; rangeMetres?: number | null }) {
   // uid bytes 0-5 (3×2 hex chars) = VSEN1, VSEN2, VSEN3; bytes 6-7 = RS
   const vsen1 = parseInt(d.uid.slice(0, 2), 16);
   const vsen2 = parseInt(d.uid.slice(2, 4), 16);
@@ -81,9 +85,9 @@ function ESenseFields({ d }: { d: Ewc25Decoded }) {
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Divider />
-      <Field label="VSEN1 (tank depth)" value={vsenDisplay(vsen1)} />
-      <Field label="VSEN2" value={vsenDisplay(vsen2)} />
-      <Field label="VSEN3" value={vsenDisplay(vsen3)} />
+      <Field label="VSEN1 (tank depth)" value={vsenDisplay(vsen1, rangeMetres)} />
+      <Field label="VSEN2" value={vsenDisplay(vsen2, rangeMetres)} />
+      <Field label="VSEN3" value={vsenDisplay(vsen3, rangeMetres)} />
       <Field label="VWAT" value={vwatDesc(d.rs)} dim={d.rs === 0} />
       {(d.flowTicks > 0 || d.flowTimeSecs > 0) && (
         <>
@@ -216,7 +220,7 @@ function HealthStateFields({ d }: { d: Ewc25Decoded }) {
 
 // ─── EWC2.5 datalog packet (0x44) ─────────────────────────────────────────────
 
-export function Ewc25PacketView({ hexPayload, isEsense = false }: { hexPayload: string; isEsense?: boolean }) {
+export function Ewc25PacketView({ hexPayload, isEsense = false, sensorRangeMetres }: { hexPayload: string; isEsense?: boolean; sensorRangeMetres?: number | null }) {
   const [showRaw, setShowRaw] = useState(false);
   const result = decodeEwc25(hexPayload);
 
@@ -251,7 +255,7 @@ export function Ewc25PacketView({ hexPayload, isEsense = false }: { hexPayload: 
       </div>
 
       <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
-        {esenseDataEvent && <ESenseFields d={d} />}
+        {esenseDataEvent && <ESenseFields d={d} rangeMetres={sensorRangeMetres} />}
         {!esenseDataEvent && d.event === 0x01 && <NoCreditFields d={d} />}
         {!esenseDataEvent && d.event === 0x18 && <TamperFields d={d} />}
         {!esenseDataEvent && d.event === 0x13 && <PressureFields d={d} />}

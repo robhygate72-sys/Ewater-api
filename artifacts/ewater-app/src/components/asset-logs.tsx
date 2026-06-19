@@ -93,7 +93,7 @@ function firstByte(b64: string): number | null {
 
 // ─── log row ──────────────────────────────────────────────────────────────────
 
-function LogRow({ entry, isEsense }: { entry: LogEntry; isEsense: boolean }) {
+function LogRow({ entry, isEsense, sensorRangeMetres }: { entry: LogEntry; isEsense: boolean; sensorRangeMetres?: number | null }) {
   const [expanded, setExpanded] = useState(false);
   const raw = entry.message ?? "";
   const hexStr = raw ? base64ToHex(raw) : "—";
@@ -130,7 +130,7 @@ function LogRow({ entry, isEsense }: { entry: LogEntry; isEsense: boolean }) {
       </div>
 
       {isDatalog && raw ? (
-        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} />
+        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} sensorRangeMetres={sensorRangeMetres} />
       ) : isReply && raw ? (
         <EwcReplyView hexPayload={hexStr} />
       ) : isCommandApi && raw ? (
@@ -162,6 +162,15 @@ function LogRow({ entry, isEsense }: { entry: LogEntry; isEsense: boolean }) {
 export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEsense?: boolean }) {
   const [category, setCategory] = useState<LogCategory | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const [sensorRangeMetres, setSensorRangeMetres] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isEsense) return;
+    fetch(`/api/ewater/alert-rules/${encodeURIComponent(assetId)}`)
+      .then((r) => r.json())
+      .then((d: { sensorRangeMetres?: number | null }) => { setSensorRangeMetres(d.sensorRangeMetres ?? null); })
+      .catch(() => {});
+  }, [assetId, isEsense]);
 
   const {
     data,
@@ -276,7 +285,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
               )}
             </div>
           ) : (
-            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} />)
+            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} sensorRangeMetres={sensorRangeMetres} />)
           )}
         </div>
       </Card>
