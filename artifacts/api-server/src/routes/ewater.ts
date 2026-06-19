@@ -379,7 +379,55 @@ router.get("/ewater/assets/:assetId/ewc", async (req, res): Promise<void> => {
       ? (fx * lcf) / (fcf * 1_000_000)
       : null;
 
-    res.json({ ewcFcf: fcf, ewcLcf: lcf, ewcFx: fx, ewcPreload: preload, priceOfWater });
+    // Find the most recent settings date across all settings
+    const settingsDate = (() => {
+      const dates = settings
+        .map((s) => (s["value"] as Record<string, unknown> | null)?.["lastKnownDate"])
+        .filter((d): d is string => typeof d === "string" && d.length > 0);
+      if (dates.length === 0) return null;
+      return dates.sort().at(-1) ?? null;
+    })();
+
+    res.json({
+      ewcFcf: fcf,
+      ewcLcf: lcf,
+      ewcFx: fx,
+      ewcPreload: preload,
+      priceOfWater,
+      // Flow / valve
+      flowPreloadCharge: getSetting("FlowPreloadCharge"),
+      flowPreloadThreshold: getSetting("FlowPreloadThreshold"),
+      valveDriveTime: getSetting("ValveDriveTime"),
+      dispenseTimeLimitMins: getSetting("DispenseTimeLimit"),
+      dispenseFlowLimitLpm: getSetting("DispenseFlowLimit"),
+      // No-flow detection
+      noFlowCycleCount: getSetting("NoFlowCycleCount"),
+      noFlowPulseCount: getSetting("NoFlowPulseCount"),
+      noFlowLockoutMins: getSetting("NoFlowLockoutTimeout"),
+      noFlowErrorControl: getSetting("NoFlowErrorControl"),
+      // Battery thresholds (ADC, convert with /256*15)
+      lowBatteryWarningAdc: getSetting("LowBatteryWarning"),
+      highBatteryValueAdc: getSetting("HighBatteryValue"),
+      // Reporting / polling
+      healthStateReportPeriod: getSetting("HealthStateReportPeriod"),
+      firstExtendedPolling: getSetting("FirstExtendedPolling"),
+      secondExtendedPolling: getSetting("SecondExtendedPolling"),
+      // RFID / security
+      mifareBlockAddress: getSetting("MiFareBlockAddress"),
+      ewcAccessKey: getSetting("EwcAccessKey"),
+      encryptionControl: getSetting("EncryptionControl"),
+      encryptionSeed: getSetting("EncryptionSeed"),
+      keyA: getSetting("KeyA"),
+      ewcAuthCode: getSetting("EwcAuthCode"),
+      supertapEncryptionMask: getSetting("SupertapEncryptionMask"),
+      // Features
+      smartDisplayControl: getSetting("SmartDisplayControl"),
+      proximityDetection: getSetting("ProximityDetection"),
+      // Device
+      ewcDeviceId: getSetting("EwcId"),
+      powerCount: getSetting("PowerCount"),
+      settingsDate,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch EWC settings");

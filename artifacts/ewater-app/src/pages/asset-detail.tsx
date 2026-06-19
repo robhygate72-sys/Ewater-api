@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { useFavourites } from "@/contexts/FavouritesContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { EwcSettingsPanel } from "@/components/ewc-settings-panel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -570,6 +571,9 @@ export default function AssetDetail() {
             </div>
           )}
         </SectionCard>
+
+        {/* EWC Settings */}
+        <EwcSettingsPanel assetId={id} />
 
         {/* Firmware */}
         {tech.firmware && tech.firmware.length > 0 && (

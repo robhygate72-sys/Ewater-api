@@ -606,6 +606,58 @@ components:
           type: ["number", "null"]
         ewcPreload:
           type: ["number", "null"]
+        flowPreloadCharge:
+          type: ["number", "null"]
+        flowPreloadThreshold:
+          type: ["number", "null"]
+        valveDriveTime:
+          type: ["number", "null"]
+        dispenseTimeLimitMins:
+          type: ["number", "null"]
+        dispenseFlowLimitLpm:
+          type: ["number", "null"]
+        noFlowCycleCount:
+          type: ["number", "null"]
+        noFlowPulseCount:
+          type: ["number", "null"]
+        noFlowLockoutMins:
+          type: ["number", "null"]
+        noFlowErrorControl:
+          type: ["number", "null"]
+        lowBatteryWarningAdc:
+          type: ["number", "null"]
+        highBatteryValueAdc:
+          type: ["number", "null"]
+        healthStateReportPeriod:
+          type: ["number", "null"]
+        firstExtendedPolling:
+          type: ["number", "null"]
+        secondExtendedPolling:
+          type: ["number", "null"]
+        mifareBlockAddress:
+          type: ["number", "null"]
+        ewcAccessKey:
+          type: ["number", "null"]
+        encryptionControl:
+          type: ["number", "null"]
+        encryptionSeed:
+          type: ["number", "null"]
+        keyA:
+          type: ["number", "null"]
+        ewcAuthCode:
+          type: ["number", "null"]
+        supertapEncryptionMask:
+          type: ["number", "null"]
+        smartDisplayControl:
+          type: ["number", "null"]
+        proximityDetection:
+          type: ["number", "null"]
+        ewcDeviceId:
+          type: ["number", "null"]
+        powerCount:
+          type: ["number", "null"]
+        settingsDate:
+          type: ["string", "null"]
 
     ESenseTankPoint:
       type: object

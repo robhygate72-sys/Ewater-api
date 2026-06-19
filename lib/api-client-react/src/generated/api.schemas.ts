@@ -210,6 +210,58 @@ export interface AssetEwcSettings {
   ewcFx?: number | null;
   /** @nullable */
   ewcPreload?: number | null;
+  /** @nullable */
+  flowPreloadCharge?: number | null;
+  /** @nullable */
+  flowPreloadThreshold?: number | null;
+  /** @nullable */
+  valveDriveTime?: number | null;
+  /** @nullable */
+  dispenseTimeLimitMins?: number | null;
+  /** @nullable */
+  dispenseFlowLimitLpm?: number | null;
+  /** @nullable */
+  noFlowCycleCount?: number | null;
+  /** @nullable */
+  noFlowPulseCount?: number | null;
+  /** @nullable */
+  noFlowLockoutMins?: number | null;
+  /** @nullable */
+  noFlowErrorControl?: number | null;
+  /** @nullable */
+  lowBatteryWarningAdc?: number | null;
+  /** @nullable */
+  highBatteryValueAdc?: number | null;
+  /** @nullable */
+  healthStateReportPeriod?: number | null;
+  /** @nullable */
+  firstExtendedPolling?: number | null;
+  /** @nullable */
+  secondExtendedPolling?: number | null;
+  /** @nullable */
+  mifareBlockAddress?: number | null;
+  /** @nullable */
+  ewcAccessKey?: number | null;
+  /** @nullable */
+  encryptionControl?: number | null;
+  /** @nullable */
+  encryptionSeed?: number | null;
+  /** @nullable */
+  keyA?: number | null;
+  /** @nullable */
+  ewcAuthCode?: number | null;
+  /** @nullable */
+  supertapEncryptionMask?: number | null;
+  /** @nullable */
+  smartDisplayControl?: number | null;
+  /** @nullable */
+  proximityDetection?: number | null;
+  /** @nullable */
+  ewcDeviceId?: number | null;
+  /** @nullable */
+  powerCount?: number | null;
+  /** @nullable */
+  settingsDate?: string | null;
 }
 
 export interface ESenseTankPoint {
