@@ -110,7 +110,8 @@ export default function Assets() {
         (a) =>
           a.name.toLowerCase().includes(q) ||
           (a.waterSystemName ?? "").toLowerCase().includes(q) ||
-          (a.countryName ?? "").toLowerCase().includes(q),
+          (a.countryName ?? "").toLowerCase().includes(q) ||
+          a.id.toLowerCase().includes(q),
       );
     }
     if (selectedCountry != null) {
