@@ -270,7 +270,7 @@ export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; i
         <div className="flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-muted-foreground" />
           <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            eSense Charts
+            {isEsense ? "eSense Charts" : "Datalog Charts"}
           </h3>
         </div>
         <select
