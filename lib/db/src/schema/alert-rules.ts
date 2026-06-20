@@ -18,7 +18,9 @@ export const alertRulesTable = pgTable("alert_rules", {
   targetPrice: real("target_price").notNull().default(1.5),
   priceDeviancePercent: real("price_deviance_percent").notNull().default(0.5),
   cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
-  sensorRangeMetres: real("sensor_range_metres"),
+  sensorRangeMetres1: real("sensor_range_metres_1"),
+  sensorRangeMetres2: real("sensor_range_metres_2"),
+  sensorRangeMetres3: real("sensor_range_metres_3"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
   uniqueIndex("alert_rules_asset_id_idx").on(t.assetId),

@@ -118,7 +118,7 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
   });
 
   const [detail, setDetail] = useState<SettingDetail | null>(null);
-  const [sensorRange, setSensorRange] = useState<number | null>(null);
+  const [ranges, setRanges] = useState<[number | null, number | null, number | null]>([null, null, null]);
   const [detecting, setDetecting] = useState(false);
   const [detectMsg, setDetectMsg] = useState<string | null>(null);
 
@@ -126,7 +126,9 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
     if (!isEsense) return;
     fetch(`${BASE}/api/ewater/alert-rules/${encodeURIComponent(assetId)}`)
       .then((r) => r.json())
-      .then((d: { sensorRangeMetres?: number | null }) => { setSensorRange(d.sensorRangeMetres ?? null); })
+      .then((d: { sensorRangeMetres1?: number | null; sensorRangeMetres2?: number | null; sensorRangeMetres3?: number | null }) => {
+        setRanges([d.sensorRangeMetres1 ?? null, d.sensorRangeMetres2 ?? null, d.sensorRangeMetres3 ?? null]);
+      })
       .catch(() => {});
   }, [assetId, isEsense]);
 
@@ -137,12 +139,22 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
       const res = await fetch(`${BASE}/api/ewater/assets/${encodeURIComponent(assetId)}/detect-sensor-range`, {
         method: "POST",
       });
-      const d = await res.json() as { sensorRangeMetres?: number; rawRange?: number; vsen1?: number; depthMetres?: number; error?: string };
-      if (d.sensorRangeMetres != null) {
-        setSensorRange(d.sensorRangeMetres);
-        setDetectMsg(`Detected ${d.sensorRangeMetres} m (raw: ${d.rawRange?.toFixed(2)} m, ADC ${d.vsen1}, depth ${d.depthMetres?.toFixed(3)} m)`);
+      const d = await res.json() as {
+        sensorRangeMetres1?: number | null;
+        sensorRangeMetres2?: number | null;
+        sensorRangeMetres3?: number | null;
+        vsen1?: number; vsen2?: number; vsen3?: number;
+        depthMetres1?: number | null;
+        error?: string;
+      };
+      if (d.error) {
+        setDetectMsg(d.error);
       } else {
-        setDetectMsg(d.error ?? "Detection failed");
+        setRanges([d.sensorRangeMetres1 ?? null, d.sensorRangeMetres2 ?? null, d.sensorRangeMetres3 ?? null]);
+        const parts: string[] = [];
+        if (d.sensorRangeMetres1 != null) parts.push(`VSEN1: ${d.sensorRangeMetres1} m (ADC ${d.vsen1}, depth ${d.depthMetres1?.toFixed(3)} m)`);
+        if (d.sensorRangeMetres2 != null) parts.push(`VSEN2: ${d.sensorRangeMetres2} m (ADC ${d.vsen2})`);
+        setDetectMsg(parts.length > 0 ? parts.join(" · ") : "Detected — no API data for VSEN2/3");
       }
     } catch {
       setDetectMsg("Detection failed — network error");
@@ -182,13 +194,15 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
               {/* eSENSE Sensor Calibration */}
               {isEsense && (
                 <SubSection title="Sensor Calibration" icon={<Gauge className="w-3 h-3" />}>
-                  <div className="flex items-center justify-between py-2 border-b border-border/40 gap-4">
-                    <span className="text-xs text-muted-foreground shrink-0">Sensor range</span>
-                    <span className="text-xs font-mono font-medium text-right">
-                      {sensorRange != null ? `${sensorRange} m` : "— not set"}
-                    </span>
-                  </div>
-                  <div className="py-2">
+                  {(["VSEN1 (water tank)", "VSEN2 (chlorine tank)", "VSEN3"] as const).map((label, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0 gap-4">
+                      <span className="text-xs text-muted-foreground shrink-0">{label} range</span>
+                      <span className="text-xs font-mono font-medium text-right">
+                        {ranges[i] != null ? `${ranges[i]} m` : "— not set"}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="pt-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -203,7 +217,7 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
                       <p className="text-[10px] mt-1.5 text-muted-foreground leading-snug">{detectMsg}</p>
                     )}
                     <p className="text-[10px] mt-1.5 text-muted-foreground/60 leading-snug">
-                      Compares recent packet VSEN1 ADC vs eWater tank-height API to back-calculate the sensor's full-scale range. Saves result for packet depth display.
+                      Cross-references each VSEN ADC reading with the eWater tank-height API to back-calculate sensor full-scale range. VSEN3 has no API source (null until set manually).
                     </p>
                   </div>
                 </SubSection>

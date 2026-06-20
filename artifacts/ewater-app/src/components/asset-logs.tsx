@@ -93,7 +93,13 @@ function firstByte(b64: string): number | null {
 
 // ─── log row ──────────────────────────────────────────────────────────────────
 
-function LogRow({ entry, isEsense, sensorRangeMetres }: { entry: LogEntry; isEsense: boolean; sensorRangeMetres?: number | null }) {
+function LogRow({ entry, isEsense, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
+  entry: LogEntry;
+  isEsense: boolean;
+  sensorRangeMetres1?: number | null;
+  sensorRangeMetres2?: number | null;
+  sensorRangeMetres3?: number | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const raw = entry.message ?? "";
   const hexStr = raw ? base64ToHex(raw) : "—";
@@ -130,7 +136,7 @@ function LogRow({ entry, isEsense, sensorRangeMetres }: { entry: LogEntry; isEse
       </div>
 
       {isDatalog && raw ? (
-        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} sensorRangeMetres={sensorRangeMetres} />
+        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} sensorRangeMetres1={sensorRangeMetres1} sensorRangeMetres2={sensorRangeMetres2} sensorRangeMetres3={sensorRangeMetres3} />
       ) : isReply && raw ? (
         <EwcReplyView hexPayload={hexStr} />
       ) : isCommandApi && raw ? (
@@ -162,13 +168,15 @@ function LogRow({ entry, isEsense, sensorRangeMetres }: { entry: LogEntry; isEse
 export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEsense?: boolean }) {
   const [category, setCategory] = useState<LogCategory | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const [sensorRangeMetres, setSensorRangeMetres] = useState<number | null>(null);
+  const [sensorRanges, setSensorRanges] = useState<[number | null, number | null, number | null]>([null, null, null]);
 
   useEffect(() => {
     if (!isEsense) return;
     fetch(`/api/ewater/alert-rules/${encodeURIComponent(assetId)}`)
       .then((r) => r.json())
-      .then((d: { sensorRangeMetres?: number | null }) => { setSensorRangeMetres(d.sensorRangeMetres ?? null); })
+      .then((d: { sensorRangeMetres1?: number | null; sensorRangeMetres2?: number | null; sensorRangeMetres3?: number | null }) => {
+        setSensorRanges([d.sensorRangeMetres1 ?? null, d.sensorRangeMetres2 ?? null, d.sensorRangeMetres3 ?? null]);
+      })
       .catch(() => {});
   }, [assetId, isEsense]);
 
@@ -285,7 +293,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
               )}
             </div>
           ) : (
-            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} sensorRangeMetres={sensorRangeMetres} />)
+            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} sensorRangeMetres1={sensorRanges[0]} sensorRangeMetres2={sensorRanges[1]} sensorRangeMetres3={sensorRanges[2]} />)
           )}
         </div>
       </Card>

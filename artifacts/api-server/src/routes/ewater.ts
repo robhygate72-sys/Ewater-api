@@ -841,8 +841,23 @@ router.post("/ewater/assets/:assetId/detect-sensor-range", async (req, res): Pro
       return;
     }
 
-    // Extract VSEN1 ADC readings from recent EWC datalog packets
-    type VsenPoint = { ts: number; vsen1: number };
+    // Also extract chlorine (VSEN2) from tank height API
+    type TankPoint2 = { ts: number; depth2: number };
+    const tankPoints2: TankPoint2[] = [];
+    if (tankRes.status === "fulfilled" && tankRes.value.status === 200) {
+      const body = tankRes.value.data as Record<string, unknown>;
+      const rows = Array.isArray(body["data"]) ? (body["data"] as Record<string, unknown>[]) : [];
+      for (const r of rows) {
+        const depth2 = Number(r["averageChlorineTankHeight"]);
+        const lb = String(r["lowerBound"] ?? "");
+        if (!isNaN(depth2) && depth2 > 0 && lb) {
+          tankPoints2.push({ ts: new Date(lb).getTime(), depth2 });
+        }
+      }
+    }
+
+    // Extract VSEN1, VSEN2, VSEN3 ADC readings from recent EWC datalog packets
+    type VsenPoint = { ts: number; vsen1: number; vsen2: number; vsen3: number };
     const vsenPoints: VsenPoint[] = [];
     if (logsRes.status === "fulfilled" && logsRes.value.status === 200) {
       const body = logsRes.value.data as Record<string, unknown>;
@@ -857,15 +872,15 @@ router.post("/ewater/assets/:assetId/detect-sensor-range", async (req, res): Pro
           if (raw.length !== 39) continue;
           if (raw[0] !== 0x44) continue; // must be DATALOG
           const event = raw[5]!;
-          let vsen1 = 0;
+          let vsen1 = 0, vsen2 = 0, vsen3 = 0;
           if (event === 0x19) {
-            vsen1 = raw[18]!; // HEALTH_STATE layout
+            vsen1 = raw[18]!; vsen2 = raw[19]!; vsen3 = raw[20]!;
           } else {
-            vsen1 = raw[12]!; // standard layout — uid byte 0 = VSEN1
+            vsen1 = raw[12]!; vsen2 = raw[13]!; vsen3 = raw[14]!;
           }
-          if (vsen1 > 51) { // > 4mA = sensor is connected and reading > 0
+          if (vsen1 > 51) { // VSEN1 connected = valid eSENSE packet
             const ts = new Date(String(line["timeReceived"] ?? "")).getTime();
-            if (!isNaN(ts)) vsenPoints.push({ ts, vsen1 });
+            if (!isNaN(ts)) vsenPoints.push({ ts, vsen1, vsen2, vsen3 });
           }
         } catch {
           // skip malformed packets
@@ -878,38 +893,55 @@ router.post("/ewater/assets/:assetId/detect-sensor-range", async (req, res): Pro
       return;
     }
 
-    // Sort vsenPoints newest-first, pick the most recent
+    // Sort newest-first; pick most recent packet
     vsenPoints.sort((a, b) => b.ts - a.ts);
     const best = vsenPoints[0]!;
 
-    // Find tank-height point closest in time to best vsen reading
-    let closestTank = tankPoints[0]!;
-    let minDiff = Math.abs(best.ts - closestTank.ts);
-    for (const tp of tankPoints) {
-      const diff = Math.abs(best.ts - tp.ts);
-      if (diff < minDiff) { minDiff = diff; closestTank = tp; }
+    // Helper: find closest tank point in time
+    function closestPoint<T extends { ts: number }>(pts: T[], refTs: number): { point: T; diff: number } | null {
+      if (pts.length === 0) return null;
+      let best2 = pts[0]!;
+      let minD = Math.abs(refTs - best2.ts);
+      for (const p of pts) { const d = Math.abs(refTs - p.ts); if (d < minD) { minD = d; best2 = p; } }
+      return { point: best2, diff: minD };
     }
 
-    // Range = depth × 203 / (vsen1 − 51)
-    const rawRange = (closestTank.depth * 203) / (best.vsen1 - 51);
-    // Round to nearest 0.5 m (sensors come in 1m, 2m, 3m, 5m, 10m)
-    const sensorRangeMetres = Math.round(rawRange * 2) / 2;
+    // Helper: range = depth × 203 / (adc − 51), rounded to nearest 0.5 m
+    function calcRange(adc: number, depth: number): number {
+      return Math.round(((depth * 203) / (adc - 51)) * 2) / 2;
+    }
+
+    // VSEN1 — cross-ref with averageWaterTankHeight
+    const tank1 = closestPoint(tankPoints, best.ts);
+    const sensorRangeMetres1 = tank1 ? calcRange(best.vsen1, tank1.point.depth) : null;
+
+    // VSEN2 — cross-ref with averageChlorineTankHeight (if > 0 and connected)
+    let sensorRangeMetres2: number | null = null;
+    if (best.vsen2 > 51 && tankPoints2.length > 0) {
+      const tank2 = closestPoint(tankPoints2, best.ts);
+      if (tank2) sensorRangeMetres2 = calcRange(best.vsen2, tank2.point.depth2);
+    }
+
+    // VSEN3 — no eWater API cross-reference available
+    const sensorRangeMetres3: number | null = null;
 
     // Persist in alert_rules
     const existing = await db.select({ id: alertRulesTable.id }).from(alertRulesTable)
       .where(eq(alertRulesTable.assetId, assetId)).limit(1);
+    const dbPayload = { sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 };
     if (existing.length === 0) {
-      await db.insert(alertRulesTable).values({ assetId, sensorRangeMetres });
+      await db.insert(alertRulesTable).values({ assetId, ...dbPayload });
     } else {
-      await db.update(alertRulesTable).set({ sensorRangeMetres }).where(eq(alertRulesTable.assetId, assetId));
+      await db.update(alertRulesTable).set(dbPayload).where(eq(alertRulesTable.assetId, assetId));
     }
 
     res.json({
-      sensorRangeMetres,
-      rawRange: Math.round(rawRange * 100) / 100,
-      vsen1: best.vsen1,
-      depthMetres: Math.round(closestTank.depth * 1000) / 1000,
-      timeDeltaSeconds: Math.round(minDiff / 1000),
+      sensorRangeMetres1,
+      sensorRangeMetres2,
+      sensorRangeMetres3,
+      vsen1: best.vsen1, vsen2: best.vsen2, vsen3: best.vsen3,
+      depthMetres1: tank1 ? Math.round(tank1.point.depth * 1000) / 1000 : null,
+      timeDeltaSeconds: tank1 ? Math.round(tank1.diff / 1000) : null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

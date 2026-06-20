@@ -75,7 +75,12 @@ function vwatDesc(adc: number): string {
   return `ADC ${adc} — no pressure / sensor active`;
 }
 
-function ESenseFields({ d, rangeMetres }: { d: Ewc25Decoded; rangeMetres?: number | null }) {
+function ESenseFields({ d, rangeMetres1, rangeMetres2, rangeMetres3 }: {
+  d: Ewc25Decoded;
+  rangeMetres1?: number | null;
+  rangeMetres2?: number | null;
+  rangeMetres3?: number | null;
+}) {
   // uid bytes 0-5 (3×2 hex chars) = VSEN1, VSEN2, VSEN3; bytes 6-7 = RS
   const vsen1 = parseInt(d.uid.slice(0, 2), 16);
   const vsen2 = parseInt(d.uid.slice(2, 4), 16);
@@ -85,9 +90,9 @@ function ESenseFields({ d, rangeMetres }: { d: Ewc25Decoded; rangeMetres?: numbe
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
       <Divider />
-      <Field label="VSEN1 (tank depth)" value={vsenDisplay(vsen1, rangeMetres)} />
-      <Field label="VSEN2" value={vsenDisplay(vsen2, rangeMetres)} />
-      <Field label="VSEN3" value={vsenDisplay(vsen3, rangeMetres)} />
+      <Field label="VSEN1 (tank depth)" value={vsenDisplay(vsen1, rangeMetres1)} />
+      <Field label="VSEN2 (chlorine tank)" value={vsenDisplay(vsen2, rangeMetres2)} />
+      <Field label="VSEN3" value={vsenDisplay(vsen3, rangeMetres3)} />
       <Field label="VWAT" value={vwatDesc(d.rs)} dim={d.rs === 0} />
       {(d.flowTicks > 0 || d.flowTimeSecs > 0) && (
         <>
@@ -220,7 +225,13 @@ function HealthStateFields({ d }: { d: Ewc25Decoded }) {
 
 // ─── EWC2.5 datalog packet (0x44) ─────────────────────────────────────────────
 
-export function Ewc25PacketView({ hexPayload, isEsense = false, sensorRangeMetres }: { hexPayload: string; isEsense?: boolean; sensorRangeMetres?: number | null }) {
+export function Ewc25PacketView({ hexPayload, isEsense = false, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
+  hexPayload: string;
+  isEsense?: boolean;
+  sensorRangeMetres1?: number | null;
+  sensorRangeMetres2?: number | null;
+  sensorRangeMetres3?: number | null;
+}) {
   const [showRaw, setShowRaw] = useState(false);
   const result = decodeEwc25(hexPayload);
 
@@ -255,7 +266,7 @@ export function Ewc25PacketView({ hexPayload, isEsense = false, sensorRangeMetre
       </div>
 
       <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
-        {esenseDataEvent && <ESenseFields d={d} rangeMetres={sensorRangeMetres} />}
+        {esenseDataEvent && <ESenseFields d={d} rangeMetres1={sensorRangeMetres1} rangeMetres2={sensorRangeMetres2} rangeMetres3={sensorRangeMetres3} />}
         {!esenseDataEvent && d.event === 0x01 && <NoCreditFields d={d} />}
         {!esenseDataEvent && d.event === 0x18 && <TamperFields d={d} />}
         {!esenseDataEvent && d.event === 0x13 && <PressureFields d={d} />}
