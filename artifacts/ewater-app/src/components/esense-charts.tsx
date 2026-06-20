@@ -260,40 +260,28 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
     })
     .map((p) => p.date);
 
-  const vs = data?.voltageStatus;
-  const nowTs = Date.now();
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  const voltageLineData = vs
-    ? [
-        {
-          ts: todayMidnight.getTime() + 6 * 3600000,
-          voltage: vs.todayLow,
-          label: "Day Low",
-        },
-        {
-          ts: todayMidnight.getTime() + 12 * 3600000,
-          voltage: vs.todayAverage,
-          label: "Day Avg",
-        },
-        {
-          ts: todayMidnight.getTime() + 14 * 3600000,
-          voltage: vs.todayHigh,
-          label: "Day High",
-        },
-        { ts: nowTs, voltage: vs.current, label: "Current" },
-      ].sort((a, b) => a.ts - b.ts)
-    : [];
-  const voltageRefLines = getHourRefTimes(
-    todayMidnight.getTime(),
-    nowTs,
-  );
-  const voltageMin = vs
-    ? Math.floor(Math.min(vs.todayLow ?? 99, vs.current ?? 99) - 0.5)
+  const voltagePoints = (data?.voltageHistory ?? []).map((p) => ({
+    ts: new Date(p.time).getTime(),
+    voltage: p.value,
+  }));
+  const voltStartTs = voltagePoints[0]?.ts ?? Date.now() - days * 86400000;
+  const voltEndTs = voltagePoints[voltagePoints.length - 1]?.ts ?? Date.now();
+  const voltageRefLines = days < 30 ? getHourRefTimes(voltStartTs, voltEndTs) : [];
+  const voltages = voltagePoints.map((p) => p.voltage);
+  const voltageMin = voltages.length
+    ? Math.floor(Math.min(...voltages) - 0.3)
     : 0;
-  const voltageMax = vs
-    ? Math.ceil(Math.max(vs.todayHigh ?? 0, vs.current ?? 0) + 0.5)
+  const voltageMax = voltages.length
+    ? Math.ceil(Math.max(...voltages) + 0.3)
     : 20;
+  const voltXTicks = voltagePoints
+    .filter((_, i, arr) => {
+      if (arr.length <= 12) return true;
+      const step = Math.ceil(arr.length / 8);
+      return i % step === 0;
+    })
+    .map((p) => p.ts);
+  const vs = data?.voltageStatus;
 
   return (
     <div className="space-y-3">
@@ -459,19 +447,19 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
         </ChartSection>
       )}
 
-      {/* Battery Voltage Line Chart */}
+      {/* Battery Voltage — decoded from DATALOG packets */}
       {isLoading ? (
         <Skeleton className="h-52 w-full rounded-xl" />
       ) : (
         <ChartSection
           title="Battery Voltage"
           icon={<Zap className="w-3.5 h-3.5" />}
-          isEmpty={!vs}
-          emptyMessage="Voltage data unavailable"
+          isEmpty={voltagePoints.length === 0}
+          emptyMessage="No voltage data for this period"
         >
           <ResponsiveContainer width="100%" height={200}>
             <LineChart
-              data={voltageLineData}
+              data={voltagePoints}
               margin={{ top: 4, right: 8, left: -12, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
@@ -479,24 +467,9 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 dataKey="ts"
                 type="number"
                 scale="time"
-                domain={[
-                  todayMidnight.getTime(),
-                  todayMidnight.getTime() + 24 * 3600000,
-                ]}
-                ticks={[
-                  todayMidnight.getTime(),
-                  todayMidnight.getTime() + 6 * 3600000,
-                  todayMidnight.getTime() + 12 * 3600000,
-                  todayMidnight.getTime() + 18 * 3600000,
-                  todayMidnight.getTime() + 24 * 3600000,
-                ]}
-                tickFormatter={(v) =>
-                  new Date(v as number).toLocaleString("en-GB", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                  })
-                }
+                domain={[voltStartTs, voltEndTs]}
+                ticks={voltXTicks}
+                tickFormatter={(v) => formatAxisTs(v as number, days)}
                 tick={{ fontSize: 9, fill: tickColor }}
               />
               <YAxis
@@ -507,13 +480,7 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 tickFormatter={(v) => Number(v).toFixed(1)}
               />
               <Tooltip
-                labelFormatter={(v) =>
-                  new Date(v as number).toLocaleString("en-GB", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                  })
-                }
+                labelFormatter={(v) => formatTooltipTs(v as number)}
                 formatter={(value: unknown) => [
                   value != null ? `${Number(value).toFixed(2)} V` : "—",
                   "Voltage",
@@ -539,15 +506,31 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
                 dataKey="voltage"
                 stroke="#F5A623"
                 name="Voltage"
-                dot={{ r: 4, fill: "#F5A623" }}
-                strokeWidth={2}
+                dot={false}
+                strokeWidth={1.5}
                 connectNulls
               />
             </LineChart>
           </ResponsiveContainer>
-          <p className="text-[10px] text-muted-foreground text-center mt-1 px-2">
-            Today's low / avg / high / current — the eWater API does not expose per-day voltage history
-          </p>
+          {vs && (
+            <div className="flex gap-4 justify-center mt-2 flex-wrap">
+              {vs.todayLow != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  Today low: <span className="font-mono font-medium text-amber-600 dark:text-amber-400">{vs.todayLow.toFixed(2)} V</span>
+                </span>
+              )}
+              {vs.todayHigh != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  high: <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{vs.todayHigh.toFixed(2)} V</span>
+                </span>
+              )}
+              {vs.current != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  current: <span className="font-mono font-medium">{vs.current.toFixed(2)} V</span>
+                </span>
+              )}
+            </div>
+          )}
         </ChartSection>
       )}
     </div>

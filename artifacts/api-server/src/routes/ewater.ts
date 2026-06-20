@@ -990,7 +990,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
   const needsTodaySupp = days > 5;
 
   try {
-    const [tankRes, inflowRes, powerRes, todayTankRes] = await Promise.allSettled([
+    const [tankRes, inflowRes, powerRes, todayTankRes, logsRes] = await Promise.allSettled([
       ewaterFetch("state", "/api/Asset/GetTankHeightHistoryByDateRange", {
         method: "POST",
         body: JSON.stringify({
@@ -1015,6 +1015,10 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
             body: JSON.stringify({ assetId, startDate: todayStart, endDate }),
           })
         : Promise.resolve({ status: 204 as const, data: null }),
+      ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+        method: "POST",
+        body: JSON.stringify({ assetId, startDate, endDate, pipeline: null }),
+      }),
     ]);
 
     // Parse tank height — merge historical (daily) + today (hourly) when needed
@@ -1079,10 +1083,35 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         }
       : null;
 
+    // Decode battery voltage from 39-byte DATALOG packets in log history
+    // Byte[0] = 0x44 (header), Byte[16] = batteryAdcRaw; volts = ADC / 256 × 15
+    const logsOk =
+      logsRes.status === "fulfilled" && logsRes.value.status === 200
+        ? (logsRes.value.data as Record<string, unknown>)
+        : null;
+    const logLines = Array.isArray(logsOk?.["logLines"])
+      ? (logsOk!["logLines"] as Record<string, unknown>[])
+      : [];
+
+    const voltageHistory: { time: string; value: number }[] = [];
+    for (const line of logLines) {
+      const payload = strOrNull(line["payload"]);
+      const time = strOrNull(line["timeReceived"]);
+      if (!payload || !time) continue;
+      try {
+        const bytes = Array.from(atob(payload), (c) => c.charCodeAt(0));
+        if (bytes.length !== 39 || bytes[0] !== 0x44) continue;
+        const adcRaw = bytes[16]!;
+        const volts = Math.round((adcRaw / 256) * 15 * 100) / 100;
+        voltageHistory.push({ time, value: volts });
+      } catch { /* skip malformed */ }
+    }
+    voltageHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
     res.json({
       tankHeight,
       dailyInflow,
-      voltageHistory: [],
+      voltageHistory,
       voltageStatus,
     });
   } catch (err) {
