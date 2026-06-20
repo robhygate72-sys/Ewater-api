@@ -87,21 +87,42 @@ function computeHealth(
   const maxV = Math.max(...voltages);
   const avgV = voltages.reduce((s, v) => s + v, 0) / voltages.length;
 
-  const slopePer30d = spanDays >= 1.5 ? linearSlopePer30d(pts) : null;
+  // Trend: use daily FLOOR voltages to strip solar charging peaks.
+  // A raw linear regression on all readings will show a spurious negative slope
+  // whenever morning charge peaks appear early in the window — daily minimums
+  // reflect resting/nighttime state which is what actually degrades.
+  let slopePer30d: number | null = null;
+  if (spanDays >= 3) {
+    const byDay = new Map<string, number>();
+    for (const p of pts) {
+      const day = new Date(p.ts).toISOString().slice(0, 10);
+      const cur = byDay.get(day);
+      byDay.set(day, cur == null ? p.v : Math.min(cur, p.v));
+    }
+    const floors = Array.from(byDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, v]) => ({ ts: new Date(day).getTime(), v }));
+    if (floors.length >= 3) {
+      slopePer30d = linearSlopePer30d(floors);
+    }
+  }
 
-  // Voltage level score (what the battery drops to)
+  // Voltage floor score — calibrated for LiFePO4 (12 V nominal).
+  // LiFePO4 rest voltage at >80% SoC: ~13.0–13.4 V.
+  // Lead-acid equivalent thresholds are similar at the low end.
   const levelScore: HealthScore =
-    minV < 11.0 ? "critical" :
-    minV < 11.5 ? "poor" :
-    minV < 12.0 ? "fair" :
+    minV < 11.2 ? "critical" :
+    minV < 12.0 ? "poor" :
+    minV < 12.8 ? "fair" :
     "good";
 
-  // Trend score (is the baseline declining?)
+  // Trend score — relaxed to tolerate solar-cycle noise.
+  // Meaningful degradation for a properly-matched solar setup is > 0.5 V/30d.
   const trendScore: HealthScore =
     slopePer30d == null ? "good" :
-    slopePer30d < -0.75 ? "critical" :
-    slopePer30d < -0.25 ? "poor" :
-    slopePer30d < -0.05 ? "fair" :
+    slopePer30d < -1.5 ? "critical" :
+    slopePer30d < -0.5 ? "poor" :
+    slopePer30d < -0.2 ? "fair" :
     "good";
 
   const ORDER: HealthScore[] = ["good", "fair", "poor", "critical"];
@@ -158,21 +179,22 @@ function HealthDialog({
 
   const slopeDisplay = health.slopePer30d != null
     ? `${health.slopePer30d >= 0 ? "+" : ""}${health.slopePer30d.toFixed(2)} V / 30 days`
-    : "insufficient data";
+    : health.spanDays < 3 ? "need ≥ 3 days of data" : "insufficient data";
 
-  const slopeDesc = health.slopePer30d == null ? "Not enough data to compute trend." :
-    health.slopePer30d < -0.75 ? "Rapid decline — battery may be failing." :
-    health.slopePer30d < -0.25 ? "Significant decline — monitor closely." :
-    health.slopePer30d < -0.05 ? "Mild decline — normal aging." :
-    health.slopePer30d < 0.02 ? "Stable — no measurable decline." :
-    "Improving (charging or recovery).";
+  const slopeDesc = health.slopePer30d == null
+    ? "Trend requires at least 3 days of readings. Check back once more data is collected."
+    : health.slopePer30d < -1.5 ? "Rapid decline — battery may be failing or consistently under-charged."
+    : health.slopePer30d < -0.5 ? "Significant decline — investigate charging system or increased load."
+    : health.slopePer30d < -0.2 ? "Mild decline — worth monitoring over the next few weeks."
+    : health.slopePer30d < 0.05 ? "Stable — resting voltage floor is holding steady."
+    : "Improving — resting voltage is rising (good solar charging or recovery).";
 
   const actionText: Record<HealthScore, string> = {
-    good:     "No action required. Battery is in good condition.",
-    fair:     "Monitor over the next week. Consider a maintenance check if the decline continues.",
-    poor:     "Schedule a maintenance visit. Battery shows signs of significant wear or deep discharge.",
-    critical: "Urgent attention needed. Battery is at risk of failure or permanent damage.",
-    unknown:  "Collect more data — check back after the device has been operating for at least 1–2 days.",
+    good:     "No action required. Battery is maintaining healthy charge levels.",
+    fair:     "Monitor over the coming weeks. If the floor voltage keeps dropping, check the solar panel and connections.",
+    poor:     "Schedule a maintenance visit. The battery may be under-charged, overloaded, or showing early wear.",
+    critical: "Urgent attention needed. The battery is critically low or declining rapidly — risk of permanent damage.",
+    unknown:  "Collect more data — check back after the device has been operating for at least 3 days.",
   };
 
   return (
@@ -216,8 +238,8 @@ function HealthDialog({
             Health combines two signals decoded directly from EWC2.5 DATALOG packets:
           </p>
           <ul className="text-xs text-muted-foreground space-y-1 ml-3">
-            <li><span className="font-medium text-foreground">Voltage floor</span> — the lowest voltage recorded in the period. A healthy battery doesn't drop below ~12.0 V.</li>
-            <li><span className="font-medium text-foreground">Decline trend</span> — linear regression slope over the period. A stable battery trends near 0 V/month.</li>
+            <li><span className="font-medium text-foreground">Voltage floor</span> — the lowest voltage in the period. For LiFePO4, a healthy resting voltage is ≥ 12.8 V (≈ 80–100% SoC).</li>
+            <li><span className="font-medium text-foreground">Resting trend</span> — slope of the daily minimum voltage over time. Solar charging naturally spikes readings during the day, so only nighttime floor values are used to avoid false signals.</li>
           </ul>
 
           <div className="mt-2 space-y-1">
@@ -230,10 +252,10 @@ function HealthDialog({
                   <div>
                     <span className={cn("text-[10px] font-semibold border px-1 rounded", st.badge)}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
                     <span className="text-[10px] text-muted-foreground ml-1.5">
-                      {s === "good" ? "Min > 12.0 V, trend ≥ −0.05 V/30d" :
-                       s === "fair" ? "Min > 11.5 V, trend ≥ −0.25 V/30d" :
-                       s === "poor" ? "Min > 11.0 V, trend ≥ −0.75 V/30d" :
-                       "Min ≤ 11.0 V or trend < −0.75 V/30d"}
+                      {s === "good" ? "Floor ≥ 12.8 V, trend ≥ −0.2 V/30d" :
+                       s === "fair" ? "Floor ≥ 12.0 V, trend ≥ −0.5 V/30d" :
+                       s === "poor" ? "Floor ≥ 11.2 V, trend ≥ −1.5 V/30d" :
+                       "Floor < 11.2 V or trend < −1.5 V/30d"}
                     </span>
                   </div>
                 </div>
