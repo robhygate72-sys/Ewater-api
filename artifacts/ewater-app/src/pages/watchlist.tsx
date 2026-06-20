@@ -79,14 +79,16 @@ export default function Watchlist() {
   const assetMap = new Map((allAssets ?? []).map((a) => [a.id, a]));
   const isLoading = isLoadingFavs || isLoadingAssets;
 
-  // Fetch individual asset detail for map markers (gives real isOnline from connectivity API)
-  const mapAssetQueries = useQueries({
-    queries: mapOpen
-      ? favourites.map((fav) => getGetAssetQueryOptions(fav.assetId))
-      : [],
+  // Always fetch individual asset detail for all watchlist assets
+  // (gives real isOnline from connectivity API, battery trend, flow activity)
+  const detailQueries = useQueries({
+    queries: favourites.map((fav) => ({
+      ...getGetAssetQueryOptions(fav.assetId),
+      staleTime: 2 * 60 * 1000,
+    })),
   });
-  const mapDetailMap = new Map(
-    mapAssetQueries
+  const detailMap = new Map(
+    detailQueries
       .filter((q) => q.data)
       .map((q) => [q.data!.id, q.data!]),
   );
@@ -185,33 +187,60 @@ export default function Watchlist() {
               {favourites.length} monitored asset{favourites.length !== 1 ? "s" : ""}
             </p>
             {favourites.map((fav) => {
-              const asset = assetMap.get(fav.assetId);
-              const flags = (asset as any)?.rawData?.healthFlags as string | undefined;
-              const tamper     = hasFlag(flags, "tamper");
-              const lowBattery = hasFlag(flags, "lowbattery") || hasFlag(flags, "low battery");
+              const detail = detailMap.get(fav.assetId);
+              const listAsset = assetMap.get(fav.assetId);
+
+              // Use detail data when loaded; fall back to list data
+              const isOnline = detail?.isOnline ?? null;
+              const batteryVoltage = detail?.batteryVoltage ?? listAsset?.batteryVoltage ?? null;
+              const hasPowerFault = detail?.hasPowerFault ?? listAsset?.hasPowerFault ?? null;
+              const hasFlowFault  = detail?.hasFlowFault  ?? listAsset?.hasFlowFault  ?? null;
+              const waterSystemName = detail?.waterSystemName ?? listAsset?.waterSystemName;
+              const countryName     = (detail as any)?.countryName ?? (listAsset as any)?.countryName;
+              const lastSeen        = detail?.lastSeen ?? listAsset?.lastSeen;
+
+              // Battery trend from power rawData
+              const batteryTrend = (detail?.rawData as any)?.power?.trendDirection as string | null ?? null;
+
+              // Flow activity: tapEventsPerMinuteToday → taps/hr (whole number)
+              const tapRateToday = (detail?.rawData as any)?.conn?.tapEventsPerMinuteToday as number | null ?? null;
+              const tapsPerHour = tapRateToday != null ? Math.round(tapRateToday * 60) : null;
+
+              // Health flags for tamper / low battery badges (from list rawData until detail loads)
+              const rawFlags = (detail?.rawData as any)?.healthFlags ?? (listAsset?.rawData as any)?.healthFlags;
+              const tamper     = hasFlag(rawFlags, "tamper");
+              const lowBattery = hasFlag(rawFlags, "lowbattery") || hasFlag(rawFlags, "low battery");
+
+              const trendIcon = batteryTrend === "Rising" ? "↑" : batteryTrend === "Falling" ? "↓" : batteryTrend === "Stable" ? "→" : null;
+              const trendColor = batteryTrend === "Rising" ? "text-emerald-600" : batteryTrend === "Falling" ? "text-amber-500" : "text-muted-foreground";
+
+              const isLoaded = !!detail;
 
               return (
                 <Link key={fav.assetId} href={`/assets/${fav.assetId}`}>
                   <Card className="border shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden active:scale-[0.99]">
                     <div className="flex h-full">
+                      {/* Status stripe */}
                       <div
                         className={cn(
                           "w-1.5 shrink-0",
                           tamper || lowBattery
                             ? "bg-amber-500"
-                            : asset?.isOnline
+                            : isOnline === true
                               ? "bg-emerald-500"
-                              : "bg-zinc-400",
+                              : isOnline === false
+                                ? "bg-zinc-400"
+                                : "bg-zinc-200",
                         )}
                       />
                       <CardContent className="p-3 flex-1 min-w-0">
+                        {/* Header row */}
                         <div className="flex justify-between items-start gap-2">
                           <div className="min-w-0 flex-1">
                             <h3 className="font-semibold text-sm truncate leading-tight">{fav.assetName}</h3>
-                            {asset?.waterSystemName ? (
+                            {waterSystemName ? (
                               <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                                {asset.waterSystemName}
-                                {asset.countryName ? ` · ${asset.countryName}` : ""}
+                                {waterSystemName}{countryName ? ` · ${countryName}` : ""}
                               </p>
                             ) : (
                               <p className="text-[11px] text-muted-foreground mt-0.5">Asset #{fav.assetId}</p>
@@ -223,55 +252,79 @@ export default function Watchlist() {
                           </div>
                         </div>
 
-                        <AssetEwcBadge assetId={fav.assetId} />
-
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          {tamper && (
-                            <span className="flex items-center gap-1 text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded">
-                              <ShieldAlert className="w-3 h-3" /> Tamper
-                            </span>
-                          )}
-                          {lowBattery && (
-                            <span className="flex items-center gap-1 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                              <TrendingDown className="w-3 h-3" /> Low Battery
-                            </span>
-                          )}
-                          {asset?.hasPowerFault && !lowBattery && (
-                            <span className="flex items-center gap-1 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                              <Zap className="w-3 h-3" /> Power
-                            </span>
-                          )}
-                          {asset?.hasFlowFault && (
-                            <span className="flex items-center gap-1 text-[10px] font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded">
-                              <Droplet className="w-3 h-3" /> Flow
-                            </span>
-                          )}
-
-                          <div className="ml-auto flex items-center gap-2.5 text-muted-foreground">
-                            {asset?.batteryVoltage != null && (
-                              <div className="flex items-center gap-1">
-                                <Battery className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-mono">{asset.batteryVoltage}V</span>
-                              </div>
+                        {/* Three metrics row */}
+                        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                          {/* Status */}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">Status</span>
+                            {isLoaded ? (
+                              <span className={cn(
+                                "text-xs font-semibold",
+                                isOnline === true ? "text-emerald-600" : "text-zinc-400",
+                              )}>
+                                {isOnline === true ? "● Online" : "○ Offline"}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/40">—</span>
                             )}
-                            {asset?.lastSeen && (
-                              <span className="text-[10px]">{formatTimeAgo(asset.lastSeen)}</span>
-                            )}
-                            {asset?.isOnline != null && (
-                              <Badge
-                                variant={asset.isOnline ? "default" : "secondary"}
-                                className={cn(
-                                  "text-[10px] px-1.5 py-0 h-4 font-medium uppercase tracking-wider shadow-none",
-                                  asset.isOnline
-                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 hover:bg-emerald-500/20"
-                                    : "",
+                          </div>
+
+                          {/* Battery */}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">Battery</span>
+                            {batteryVoltage != null ? (
+                              <span className="text-xs font-semibold text-foreground flex items-baseline gap-0.5">
+                                <span className="font-mono">{batteryVoltage.toFixed(1)}V</span>
+                                {trendIcon && (
+                                  <span className={cn("text-[11px] font-bold", trendColor)}>{trendIcon}</span>
                                 )}
-                              >
-                                {asset.isOnline ? "Online" : "Offline"}
-                              </Badge>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/40">—</span>
+                            )}
+                          </div>
+
+                          {/* Flow activity */}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">Flow today</span>
+                            {tapsPerHour != null ? (
+                              <span className="text-xs font-semibold text-foreground font-mono">
+                                {tapsPerHour}<span className="text-[10px] font-normal text-muted-foreground">/hr</span>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/40">—</span>
                             )}
                           </div>
                         </div>
+
+                        {/* Fault badges + last seen */}
+                        {(tamper || lowBattery || hasPowerFault || hasFlowFault || lastSeen) && (
+                          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                            {tamper && (
+                              <span className="flex items-center gap-1 text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded">
+                                <ShieldAlert className="w-3 h-3" /> Tamper
+                              </span>
+                            )}
+                            {lowBattery && (
+                              <span className="flex items-center gap-1 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                                <TrendingDown className="w-3 h-3" /> Low Battery
+                              </span>
+                            )}
+                            {hasPowerFault && !lowBattery && (
+                              <span className="flex items-center gap-1 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                                <Zap className="w-3 h-3" /> Power
+                              </span>
+                            )}
+                            {hasFlowFault && (
+                              <span className="flex items-center gap-1 text-[10px] font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded">
+                                <Droplet className="w-3 h-3" /> Flow
+                              </span>
+                            )}
+                            {lastSeen && (
+                              <span className="ml-auto text-[10px] text-muted-foreground">{formatTimeAgo(lastSeen)}</span>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </div>
                   </Card>
@@ -298,7 +351,7 @@ export default function Watchlist() {
                 assets={favourites.map((fav) => {
                   // Prefer individual detail (has real isOnline from connectivity API);
                   // fall back to list data for location while detail is loading.
-                  const detail = mapDetailMap.get(fav.assetId);
+                  const detail = detailMap.get(fav.assetId);
                   const listAsset = assetMap.get(fav.assetId);
                   return {
                     id: fav.assetId,
