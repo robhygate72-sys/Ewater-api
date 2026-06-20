@@ -10,6 +10,7 @@ import {
   type EwcReplyDecoded,
   type EwcReplyData,
   type CommandApiDecoded,
+  type CommandApiArgs,
   type EventCategory,
 } from "@/lib/ewc25";
 
@@ -387,8 +388,53 @@ function ReplyDataFields({ data }: { data: EwcReplyData }) {
     case "tick-accumulator":
       return <Field label="Tick accumulator" value={data.hex} mono />;
 
+    case "get-time":
+      return <Field label="Device time" value={data.deviceTimeStr} mono />;
+
+    case "log-pointer-read":
+      return <Field label="Log pointer" value={data.pointer} mono />;
+
+    case "ack":
+      return <Field label="Acknowledged" value={data.cmdName} dim />;
+
     case "generic":
       return <Field label="Data" value={data.rawHex} mono dim />;
+  }
+}
+
+// ─── Command argument fields ───────────────────────────────────────────────────
+
+function CommandArgsFields({ args, cmdByte }: { args: CommandApiArgs; cmdByte: number | null }) {
+  switch (args.kind) {
+    case "credit":
+      return (
+        <Field
+          label={cmdByte === 0x56 ? "Credit to load" : "Top-up credit"}
+          value={`${mitsToCredits(args.creditMits)} credits (${args.creditMits.toLocaleString()} MITs)`}
+        />
+      );
+    case "read-log":
+      return <Field label="Log #" value={args.logNumber} mono />;
+    case "set-clock":
+      return <Field label="Set time to" value={args.timeStr} mono />;
+    case "eeprom-read":
+      return <Field label="EEPROM address" value={`0x${args.addr.toString(16).padStart(2, "0").toUpperCase()}`} mono />;
+    case "eeprom-write":
+      return (
+        <>
+          <Field label="EEPROM address" value={`0x${args.addr.toString(16).padStart(2, "0").toUpperCase()}`} mono />
+          <Field label="Write value" value={`0x${args.value.toString(16).padStart(2, "0").toUpperCase()} (${args.value})`} mono />
+        </>
+      );
+    case "eeprom-word-write":
+      return (
+        <>
+          <Field label="EEPROM address" value={`0x${args.addr.toString(16).padStart(2, "0").toUpperCase()}`} mono />
+          <Field label="Write value (word)" value={`0x${args.value.toString(16).padStart(4, "0").toUpperCase()} (${args.value})`} mono />
+        </>
+      );
+    case "log-pointer-write":
+      return <Field label="Write log pointer" value={args.pointer} mono />;
   }
 }
 
@@ -454,8 +500,9 @@ export function CommandApiPacketView({ base64Payload }: { base64Payload: string 
     );
   }
 
+  const readLogNum = decoded.args?.kind === "read-log" ? decoded.args.logNumber : undefined;
   const label = decoded.cmdName
-    ? (decoded.logNumber !== undefined ? `${decoded.cmdName} #${decoded.logNumber}` : decoded.cmdName)
+    ? (readLogNum !== undefined ? `${decoded.cmdName} #${readLogNum}` : decoded.cmdName)
     : "Unknown command";
 
   return (
@@ -474,6 +521,10 @@ export function CommandApiPacketView({ base64Payload }: { base64Payload: string 
       </div>
 
       <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
+        {decoded.args && <CommandArgsFields args={decoded.args} cmdByte={decoded.cmdByte} />}
+        {(decoded.outgoingPipeline || decoded.priority) && decoded.args && (
+          <Divider />
+        )}
         {decoded.outgoingPipeline && (
           <Field label="Pipeline" value={decoded.outgoingPipeline} mono dim />
         )}

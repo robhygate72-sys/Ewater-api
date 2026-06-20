@@ -408,6 +408,9 @@ export type EwcReplyData =
   | { kind: "valve-on" | "valve-off" | "top-up"; creditMits: number }
   | { kind: "eeprom-read"; addr: number; value: number }
   | { kind: "eeprom-word-read"; addr: number; value: number }
+  | { kind: "get-time"; deviceTime: Ewc25DeviceTime; deviceTimeStr: string }
+  | { kind: "log-pointer-read"; pointer: number }
+  | { kind: "ack"; cmdName: string }
   | { kind: "generic"; rawHex: string };
 
 export interface EwcReplyDecoded {
@@ -480,6 +483,23 @@ export function decodeEwcReply(hexPayload: string): EwcReplyResult {
   } else if (cmdByte === 0x41 && bytes.length === 12) {
     // READ TICK ACC: 80 41 TACC[8] ETX XOR
     data = { kind: "tick-accumulator", hex: hexStr([...bytes.slice(2, 10)]) };
+  } else if (cmdByte === 0x54 && bytes.length === 10) {
+    // GET TIME: 80 54 SS MM HH DD MN YY ETX XOR
+    const deviceTime: Ewc25DeviceTime = {
+      seconds: bcd(bytes[2]!), minutes: bcd(bytes[3]!), hours: bcd(bytes[4]!),
+      day: bcd(bytes[5]!), month: bcd(bytes[6]!), year: bcd(bytes[7]!),
+    };
+    const dt = deviceTime;
+    const deviceTimeStr =
+      `${String(dt.hours).padStart(2,"0")}:${String(dt.minutes).padStart(2,"0")}:${String(dt.seconds).padStart(2,"0")} ` +
+      `${String(dt.day).padStart(2,"0")}/${String(dt.month).padStart(2,"0")}/${dt.year + 2000}`;
+    data = { kind: "get-time", deviceTime, deviceTimeStr };
+  } else if (cmdByte === 0x72 && bytes.length === 6) {
+    // READ LOG POINTER: 80 72 HI LO ETX XOR
+    data = { kind: "log-pointer-read", pointer: uint16(bytes[2]!, bytes[3]!) };
+  } else if (bytes.length === 4 && [0x43, 0x46, 0x4B, 0x50, 0x70, 0x77, 0x4F].includes(cmdByte)) {
+    // Simple ACK replies: 80 CMD ETX XOR
+    data = { kind: "ack", cmdName };
   } else {
     data = { kind: "generic", rawHex: hexStr([...bytes]) };
   }
@@ -489,13 +509,22 @@ export function decodeEwcReply(hexPayload: string): EwcReplyResult {
 
 // ─── CommandApi_1 outer JSON decoder ──────────────────────────────────────────
 
+export type CommandApiArgs =
+  | { kind: "credit"; creditMits: number }          // Valve ON / Tap Top-Up
+  | { kind: "read-log"; logNumber: number }          // Read SPI Log
+  | { kind: "set-clock"; timeStr: string }           // Set Clock
+  | { kind: "eeprom-read"; addr: number }            // Read EEPROM / Read EEPROM Word
+  | { kind: "eeprom-write"; addr: number; value: number }       // Write EEPROM
+  | { kind: "eeprom-word-write"; addr: number; value: number }  // Write EEPROM Word
+  | { kind: "log-pointer-write"; pointer: number };             // Write Log Pointer
+
 export interface CommandApiDecoded {
   outgoingPipeline: string | null;
   priority: string | null;
   retry: boolean;
   cmdByte: number | null;
   cmdName: string | null;
-  logNumber?: number; // for 0x52 READ LOG
+  args: CommandApiArgs | null;
   rawInnerHex: string;
 }
 
@@ -510,16 +539,45 @@ export function decodeCommandApiPayload(base64Json: string): CommandApiDecoded |
     const cmdName = cmdByte !== null
       ? (EWC_CMD_NAMES[cmdByte] ?? `Unknown (0x${cmdByte.toString(16)})`)
       : null;
-    let logNumber: number | undefined;
-    if (cmdByte === 0x52 && innerBytes.length >= 3) {
-      logNumber = uint16(innerBytes[1]!, innerBytes[2]!);
+
+    let args: CommandApiArgs | null = null;
+
+    if (cmdByte !== null) {
+      if ((cmdByte === 0x56 || cmdByte === 0x55) && innerBytes.length >= 5) {
+        // Valve ON / Tap Top-Up: CMD CR[4]
+        args = { kind: "credit", creditMits: uint32(innerBytes[1]!, innerBytes[2]!, innerBytes[3]!, innerBytes[4]!) };
+      } else if (cmdByte === 0x52 && innerBytes.length >= 3) {
+        // Read SPI Log: CMD DLH DLL
+        args = { kind: "read-log", logNumber: uint16(innerBytes[1]!, innerBytes[2]!) };
+      } else if (cmdByte === 0x43 && innerBytes.length >= 7) {
+        // Set Clock: CMD SS MM HH DD MN YY (BCD)
+        const ss = bcd(innerBytes[1]!), mm = bcd(innerBytes[2]!), hh = bcd(innerBytes[3]!);
+        const dd = bcd(innerBytes[4]!), mn = bcd(innerBytes[5]!), yy = bcd(innerBytes[6]!);
+        args = {
+          kind: "set-clock",
+          timeStr: `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:${String(ss).padStart(2,"0")} ${String(dd).padStart(2,"0")}/${String(mn).padStart(2,"0")}/${yy + 2000}`,
+        };
+      } else if ((cmdByte === 0x45 || cmdByte === 0x65) && innerBytes.length >= 2) {
+        // Read EEPROM / Read EEPROM Word: CMD ADR
+        args = { kind: "eeprom-read", addr: innerBytes[1]! };
+      } else if (cmdByte === 0x50 && innerBytes.length >= 3) {
+        // Write EEPROM: CMD ADR VAL
+        args = { kind: "eeprom-write", addr: innerBytes[1]!, value: innerBytes[2]! };
+      } else if (cmdByte === 0x70 && innerBytes.length >= 4) {
+        // Write EEPROM Word: CMD ADR HI LO
+        args = { kind: "eeprom-word-write", addr: innerBytes[1]!, value: uint16(innerBytes[2]!, innerBytes[3]!) };
+      } else if (cmdByte === 0x77 && innerBytes.length >= 3) {
+        // Write Log Pointer: CMD HI LO
+        args = { kind: "log-pointer-write", pointer: uint16(innerBytes[1]!, innerBytes[2]!) };
+      }
     }
+
     const rawInnerHex = innerBytes.map((b) => b.toString(16).padStart(2, "0")).join(" ");
     return {
       outgoingPipeline: (json["OutgoingPipeline"] as string) ?? null,
       priority: (json["Priority"] as string) ?? null,
       retry: (json["Retry"] as boolean) ?? false,
-      cmdByte, cmdName, logNumber, rawInnerHex,
+      cmdByte, cmdName, args, rawInnerHex,
     };
   } catch {
     return null;
