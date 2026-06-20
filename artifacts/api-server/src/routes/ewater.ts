@@ -990,7 +990,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
   const needsTodaySupp = days > 5;
 
   try {
-    const [tankRes, inflowRes, powerRes, todayTankRes, logsRes] = await Promise.allSettled([
+    const [tankRes, inflowRes, powerRes, todayTankRes, logsRes, settingsRes] = await Promise.allSettled([
       ewaterFetch("state", "/api/Asset/GetTankHeightHistoryByDateRange", {
         method: "POST",
         body: JSON.stringify({
@@ -1019,6 +1019,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         method: "POST",
         body: JSON.stringify({ assetId, startDate, endDate, pipeline: null }),
       }),
+      ewaterFetch("state", `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(assetId)}`),
     ]);
 
     // Parse tank height — merge historical (daily) + today (hourly) when needed
@@ -1093,7 +1094,23 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
       ? (logsOk!["logLines"] as Record<string, unknown>[])
       : [];
 
+    // Extract LCF (ticks-per-litre) from asset settings for flow rate calculation
+    const settingsOk = settingsRes.status === "fulfilled" && settingsRes.value.status === 200
+      ? (settingsRes.value.data as Record<string, unknown>)
+      : null;
+    const settingsInner = settingsOk?.["data"] as Record<string, unknown> | null | undefined;
+    const settingsList: Record<string, unknown>[] = Array.isArray(settingsInner?.["settings"])
+      ? (settingsInner!["settings"] as Record<string, unknown>[])
+      : Array.isArray(settingsOk?.["settings"])
+        ? (settingsOk!["settings"] as Record<string, unknown>[])
+        : [];
+    const lcfSetting = settingsList.find((x) => x["settingKey"] === "LitresConversion");
+    const lcfRaw = (lcfSetting?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
+    const lcf = lcfRaw != null && !isNaN(Number(lcfRaw)) ? Number(lcfRaw) : null;
+
     const voltageHistory: { time: string; value: number }[] = [];
+    const flowRateHistory: { time: string; flowRate: number; ticks: number; flowTimeSec: number }[] = [];
+
     for (const line of logLines) {
       const payload = strOrNull(line["payload"]);
       const time = strOrNull(line["timeReceived"]);
@@ -1101,18 +1118,36 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
       try {
         const bytes = Array.from(atob(payload), (c) => c.charCodeAt(0));
         if (bytes.length !== 39 || bytes[0] !== 0x44) continue;
+
+        // Battery voltage — byte[16]: volts = ADC / 256 × 15
         const adcRaw = bytes[16]!;
         const volts = Math.round((adcRaw / 256) * 15 * 100) / 100;
         voltageHistory.push({ time, value: volts });
+
+        // Flow rate — only from 0x09 (dispense) events with sufficient flow time.
+        // byte[5] = event type, byte[6] = ticks for this dispense, byte[7] = flow_time_sec.
+        // Filter: flow_time > 10 s and ticks > 0 to exclude noise and zero-flow events.
+        const eventType = bytes[5]!;
+        if (eventType === 0x09 && lcf != null && lcf > 0) {
+          const ticks = bytes[6]!;
+          const flowTimeSec = bytes[7]!;
+          if (flowTimeSec > 10 && ticks > 0) {
+            // flow_rate [L/min] = (ticks / lcf) / (flowTimeSec / 60)
+            const flowRate = Math.round((ticks / lcf) / (flowTimeSec / 60) * 1000) / 1000;
+            flowRateHistory.push({ time, flowRate, ticks, flowTimeSec });
+          }
+        }
       } catch { /* skip malformed */ }
     }
     voltageHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    flowRateHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
     res.json({
       tankHeight,
       dailyInflow,
       voltageHistory,
       voltageStatus,
+      flowRateHistory,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

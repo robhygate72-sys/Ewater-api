@@ -12,14 +12,17 @@ import {
   Line,
   BarChart,
   Bar,
+  ScatterChart,
+  Scatter,
   XAxis,
   YAxis,
+  ZAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge } from "lucide-react";
 
 interface LeakageRate {
   date: string;
@@ -210,7 +213,7 @@ function ChartSection({
   );
 }
 
-export function ESenseCharts({ assetId }: { assetId: string }) {
+export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; isEsense?: boolean }) {
   const [days, setDays] = useState(3);
 
   const { data, isLoading } = useGetESenseCharts(
@@ -286,84 +289,86 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
         </select>
       </div>
 
-      {/* Tank Height Chart */}
-      {isLoading ? (
-        <Skeleton className="h-52 w-full rounded-xl" />
-      ) : (
-        <ChartSection
-          title="Tank Height"
-          icon={<Droplets className="w-3.5 h-3.5" />}
-          isEmpty={!tankData.length}
-          emptyMessage="No tank height data for this period"
-        >
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart
-              data={tankData}
-              margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-              <XAxis
-                dataKey="ts"
-                type="number"
-                scale="time"
-                domain={[tankStartTs, tankEndTs]}
-                ticks={tankXTicks}
-                tickFormatter={(v) => formatAxisTs(v as number, days)}
-                tick={{ fontSize: 9, fill: tickColor }}
-              />
-              <YAxis
-                unit="m"
-                tick={{ fontSize: 9, fill: tickColor }}
-                width={48}
-                tickFormatter={(v) => Number(v).toFixed(2)}
-              />
-              <Tooltip
-                labelFormatter={(v) => formatTooltipTs(v as number)}
-                formatter={(value: unknown, name: string) => [
-                  value != null ? `${Number(value).toFixed(3)} m` : "—",
-                  name,
-                ]}
-                contentStyle={{
-                  fontSize: 11,
-                  background: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: 6,
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              {tankRefLines.map(({ ts, midnight }) => (
-                <ReferenceLine
-                  key={ts}
-                  x={ts}
-                  stroke={midnight ? midnightLineColor : refLineColor}
-                  strokeWidth={midnight ? 1.5 : 1}
-                  strokeDasharray={midnight ? "4 3" : "2 3"}
+      {/* Tank Height Chart — eSense only */}
+      {isEsense && (
+        isLoading ? (
+          <Skeleton className="h-52 w-full rounded-xl" />
+        ) : (
+          <ChartSection
+            title="Tank Height"
+            icon={<Droplets className="w-3.5 h-3.5" />}
+            isEmpty={!tankData.length}
+            emptyMessage="No tank height data for this period"
+          >
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart
+                data={tankData}
+                margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis
+                  dataKey="ts"
+                  type="number"
+                  scale="time"
+                  domain={[tankStartTs, tankEndTs]}
+                  ticks={tankXTicks}
+                  tickFormatter={(v) => formatAxisTs(v as number, days)}
+                  tick={{ fontSize: 9, fill: tickColor }}
                 />
-              ))}
-              <Line
-                type="monotone"
-                dataKey="waterTank"
-                stroke="#4D9DE0"
-                name="Water Tank (vsen1)"
-                dot={false}
-                strokeWidth={1.5}
-                connectNulls
-              />
-              {hasChlorine && (
+                <YAxis
+                  unit="m"
+                  tick={{ fontSize: 9, fill: tickColor }}
+                  width={48}
+                  tickFormatter={(v) => Number(v).toFixed(2)}
+                />
+                <Tooltip
+                  labelFormatter={(v) => formatTooltipTs(v as number)}
+                  formatter={(value: unknown, name: string) => [
+                    value != null ? `${Number(value).toFixed(3)} m` : "—",
+                    name,
+                  ]}
+                  contentStyle={{
+                    fontSize: 11,
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 6,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                {tankRefLines.map(({ ts, midnight }) => (
+                  <ReferenceLine
+                    key={ts}
+                    x={ts}
+                    stroke={midnight ? midnightLineColor : refLineColor}
+                    strokeWidth={midnight ? 1.5 : 1}
+                    strokeDasharray={midnight ? "4 3" : "2 3"}
+                  />
+                ))}
                 <Line
                   type="monotone"
-                  dataKey="chlorineTank"
-                  stroke="#3BB273"
-                  name="Chlorine Tank (vsen2)"
+                  dataKey="waterTank"
+                  stroke="#4D9DE0"
+                  name="Water Tank (vsen1)"
                   dot={false}
                   strokeWidth={1.5}
                   connectNulls
                 />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-          <LeakageAnalysis tankData={tankData} />
-        </ChartSection>
+                {hasChlorine && (
+                  <Line
+                    type="monotone"
+                    dataKey="chlorineTank"
+                    stroke="#3BB273"
+                    name="Chlorine Tank (vsen2)"
+                    dot={false}
+                    strokeWidth={1.5}
+                    connectNulls
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+            <LeakageAnalysis tankData={tankData} />
+          </ChartSection>
+        )
       )}
 
       {/* Water Usage */}
@@ -424,6 +429,148 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
         </ChartSection>
       )}
 
+      {/* Flow Rate */}
+      {isLoading ? (
+        <Skeleton className="h-52 w-full rounded-xl" />
+      ) : (
+        <FlowRateChart
+          data={data?.flowRateHistory ?? []}
+          days={days}
+          tickColor={tickColor}
+          gridColor={gridColor}
+        />
+      )}
+
     </div>
+  );
+}
+
+// ─── Flow Rate Chart ───────────────────────────────────────────────────────────
+
+interface FlowRatePoint {
+  time: string;
+  flowRate: number;
+  ticks: number;
+  flowTimeSec: number;
+}
+
+function FlowRateChart({
+  data,
+  days,
+  tickColor,
+  gridColor,
+}: {
+  data: FlowRatePoint[];
+  days: number;
+  tickColor: string;
+  gridColor: string;
+}) {
+  if (data.length === 0) {
+    return (
+      <ChartSection
+        title="Flow Rate"
+        icon={<Gauge className="w-3.5 h-3.5" />}
+        isEmpty
+        emptyMessage="No dispense events with flow_time > 10 s in this period"
+      >
+        {null}
+      </ChartSection>
+    );
+  }
+
+  // Convert to scatter-friendly format with numeric x (timestamp)
+  const scatterData = data.map((p) => ({
+    x: new Date(p.time).getTime(),
+    y: p.flowRate,
+    ticks: p.ticks,
+    flowTimeSec: p.flowTimeSec,
+  }));
+
+  const allRates = data.map((p) => p.flowRate);
+  const maxRate = Math.max(...allRates);
+  const avgRate = allRates.reduce((a, b) => a + b, 0) / allRates.length;
+
+  const xMin = scatterData[0]!.x;
+  const xMax = scatterData[scatterData.length - 1]!.x;
+
+  return (
+    <ChartSection
+      title="Flow Rate"
+      icon={<Gauge className="w-3.5 h-3.5" />}
+    >
+      {/* Summary stats */}
+      <div className="flex gap-4 px-2 mb-2">
+        <div className="text-center">
+          <p className="text-[10px] text-muted-foreground">Events</p>
+          <p className="text-xs font-semibold">{data.length}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-[10px] text-muted-foreground">Avg rate</p>
+          <p className="text-xs font-semibold">{avgRate.toFixed(2)} L/min</p>
+        </div>
+        <div className="text-center">
+          <p className="text-[10px] text-muted-foreground">Peak rate</p>
+          <p className="text-xs font-semibold text-blue-500">{maxRate.toFixed(2)} L/min</p>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={190}>
+        <ScatterChart margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+          <XAxis
+            dataKey="x"
+            type="number"
+            scale="time"
+            domain={[xMin, xMax]}
+            tickFormatter={(v) => formatAxisTs(v as number, days)}
+            tick={{ fontSize: 9, fill: tickColor }}
+            name="Time"
+          />
+          <YAxis
+            dataKey="y"
+            type="number"
+            unit=" L/m"
+            tick={{ fontSize: 9, fill: tickColor }}
+            width={56}
+            tickFormatter={(v) => Number(v).toFixed(2)}
+            domain={[0, "auto"]}
+            name="Flow rate"
+          />
+          <ZAxis range={[28, 28]} />
+          <Tooltip
+            cursor={{ strokeDasharray: "3 3" }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]!.payload as typeof scatterData[number];
+              return (
+                <div
+                  style={{
+                    fontSize: 11,
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                  }}
+                >
+                  <p className="font-medium">{formatTooltipTs(d.x)}</p>
+                  <p>{d.y.toFixed(3)} L/min</p>
+                  <p className="text-muted-foreground">{d.ticks} ticks · {d.flowTimeSec} s</p>
+                </div>
+              );
+            }}
+          />
+          <Scatter
+            data={scatterData}
+            fill="#4D9DE0"
+            opacity={0.75}
+            name="Flow rate"
+          />
+        </ScatterChart>
+      </ResponsiveContainer>
+
+      <p className="text-[10px] text-muted-foreground px-2 pt-1">
+        Each point = one dispense event decoded from DATALOG packet · filtered to flow_time &gt; 10 s
+      </p>
+    </ChartSection>
   );
 }

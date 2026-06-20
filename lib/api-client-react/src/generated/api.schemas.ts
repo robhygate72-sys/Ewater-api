@@ -290,6 +290,16 @@ export interface ESenseVoltagePoint {
   value: number;
 }
 
+export interface ESenseFlowRatePoint {
+  time: string;
+  /** Flow rate in litres per minute */
+  flowRate: number;
+  /** Raw flow meter tick count for this dispense event */
+  ticks: number;
+  /** Flow duration in seconds for this dispense event */
+  flowTimeSec: number;
+}
+
 export interface ESenseVoltageStatus {
   /** @nullable */
   current?: number | null;
@@ -308,6 +318,8 @@ export interface ESenseChartsData {
   dailyInflow: ESenseInflowDay[];
   voltageHistory: ESenseVoltagePoint[];
   voltageStatus?: ESenseVoltageStatus;
+  /** Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s) */
+  flowRateHistory: ESenseFlowRatePoint[];
 }
 
 export type ProxyInputBody = { [key: string]: unknown };

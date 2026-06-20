@@ -364,6 +364,8 @@ export default function AssetDetail() {
     : false;
 
   const isEsense = tech.purpose?.toLowerCase() === "esense";
+  const isCommunityTap = tech.purpose?.toLowerCase() === "communitytap";
+  const hasDatalogCharts = isEsense || isCommunityTap;
   const tamper = hasFlag(tech.healthFlags, "tamper") || (tech.tamperSwitchState != null && tech.tamperSwitchState !== "None" && tech.tamperSwitchState !== "");
   const lowBattery = hasFlag(tech.healthFlags, "lowbattery") || hasFlag(tech.healthFlags, "low battery");
   const hasAlerts = tamper || lowBattery || (tech.healthFlags && tech.healthFlags.toLowerCase() !== "none" && tech.healthFlags !== "");
@@ -490,9 +492,9 @@ export default function AssetDetail() {
           </div>
         )}
 
-        {/* eSense Charts */}
-        {isEsense && (
-          <ESenseCharts assetId={id} />
+        {/* DATALOG Charts (eSense + CommunityTap) */}
+        {hasDatalogCharts && (
+          <ESenseCharts assetId={id} isEsense={isEsense} />
         )}
 
         {/* Connectivity */}

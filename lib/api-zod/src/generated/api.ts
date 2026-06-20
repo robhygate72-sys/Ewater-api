@@ -299,7 +299,13 @@ export const GetESenseChartsResponse = zod.object({
   "todayLow": zod.number().nullish(),
   "todayAverage": zod.number().nullish(),
   "trend": zod.string().nullish()
-}).optional()
+}).optional(),
+  "flowRateHistory": zod.array(zod.object({
+  "time": zod.string(),
+  "flowRate": zod.number().describe('Flow rate in litres per minute'),
+  "ticks": zod.number().describe('Raw flow meter tick count for this dispense event'),
+  "flowTimeSec": zod.number().describe('Flow duration in seconds for this dispense event')
+})).describe('Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s)')
 })
 
 

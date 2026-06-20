@@ -696,6 +696,22 @@ components:
         value:
           type: number
 
+    ESenseFlowRatePoint:
+      type: object
+      required: [time, flowRate, ticks, flowTimeSec]
+      properties:
+        time:
+          type: string
+        flowRate:
+          type: number
+          description: Flow rate in litres per minute
+        ticks:
+          type: number
+          description: Raw flow meter tick count for this dispense event
+        flowTimeSec:
+          type: number
+          description: Flow duration in seconds for this dispense event
+
     ESenseVoltageStatus:
       type: object
       properties:
@@ -712,7 +728,7 @@ components:
 
     ESenseChartsData:
       type: object
-      required: [tankHeight, dailyInflow, voltageHistory]
+      required: [tankHeight, dailyInflow, voltageHistory, flowRateHistory]
       properties:
         tankHeight:
           type: array
@@ -728,6 +744,11 @@ components:
             $ref: "#/components/schemas/ESenseVoltagePoint"
         voltageStatus:
           $ref: "#/components/schemas/ESenseVoltageStatus"
+        flowRateHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/ESenseFlowRatePoint"
+          description: Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s)
 
     ProxyInput:
       type: object
