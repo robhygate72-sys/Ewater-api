@@ -10,7 +10,8 @@ import { FavouriteButton } from "@/components/FavouriteButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
+import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey, getGetAssetQueryOptions } from "@workspace/api-client-react";
+import { useQueries } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/lib/date";
 import { useState as useStateRef, useEffect, useRef } from "react";
 import { WatchlistMap } from "@/components/watchlist-map";
@@ -77,6 +78,18 @@ export default function Watchlist() {
 
   const assetMap = new Map((allAssets ?? []).map((a) => [a.id, a]));
   const isLoading = isLoadingFavs || isLoadingAssets;
+
+  // Fetch individual asset detail for map markers (gives real isOnline from connectivity API)
+  const mapAssetQueries = useQueries({
+    queries: mapOpen
+      ? favourites.map((fav) => getGetAssetQueryOptions(fav.assetId))
+      : [],
+  });
+  const mapDetailMap = new Map(
+    mapAssetQueries
+      .filter((q) => q.data)
+      .map((q) => [q.data!.id, q.data!]),
+  );
 
   function openCopySheet() {
     setSourceId(favourites[0]?.assetId ?? "");
@@ -283,14 +296,17 @@ export default function Watchlist() {
               <WatchlistMap
                 className="w-full h-full"
                 assets={favourites.map((fav) => {
-                  const asset = assetMap.get(fav.assetId);
+                  // Prefer individual detail (has real isOnline from connectivity API);
+                  // fall back to list data for location while detail is loading.
+                  const detail = mapDetailMap.get(fav.assetId);
+                  const listAsset = assetMap.get(fav.assetId);
                   return {
                     id: fav.assetId,
                     name: fav.assetName,
-                    location: asset?.location,
-                    isOnline: asset?.isOnline,
-                    waterSystemName: asset?.waterSystemName,
-                    rawData: (asset as any)?.rawData,
+                    location: detail?.location ?? listAsset?.location,
+                    isOnline: detail?.isOnline ?? null,
+                    waterSystemName: detail?.waterSystemName ?? listAsset?.waterSystemName,
+                    rawData: (detail as any)?.rawData ?? (listAsset as any)?.rawData,
                   };
                 })}
               />
