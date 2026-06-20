@@ -33,6 +33,7 @@ import type {
   GetDashboardParams,
   GetESenseChartsParams,
   HealthStatus,
+  MeterReadingResult,
   ProxyInput,
   ProxyResponse,
   TelemetryEntry
@@ -969,6 +970,83 @@ export function useGetESenseCharts<TData = Awaited<ReturnType<typeof getESenseCh
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetESenseChartsQueryOptions(assetId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssetMeterReadingUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/meter-reading`
+}
+
+/**
+ * @summary Get the latest tick-accumulator meter reading from HEALTH_STATE packets
+ */
+export const getAssetMeterReading = async (assetId: string, options?: RequestInit): Promise<MeterReadingResult> => {
+
+  return customFetch<MeterReadingResult>(getGetAssetMeterReadingUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssetMeterReadingQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/assets/${assetId}/meter-reading`
+    ] as const;
+    }
+
+
+export const getGetAssetMeterReadingQueryOptions = <TData = Awaited<ReturnType<typeof getAssetMeterReading>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetMeterReading>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssetMeterReadingQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssetMeterReading>>> = ({ signal }) => getAssetMeterReading(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssetMeterReading>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssetMeterReadingQueryResult = NonNullable<Awaited<ReturnType<typeof getAssetMeterReading>>>
+export type GetAssetMeterReadingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the latest tick-accumulator meter reading from HEALTH_STATE packets
+ */
+
+export function useGetAssetMeterReading<TData = Awaited<ReturnType<typeof getAssetMeterReading>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetMeterReading>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssetMeterReadingQueryOptions(assetId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

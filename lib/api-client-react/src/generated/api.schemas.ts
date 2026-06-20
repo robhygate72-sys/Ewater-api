@@ -13,6 +13,19 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface MeterReadingResult {
+  /** Raw ECR tick accumulator from latest HEALTH_STATE packet */
+  ticks?: number | null;
+  /** Ticks per litre (LCF) from the packet */
+  lcf?: number | null;
+  /** Computed litres (ticks / LCF) */
+  litres?: number | null;
+  /** ISO timestamp of the HEALTH_STATE packet */
+  timestamp?: string | null;
+  /** False when no HEALTH_STATE packet found in last 14 days */
+  found: boolean;
+}
+
 export interface FlowRateResult {
   /** Most recent flow rate in L/min (null if none found) */
   flowRate?: number | null;

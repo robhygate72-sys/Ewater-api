@@ -310,6 +310,22 @@ export const GetESenseChartsResponse = zod.object({
 
 
 /**
+ * @summary Get the latest tick-accumulator meter reading from HEALTH_STATE packets
+ */
+export const GetAssetMeterReadingParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetAssetMeterReadingResponse = zod.object({
+  "ticks": zod.number().nullish().describe('Raw ECR tick accumulator from latest HEALTH_STATE packet'),
+  "lcf": zod.number().nullish().describe('Ticks per litre (LCF) from the packet'),
+  "litres": zod.number().nullish().describe('Computed litres (ticks \/ LCF)'),
+  "timestamp": zod.string().nullish().describe('ISO timestamp of the HEALTH_STATE packet'),
+  "found": zod.boolean().describe('False when no HEALTH_STATE packet found in last 14 days')
+})
+
+
+/**
  * @summary Get most recent valid flow rate (L/min) from last 24 hours of EWC logs
  */
 export const GetAssetFlowRateParams = zod.object({

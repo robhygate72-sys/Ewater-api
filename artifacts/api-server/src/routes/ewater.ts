@@ -1264,6 +1264,75 @@ function healthRatingIsFault(rating: string | null): boolean | null {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
+// Meter reading — ECR tick accumulator from latest HEALTH_STATE (0x19) packet
+// GET /api/ewater/assets/:assetId/meter-reading
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/meter-reading", async (req, res): Promise<void> => {
+  const assetId = req.params["assetId"];
+  if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const endDate   = new Date();
+  const startDate = new Date(endDate.getTime() - 14 * 24 * 3600 * 1000); // 14 days
+
+  try {
+    const result = await ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+      method: "POST",
+      body: JSON.stringify({
+        assetId: Number(assetId),
+        startDate: startDate.toISOString(),
+        endDate:   endDate.toISOString(),
+        pipeline:  null,
+      }),
+    });
+
+    if (result.status !== 200) {
+      res.json({ ticks: null, lcf: null, litres: null, timestamp: null, found: false });
+      return;
+    }
+
+    const body  = result.data as Record<string, unknown>;
+    const lines = Array.isArray(body["logLines"])
+      ? (body["logLines"] as Record<string, unknown>[])
+      : [];
+
+    // Sort descending — pick the most recent HEALTH_STATE packet
+    lines.sort((a, b) =>
+      new Date(String(b["timeReceived"] ?? 0)).getTime() -
+      new Date(String(a["timeReceived"] ?? 0)).getTime()
+    );
+
+    for (const line of lines) {
+      const payload = strOrNull(line["payload"]);
+      const time    = strOrNull(line["timeReceived"]);
+      if (!payload || !time) continue;
+      try {
+        const bytes = Array.from(atob(payload), (c) => c.charCodeAt(0));
+        if (bytes.length !== 39 || bytes[0] !== 0x44) continue;
+        if (bytes[5] !== 0x19) continue; // only HEALTH_STATE packets
+
+        // ECR (bytes[24–27] MSB-first) = tick accumulator in health packets
+        const ticks = bytes[24]! * 16777216 + bytes[25]! * 65536 + bytes[26]! * 256 + bytes[27]!;
+        // LCF from bytes[33–34]
+        const lcf = bytes[33]! * 256 + bytes[34]!;
+        const effectiveLcf = lcf > 0 ? lcf : 360;
+        const litres = Math.round((ticks / effectiveLcf) * 10) / 10;
+
+        res.json({ ticks, lcf: effectiveLcf, litres, timestamp: time, found: true });
+        return;
+      } catch { /* skip malformed */ }
+    }
+
+    res.json({ ticks: null, lcf: null, litres: null, timestamp: null, found: false });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch meter reading");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Most recent flow rate from last 24 h of EWC logs
 // GET /api/ewater/assets/:assetId/flow-rate
 // ---------------------------------------------------------------------------

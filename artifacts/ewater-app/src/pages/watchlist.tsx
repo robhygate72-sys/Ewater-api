@@ -10,11 +10,12 @@ import { FavouriteButton } from "@/components/FavouriteButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey, getGetAssetQueryOptions, getGetAssetFlowRateQueryOptions } from "@workspace/api-client-react";
+import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey, getGetAssetQueryOptions, getGetAssetFlowRateQueryOptions, getGetAssetMeterReadingQueryOptions } from "@workspace/api-client-react";
 import { useQueries } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/lib/date";
 import { useState as useStateRef, useEffect, useRef } from "react";
 import { WatchlistMap } from "@/components/watchlist-map";
+import { WaterMeter } from "@/components/water-meter";
 
 function hasFlag(flags: string | null | undefined, flag: string) {
   if (!flags) return false;
@@ -102,6 +103,17 @@ export default function Watchlist() {
   });
   const flowRateMap = new Map(
     favourites.map((fav, i) => [fav.assetId, flowRateQueries[i]?.data ?? null]),
+  );
+
+  // Meter reading (ECR tick accumulator from HEALTH_STATE packets)
+  const meterQueries = useQueries({
+    queries: favourites.map((fav) => ({
+      ...getGetAssetMeterReadingQueryOptions(fav.assetId),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+  const meterMap = new Map(
+    favourites.map((fav, i) => [fav.assetId, { data: meterQueries[i]?.data ?? null, isLoading: meterQueries[i]?.isLoading ?? false }]),
   );
 
   function openCopySheet() {
@@ -219,6 +231,11 @@ export default function Watchlist() {
               const flowRate  = flowResult?.flowRate ?? null;
               const flowTimedOut = flowResult?.timedOut ?? false;
 
+              // Meter reading (tick accumulator from health packets)
+              const meterEntry = meterMap.get(fav.assetId);
+              const meterData    = meterEntry?.data ?? null;
+              const meterLoading = meterEntry?.isLoading ?? false;
+
               // Health flags for tamper / low battery badges (from list rawData until detail loads)
               const rawFlags = (detail?.rawData as any)?.healthFlags ?? (listAsset?.rawData as any)?.healthFlags;
               const tamper     = hasFlag(rawFlags, "tamper");
@@ -265,8 +282,17 @@ export default function Watchlist() {
                           </div>
                         </div>
 
+                        {/* Water meter dial */}
+                        <div className="flex justify-center mt-1 mb-0">
+                          <WaterMeter
+                            litres={meterData?.litres ?? null}
+                            loading={meterLoading}
+                            found={meterData?.found ?? false}
+                          />
+                        </div>
+
                         {/* Three metrics row */}
-                        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                        <div className="grid grid-cols-3 gap-1.5 mt-1">
                           {/* Status */}
                           <div className="flex flex-col gap-0.5">
                             <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">Status</span>
