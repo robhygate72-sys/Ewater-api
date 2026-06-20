@@ -4,7 +4,7 @@ import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
-import { Star, ChevronRight, Battery, Droplet, ShieldAlert, Zap, TrendingDown, CircleDollarSign, ClipboardCopy, Check } from "lucide-react";
+import { Star, ChevronRight, Battery, Droplet, ShieldAlert, Zap, TrendingDown, CircleDollarSign, ClipboardCopy, Check, Map as MapIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
 import { formatTimeAgo } from "@/lib/date";
 import { useState as useStateRef, useEffect, useRef } from "react";
+import { WatchlistMap } from "@/components/watchlist-map";
 
 function hasFlag(flags: string | null | undefined, flag: string) {
   if (!flags) return false;
@@ -67,6 +68,7 @@ export default function Watchlist() {
   const { favourites, isLoading: isLoadingFavs } = useFavourites();
   const { data: allAssets, isLoading: isLoadingAssets } = useListAssets();
 
+  const [mapOpen, setMapOpen] = useState(false);
   const [copySheetOpen, setCopySheetOpen] = useState(false);
   const [sourceId, setSourceId] = useState<string>("");
   const [targetIds, setTargetIds] = useState<Set<string>>(new Set());
@@ -122,15 +124,26 @@ export default function Watchlist() {
     <Layout
       title="Watchlist"
       headerActions={
-        favourites.length >= 2 ? (
-          <button
-            onClick={openCopySheet}
-            className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors text-primary-foreground"
-            title="Copy alert settings to multiple assets"
-          >
-            <ClipboardCopy className="w-5 h-5" />
-          </button>
-        ) : undefined
+        <div className="flex items-center gap-1">
+          {favourites.length > 0 && (
+            <button
+              onClick={() => setMapOpen(true)}
+              className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors text-primary-foreground"
+              title="Map view"
+            >
+              <MapIcon className="w-5 h-5" />
+            </button>
+          )}
+          {favourites.length >= 2 && (
+            <button
+              onClick={openCopySheet}
+              className="p-2 rounded-full hover:bg-primary-foreground/10 transition-colors text-primary-foreground"
+              title="Copy alert settings to multiple assets"
+            >
+              <ClipboardCopy className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       }
     >
       <div className="space-y-3">
@@ -255,6 +268,36 @@ export default function Watchlist() {
           </>
         )}
       </div>
+
+      {/* Map sheet */}
+      <Sheet open={mapOpen} onOpenChange={setMapOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl h-[85dvh] flex flex-col p-0">
+          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+            <SheetTitle className="flex items-center gap-2">
+              <MapIcon className="w-4 h-4 text-primary" />
+              Watchlist Map
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 px-4 pb-4 min-h-0">
+            {mapOpen && (
+              <WatchlistMap
+                className="w-full h-full"
+                assets={favourites.map((fav) => {
+                  const asset = assetMap.get(fav.assetId);
+                  return {
+                    id: fav.assetId,
+                    name: fav.assetName,
+                    location: asset?.location,
+                    isOnline: asset?.isOnline,
+                    waterSystemName: asset?.waterSystemName,
+                    rawData: (asset as any)?.rawData,
+                  };
+                })}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Copy alert settings sheet */}
       <Sheet open={copySheetOpen} onOpenChange={setCopySheetOpen}>
