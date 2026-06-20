@@ -1111,6 +1111,18 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     const voltageHistory: { time: string; value: number }[] = [];
     const flowRateHistory: { time: string; flowRate: number; ticks: number; flowTimeSec: number }[] = [];
 
+    // Collect dispense-type DATALOG packets for flow rate calculation.
+    // FCC at bytes[6–8] is a cumulative uint24 LE tick counter shared across event types.
+    // 0x19 (eSense periodic) is excluded because it advances the counter at a background timer
+    // rate (not proportional to water flow), which produces spurious ΔFCC spikes.
+    // Per-event ticks = ΔFCC between consecutive dispense packets (sorted by time).
+    // FT  at bytes[9–10] = uint16 LE = dispense period in seconds.
+    // Formula: flow_rate [L/min] = 60 × ΔFCC / (LCF × FT)
+    // Filter: FT > 10 s only — no other filtering.
+    const PERIODIC_EVENT_TYPES = new Set([0x19]); // eSense periodic — not a dispense event
+    type RawDatalog = { time: string; tsMs: number; fcc: number; ft: number };
+    const rawDatalog: RawDatalog[] = [];
+
     for (const line of logLines) {
       const payload = strOrNull(line["payload"]);
       const time = strOrNull(line["timeReceived"]);
@@ -1124,23 +1136,36 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         const volts = Math.round((adcRaw / 256) * 15 * 100) / 100;
         voltageHistory.push({ time, value: volts });
 
-        // Flow rate — all DATALOG event types that carry FCC and FT.
-        // FCC = uint24 LE at bytes[6–8] (3 bytes, cumulative flow count).
-        // FT  = uint16 LE at bytes[9–10] (2 bytes, flow time in seconds).
-        // Formula: flow_rate = 60 * FCC / LCF  (filter: FT > 10 s only).
-        if (lcf != null && lcf > 0) {
+        const eventType = bytes[5]!;
+        if (lcf != null && lcf > 0 && !PERIODIC_EVENT_TYPES.has(eventType)) {
           const fcc = bytes[6]! + bytes[7]! * 256 + bytes[8]! * 65536;
           const ft  = bytes[9]! + bytes[10]! * 256;
-          if (ft > 10) {
-            const flowRate = Math.round((60 * fcc / lcf) * 1000) / 1000;
-            flowRateHistory.push({ time, flowRate, ticks: fcc, flowTimeSec: ft });
-          }
+          rawDatalog.push({ time, tsMs: new Date(time).getTime(), fcc, ft });
         }
       } catch { /* skip malformed */ }
     }
 
+    // Sort by server-received timestamp, then compute per-event flow rates from ΔFCC.
+    rawDatalog.sort((a, b) => a.tsMs - b.tsMs);
+
+    const FCC_MAX = 1 << 24; // uint24 rollover boundary
+    for (let i = 1; i < rawDatalog.length; i++) {
+      const prev = rawDatalog[i - 1]!;
+      const curr = rawDatalog[i]!;
+
+      // Per-event ticks = ΔFCC with uint24 rollover handling.
+      let deltaTicks = curr.fcc - prev.fcc;
+      if (deltaTicks < 0) deltaTicks += FCC_MAX;
+
+      // Filter: FT > 10 s. No other filtering.
+      if (curr.ft > 10 && deltaTicks > 0) {
+        const flowRate = Math.round((60 * deltaTicks / (lcf! * curr.ft)) * 1000) / 1000;
+        flowRateHistory.push({ time: curr.time, flowRate, ticks: deltaTicks, flowTimeSec: curr.ft });
+      }
+    }
+
     voltageHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-    flowRateHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    // flowRateHistory is already in time order (derived from sorted rawDatalog).
 
     res.json({
       tankHeight,

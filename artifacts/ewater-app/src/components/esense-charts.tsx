@@ -569,7 +569,7 @@ function FlowRateChart({
       </ResponsiveContainer>
 
       <p className="text-[10px] text-muted-foreground px-2 pt-1">
-        flow_rate = 60 × FCC / LCF · all DATALOG event types · filtered to FT &gt; 10 s
+        flow_rate = 60 × ΔFCC / (LCF × FT) · dispense events · FT &gt; 10 s
       </p>
     </ChartSection>
   );
