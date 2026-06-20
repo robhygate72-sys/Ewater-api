@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/layout";
 import { ESenseCharts } from "@/components/esense-charts";
+import { BatteryPanel } from "@/components/battery-panel";
 import { useGetAssetTech, getGetAssetTechQueryKey } from "@workspace/api-client-react";
 import { AssetLogs } from "@/components/asset-logs";
 import { useRoute } from "wouter";
@@ -362,6 +363,7 @@ export default function AssetDetail() {
     ? Date.now() - new Date(tech.lastCommsDt).getTime() < 48 * 3600 * 1000
     : false;
 
+  const isEsense = tech.purpose?.toLowerCase() === "esense";
   const tamper = hasFlag(tech.healthFlags, "tamper") || (tech.tamperSwitchState != null && tech.tamperSwitchState !== "None" && tech.tamperSwitchState !== "");
   const lowBattery = hasFlag(tech.healthFlags, "lowbattery") || hasFlag(tech.healthFlags, "low battery");
   const hasAlerts = tamper || lowBattery || (tech.healthFlags && tech.healthFlags.toLowerCase() !== "none" && tech.healthFlags !== "");
@@ -489,7 +491,7 @@ export default function AssetDetail() {
         )}
 
         {/* eSense Charts */}
-        {tech.purpose?.toLowerCase() === "esense" && (
+        {isEsense && (
           <ESenseCharts assetId={id} />
         )}
 
@@ -503,41 +505,7 @@ export default function AssetDetail() {
         </SectionCard>
 
         {/* Battery */}
-        <SectionCard title="Battery" icon={<Battery className="w-3.5 h-3.5" />}>
-          <div className="py-3 flex items-center justify-between">
-            <div>
-              <span className="text-3xl font-bold font-mono">
-                {tech.batteryVoltage != null ? `${tech.batteryVoltage}V` : "—"}
-              </span>
-              {tech.batteryTrend && (
-                <span className="ml-2 text-xs text-muted-foreground">{tech.batteryTrend}</span>
-              )}
-            </div>
-            {tech.batteryTrend && <TrendIcon trend={tech.batteryTrend} />}
-          </div>
-          {(tech.batteryTodayHigh != null || tech.batteryTodayLow != null) && (
-            <div className="flex gap-4 mb-2 bg-muted/40 rounded-lg px-3 py-2">
-              <div>
-                <span className="text-[10px] text-muted-foreground block">Today high</span>
-                <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                  {tech.batteryTodayHigh != null ? `${tech.batteryTodayHigh}V` : "—"}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block">Today low</span>
-                <span className="text-xs font-mono font-medium text-amber-600 dark:text-amber-400">
-                  {tech.batteryTodayLow != null ? `${tech.batteryTodayLow}V` : "—"}
-                </span>
-              </div>
-              {tech.lowBatteryEventCount != null && (
-                <div>
-                  <span className="text-[10px] text-muted-foreground block">Low events</span>
-                  <span className="text-xs font-mono font-medium">{tech.lowBatteryEventCount}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </SectionCard>
+        <BatteryPanel assetId={id} isEsense={isEsense} tech={tech} />
 
         {/* Usage */}
         <SectionCard title="Water Usage" icon={<Droplet className="w-3.5 h-3.5" />}>

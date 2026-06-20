@@ -19,7 +19,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Activity, Droplets, Zap, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface LeakageRate {
   date: string;
@@ -260,29 +260,6 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
     })
     .map((p) => p.date);
 
-  const voltagePoints = (data?.voltageHistory ?? []).map((p) => ({
-    ts: new Date(p.time).getTime(),
-    voltage: p.value,
-  }));
-  const voltStartTs = voltagePoints[0]?.ts ?? Date.now() - days * 86400000;
-  const voltEndTs = voltagePoints[voltagePoints.length - 1]?.ts ?? Date.now();
-  const voltageRefLines = days < 30 ? getHourRefTimes(voltStartTs, voltEndTs) : [];
-  const voltages = voltagePoints.map((p) => p.voltage);
-  const voltageMin = voltages.length
-    ? Math.floor(Math.min(...voltages) - 0.3)
-    : 0;
-  const voltageMax = voltages.length
-    ? Math.ceil(Math.max(...voltages) + 0.3)
-    : 20;
-  const voltXTicks = voltagePoints
-    .filter((_, i, arr) => {
-      if (arr.length <= 12) return true;
-      const step = Math.ceil(arr.length / 8);
-      return i % step === 0;
-    })
-    .map((p) => p.ts);
-  const vs = data?.voltageStatus;
-
   return (
     <div className="space-y-3">
       {/* Header + range selector */}
@@ -447,92 +424,6 @@ export function ESenseCharts({ assetId }: { assetId: string }) {
         </ChartSection>
       )}
 
-      {/* Battery Voltage — decoded from DATALOG packets */}
-      {isLoading ? (
-        <Skeleton className="h-52 w-full rounded-xl" />
-      ) : (
-        <ChartSection
-          title="Battery Voltage"
-          icon={<Zap className="w-3.5 h-3.5" />}
-          isEmpty={voltagePoints.length === 0}
-          emptyMessage="No voltage data for this period"
-        >
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart
-              data={voltagePoints}
-              margin={{ top: 4, right: 8, left: -12, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-              <XAxis
-                dataKey="ts"
-                type="number"
-                scale="time"
-                domain={[voltStartTs, voltEndTs]}
-                ticks={voltXTicks}
-                tickFormatter={(v) => formatAxisTs(v as number, days)}
-                tick={{ fontSize: 9, fill: tickColor }}
-              />
-              <YAxis
-                unit="V"
-                domain={[voltageMin, voltageMax]}
-                tick={{ fontSize: 9, fill: tickColor }}
-                width={44}
-                tickFormatter={(v) => Number(v).toFixed(1)}
-              />
-              <Tooltip
-                labelFormatter={(v) => formatTooltipTs(v as number)}
-                formatter={(value: unknown) => [
-                  value != null ? `${Number(value).toFixed(2)} V` : "—",
-                  "Voltage",
-                ]}
-                contentStyle={{
-                  fontSize: 11,
-                  background: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: 6,
-                }}
-              />
-              {voltageRefLines.map(({ ts, midnight }) => (
-                <ReferenceLine
-                  key={ts}
-                  x={ts}
-                  stroke={midnight ? midnightLineColor : refLineColor}
-                  strokeWidth={midnight ? 1.5 : 1}
-                  strokeDasharray={midnight ? "4 3" : "2 3"}
-                />
-              ))}
-              <Line
-                type="monotone"
-                dataKey="voltage"
-                stroke="#F5A623"
-                name="Voltage"
-                dot={false}
-                strokeWidth={1.5}
-                connectNulls
-              />
-            </LineChart>
-          </ResponsiveContainer>
-          {vs && (
-            <div className="flex gap-4 justify-center mt-2 flex-wrap">
-              {vs.todayLow != null && (
-                <span className="text-[10px] text-muted-foreground">
-                  Today low: <span className="font-mono font-medium text-amber-600 dark:text-amber-400">{vs.todayLow.toFixed(2)} V</span>
-                </span>
-              )}
-              {vs.todayHigh != null && (
-                <span className="text-[10px] text-muted-foreground">
-                  high: <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{vs.todayHigh.toFixed(2)} V</span>
-                </span>
-              )}
-              {vs.current != null && (
-                <span className="text-[10px] text-muted-foreground">
-                  current: <span className="font-mono font-medium">{vs.current.toFixed(2)} V</span>
-                </span>
-              )}
-            </div>
-          )}
-        </ChartSection>
-      )}
     </div>
   );
 }
