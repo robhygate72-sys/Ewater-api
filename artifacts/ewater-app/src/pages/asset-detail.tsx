@@ -505,7 +505,7 @@ export default function AssetDetail() {
         </SectionCard>
 
         {/* Battery */}
-        <BatteryPanel assetId={id} isEsense={isEsense} tech={tech} />
+        <BatteryPanel assetId={id} tech={tech} />
 
         {/* Usage */}
         <SectionCard title="Water Usage" icon={<Droplet className="w-3.5 h-3.5" />}>

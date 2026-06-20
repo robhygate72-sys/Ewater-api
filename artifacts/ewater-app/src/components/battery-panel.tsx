@@ -311,11 +311,9 @@ const RANGE_OPTIONS = [
 
 export function BatteryPanel({
   assetId,
-  isEsense,
   tech,
 }: {
   assetId: string;
-  isEsense: boolean;
   tech: TechBattery;
 }) {
   const [days, setDays] = useState(7);
@@ -326,7 +324,6 @@ export function BatteryPanel({
     { days },
     {
       query: {
-        enabled: isEsense,
         queryKey: [...getGetESenseChartsQueryKey(assetId, { days }), days],
         staleTime: 0,
         refetchOnMount: "always",
@@ -364,7 +361,6 @@ export function BatteryPanel({
   const refLineColor = "hsl(var(--muted-foreground) / 0.35)";
   const midnightLineColor = "#6366f1";
 
-  const hasChart = isEsense;
   const { batteryVoltage, batteryTrend, batteryTodayHigh, batteryTodayLow, lowBatteryEventCount } = tech;
 
   function TrendIconInline({ trend }: { trend: string | null | undefined }) {
@@ -383,7 +379,7 @@ export function BatteryPanel({
             <Battery className="w-3.5 h-3.5" />
             Battery
             <div className="flex-1" />
-            {(data != null || !isEsense) && (
+            {data != null && (
               <HealthBadge health={health} onClick={() => setHealthDialogOpen(true)} />
             )}
           </CardTitle>
@@ -427,9 +423,8 @@ export function BatteryPanel({
             </div>
           )}
 
-          {/* Voltage chart — eSense only */}
-          {hasChart && (
-            <div className="mt-2 mb-3">
+          {/* Voltage chart */}
+          <div className="mt-2 mb-3">
               {/* Range selector */}
               <div className="flex items-center gap-1 mb-2 flex-wrap">
                 {RANGE_OPTIONS.map((opt) => (
@@ -543,7 +538,6 @@ export function BatteryPanel({
                 </>
               )}
             </div>
-          )}
 
         </CardContent>
       </Card>
