@@ -471,7 +471,7 @@ function FlowRateChart({
         title="Flow Rate"
         icon={<Gauge className="w-3.5 h-3.5" />}
         isEmpty
-        emptyMessage="No dispense events with flow_time > 10 s in this period"
+        emptyMessage="No DATALOG packets with FT > 10 s in this period"
       >
         {null}
       </ChartSection>
@@ -569,7 +569,7 @@ function FlowRateChart({
       </ResponsiveContainer>
 
       <p className="text-[10px] text-muted-foreground px-2 pt-1">
-        Each point = one dispense event · ΔFCC (uint24) ticks ÷ LCF ÷ FT (uint16 s) · filtered to FT &gt; 10 s
+        flow_rate = 60 × FCC / LCF · all DATALOG event types · filtered to FT &gt; 10 s
       </p>
     </ChartSection>
   );
