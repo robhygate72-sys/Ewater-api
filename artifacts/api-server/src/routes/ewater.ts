@@ -1265,6 +1265,48 @@ function healthRatingIsFault(rating: string | null): boolean | null {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Meter reading — ECR tick accumulator from latest HEALTH_STATE (0x19) packet
+// POST /api/ewater/assets/:assetId/reset-meter
+// Converts litres → ticks using provided LCF and calls /api/Ewc/ResetTickAccumulator
+// ---------------------------------------------------------------------------
+
+router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<void> => {
+  const assetId = req.params["assetId"];
+  if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const { litres, lcf } = req.body as { litres?: unknown; lcf?: unknown };
+  if (typeof litres !== "number" || litres < 0) {
+    res.status(400).json({ error: "litres must be a non-negative number" }); return;
+  }
+  if (typeof lcf !== "number" || lcf <= 0) {
+    res.status(400).json({ error: "lcf must be a positive number" }); return;
+  }
+
+  const ticks = Math.round(litres * lcf);
+
+  try {
+    const result = await ewaterFetch("command", "/api/Ewc/ResetTickAccumulator", {
+      method: "POST",
+      body: JSON.stringify({ assetId: Number(assetId), newValue: ticks }),
+    });
+
+    if (result.status >= 200 && result.status < 300) {
+      res.json({ ticks, litres, success: true, error: null });
+    } else {
+      const errMsg = typeof result.data === "object" && result.data !== null
+        ? JSON.stringify(result.data)
+        : String(result.data ?? result.status);
+      req.log.warn({ assetId, ticks, status: result.status }, "ResetTickAccumulator non-success");
+      res.json({ ticks, litres, success: false, error: errMsg });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to reset tick accumulator");
+    res.status(502).json({ error: `eWater command error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/ewater/assets/:assetId/meter-reading
 // ---------------------------------------------------------------------------
 

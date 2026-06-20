@@ -317,6 +317,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/reset-meter:
+    post:
+      operationId: resetAssetMeter
+      tags: [ewater]
+      summary: Reset the tick accumulator to a given litre value via eWater command API
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetMeterBody"
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetMeterResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/assets/{assetId}/flow-rate:
     get:
       operationId: getAssetFlowRate
@@ -388,6 +425,33 @@ components:
       properties:
         error:
           type: string
+
+    ResetMeterBody:
+      type: object
+      required: [litres, lcf]
+      properties:
+        litres:
+          type: number
+          description: Target meter reading in litres
+        lcf:
+          type: number
+          description: Ticks per litre (LCF) used to convert litres to ticks
+
+    ResetMeterResult:
+      type: object
+      required: [ticks, litres, success]
+      properties:
+        ticks:
+          type: number
+          description: Tick value sent to the device
+        litres:
+          type: number
+          description: Litre value set
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
 
     MeterReadingResult:
       type: object

@@ -13,6 +13,22 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface ResetMeterBody {
+  /** Target meter reading in litres */
+  litres: number;
+  /** Ticks per litre (LCF) used to convert litres to ticks */
+  lcf: number;
+}
+
+export interface ResetMeterResult {
+  /** Tick value sent to the device */
+  ticks: number;
+  /** Litre value set */
+  litres: number;
+  success: boolean;
+  error?: string | null;
+}
+
 export interface MeterReadingResult {
   /** Raw ECR tick accumulator from latest HEALTH_STATE packet */
   ticks?: number | null;

@@ -36,6 +36,8 @@ import type {
   MeterReadingResult,
   ProxyInput,
   ProxyResponse,
+  ResetMeterBody,
+  ResetMeterResult,
   TelemetryEntry
 } from './api.schemas';
 
@@ -1058,6 +1060,78 @@ export function useGetAssetMeterReading<TData = Awaited<ReturnType<typeof getAss
 
 
 
+
+export const getResetAssetMeterUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/reset-meter`
+}
+
+/**
+ * @summary Reset the tick accumulator to a given litre value via eWater command API
+ */
+export const resetAssetMeter = async (assetId: string,
+    resetMeterBody: ResetMeterBody, options?: RequestInit): Promise<ResetMeterResult> => {
+
+  return customFetch<ResetMeterResult>(getResetAssetMeterUrl(assetId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      resetMeterBody,)
+  }
+);}
+
+
+
+
+export const getResetAssetMeterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAssetMeter>>, TError,{assetId: string;data: BodyType<ResetMeterBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetAssetMeter>>, TError,{assetId: string;data: BodyType<ResetMeterBody>}, TContext> => {
+
+const mutationKey = ['resetAssetMeter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetAssetMeter>>, {assetId: string;data: BodyType<ResetMeterBody>}> = (props) => {
+          const {assetId,data} = props ?? {};
+
+          return  resetAssetMeter(assetId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetAssetMeterMutationResult = NonNullable<Awaited<ReturnType<typeof resetAssetMeter>>>
+    export type ResetAssetMeterMutationBody = BodyType<ResetMeterBody>
+    export type ResetAssetMeterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reset the tick accumulator to a given litre value via eWater command API
+ */
+export const useResetAssetMeter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAssetMeter>>, TError,{assetId: string;data: BodyType<ResetMeterBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetAssetMeter>>,
+        TError,
+        {assetId: string;data: BodyType<ResetMeterBody>},
+        TContext
+      > => {
+      return useMutation(getResetAssetMeterMutationOptions(options));
+    }
 
 export const getGetAssetFlowRateUrl = (assetId: string,) => {
 

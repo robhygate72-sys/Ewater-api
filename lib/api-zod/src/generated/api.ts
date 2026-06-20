@@ -326,6 +326,26 @@ export const GetAssetMeterReadingResponse = zod.object({
 
 
 /**
+ * @summary Reset the tick accumulator to a given litre value via eWater command API
+ */
+export const ResetAssetMeterParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const ResetAssetMeterBody = zod.object({
+  "litres": zod.number().describe('Target meter reading in litres'),
+  "lcf": zod.number().describe('Ticks per litre (LCF) used to convert litres to ticks')
+})
+
+export const ResetAssetMeterResponse = zod.object({
+  "ticks": zod.number().describe('Tick value sent to the device'),
+  "litres": zod.number().describe('Litre value set'),
+  "success": zod.boolean(),
+  "error": zod.string().nullish()
+})
+
+
+/**
  * @summary Get most recent valid flow rate (L/min) from last 24 hours of EWC logs
  */
 export const GetAssetFlowRateParams = zod.object({
