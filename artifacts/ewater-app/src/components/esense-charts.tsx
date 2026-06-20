@@ -569,7 +569,7 @@ function FlowRateChart({
       </ResponsiveContainer>
 
       <p className="text-[10px] text-muted-foreground px-2 pt-1">
-        Each point = one dispense event decoded from DATALOG packet · filtered to flow_time &gt; 10 s
+        Each point = one dispense event · ΔFCC (uint24) ticks ÷ LCF ÷ FT (uint16 s) · filtered to FT &gt; 10 s
       </p>
     </ChartSection>
   );
