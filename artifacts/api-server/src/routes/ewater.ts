@@ -1263,6 +1263,81 @@ function healthRatingIsFault(rating: string | null): boolean | null {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Most recent flow rate from last 24 h of EWC logs
+// GET /api/ewater/assets/:assetId/flow-rate
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/flow-rate", async (req, res): Promise<void> => {
+  const assetId = req.params["assetId"];
+  if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const endDate   = new Date();
+  const startDate = new Date(endDate.getTime() - 24 * 3600 * 1000);
+
+  try {
+    const result = await ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+      method: "POST",
+      body: JSON.stringify({
+        assetId: Number(assetId),
+        startDate: startDate.toISOString(),
+        endDate:   endDate.toISOString(),
+        pipeline:  null,
+      }),
+    });
+
+    if (result.status !== 200) {
+      res.json({ flowRate: null, timestamp: null, timedOut: true });
+      return;
+    }
+
+    const body  = result.data as Record<string, unknown>;
+    const lines = Array.isArray(body["logLines"])
+      ? (body["logLines"] as Record<string, unknown>[])
+      : [];
+
+    // Sort descending (most recent first)
+    lines.sort((a, b) =>
+      new Date(String(b["timeReceived"] ?? 0)).getTime() -
+      new Date(String(a["timeReceived"] ?? 0)).getTime()
+    );
+
+    const DISPENSE_EVENTS = new Set([0x09, 0x0b]);
+
+    for (const line of lines) {
+      const payload = strOrNull(line["payload"]);
+      const time    = strOrNull(line["timeReceived"]);
+      if (!payload || !time) continue;
+      try {
+        const bytes = Array.from(atob(payload), (c) => c.charCodeAt(0));
+        if (bytes.length !== 39 || bytes[0] !== 0x44) continue;
+
+        const eventType = bytes[5]!;
+        if (!DISPENSE_EVENTS.has(eventType)) continue;
+
+        const fc  = bytes[28]! * 65536 + bytes[29]! * 256 + bytes[30]!;
+        const ft  = bytes[31]! * 256 + bytes[32]!;
+        const lcf = bytes[33]! * 256 + bytes[34]!;
+        const effectiveLcf = lcf > 0 ? lcf : 360;
+
+        if (ft > 10 && fc > 0) {
+          const flowRate = Math.round((60 * fc / (effectiveLcf * ft)) * 100) / 100;
+          res.json({ flowRate, timestamp: time, timedOut: false });
+          return;
+        }
+      } catch { /* skip malformed */ }
+    }
+
+    // No valid dispense event in last 24 h
+    res.json({ flowRate: null, timestamp: null, timedOut: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch flow rate");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
 // Asset logs — paginated, cursor-based
 // GET /api/ewater/assets/:assetId/logs
 // Query: before (ISO), protocol (filter), limit (1-100), windowDays (1-30)

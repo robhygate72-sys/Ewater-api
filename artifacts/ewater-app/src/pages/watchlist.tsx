@@ -10,7 +10,7 @@ import { FavouriteButton } from "@/components/FavouriteButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey, getGetAssetQueryOptions } from "@workspace/api-client-react";
+import { useListAssets, useGetAssetEwc, getGetAssetEwcQueryKey, getGetAssetQueryOptions, getGetAssetFlowRateQueryOptions } from "@workspace/api-client-react";
 import { useQueries } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/lib/date";
 import { useState as useStateRef, useEffect, useRef } from "react";
@@ -91,6 +91,17 @@ export default function Watchlist() {
     detailQueries
       .filter((q) => q.data)
       .map((q) => [q.data!.id, q.data!]),
+  );
+
+  // Parallel flow-rate fetch for each watchlist asset (last 24 h of EWC logs)
+  const flowRateQueries = useQueries({
+    queries: favourites.map((fav) => ({
+      ...getGetAssetFlowRateQueryOptions(fav.assetId),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+  const flowRateMap = new Map(
+    favourites.map((fav, i) => [fav.assetId, flowRateQueries[i]?.data ?? null]),
   );
 
   function openCopySheet() {
@@ -202,9 +213,11 @@ export default function Watchlist() {
               // Battery trend from power rawData
               const batteryTrend = (detail?.rawData as any)?.power?.trendDirection as string | null ?? null;
 
-              // Flow activity: tapEventsPerMinuteToday → taps/hr (whole number)
-              const tapRateToday = (detail?.rawData as any)?.conn?.tapEventsPerMinuteToday as number | null ?? null;
-              const tapsPerHour = tapRateToday != null ? Math.round(tapRateToday * 60) : null;
+              // Flow rate from last 24 h of EWC log decoding
+              const flowResult = flowRateMap.get(fav.assetId);
+              const flowRateLoading = flowRateQueries[favourites.indexOf(fav)]?.isLoading ?? false;
+              const flowRate  = flowResult?.flowRate ?? null;
+              const flowTimedOut = flowResult?.timedOut ?? false;
 
               // Health flags for tamper / low battery badges (from list rawData until detail loads)
               const rawFlags = (detail?.rawData as any)?.healthFlags ?? (listAsset?.rawData as any)?.healthFlags;
@@ -284,13 +297,17 @@ export default function Watchlist() {
                             )}
                           </div>
 
-                          {/* Flow activity */}
+                          {/* Flow rate */}
                           <div className="flex flex-col gap-0.5">
-                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">Flow today</span>
-                            {tapsPerHour != null ? (
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">Flow rate</span>
+                            {flowRateLoading ? (
+                              <span className="text-xs text-muted-foreground/40">…</span>
+                            ) : flowRate != null ? (
                               <span className="text-xs font-semibold text-foreground font-mono">
-                                {tapsPerHour}<span className="text-[10px] font-normal text-muted-foreground">/hr</span>
+                                {flowRate.toFixed(2)}<span className="text-[10px] font-normal text-muted-foreground"> L/m</span>
                               </span>
+                            ) : flowTimedOut ? (
+                              <span className="text-xs text-muted-foreground/50">n/a</span>
                             ) : (
                               <span className="text-xs text-muted-foreground/40">—</span>
                             )}

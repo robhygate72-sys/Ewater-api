@@ -310,6 +310,20 @@ export const GetESenseChartsResponse = zod.object({
 
 
 /**
+ * @summary Get most recent valid flow rate (L/min) from last 24 hours of EWC logs
+ */
+export const GetAssetFlowRateParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetAssetFlowRateResponse = zod.object({
+  "flowRate": zod.number().nullish().describe('Most recent flow rate in L\/min (null if none found)'),
+  "timestamp": zod.string().nullish().describe('ISO timestamp of the most recent valid dispense event'),
+  "timedOut": zod.boolean().describe('True when no valid dispense event found in the last 24 hours')
+})
+
+
+/**
  * @summary Generic proxy to any eWater API endpoint
  */
 export const ProxyRequestBody = zod.object({

@@ -13,6 +13,15 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface FlowRateResult {
+  /** Most recent flow rate in L/min (null if none found) */
+  flowRate?: number | null;
+  /** ISO timestamp of the most recent valid dispense event */
+  timestamp?: string | null;
+  /** True when no valid dispense event found in the last 24 hours */
+  timedOut: boolean;
+}
+
 export interface CredentialsInput {
   username: string;
   password: string;

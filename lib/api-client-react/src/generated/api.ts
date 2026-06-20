@@ -29,6 +29,7 @@ import type {
   ESenseChartsData,
   EntityHierarchy,
   ErrorResponse,
+  FlowRateResult,
   GetDashboardParams,
   GetESenseChartsParams,
   HealthStatus,
@@ -968,6 +969,83 @@ export function useGetESenseCharts<TData = Awaited<ReturnType<typeof getESenseCh
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetESenseChartsQueryOptions(assetId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssetFlowRateUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/flow-rate`
+}
+
+/**
+ * @summary Get most recent valid flow rate (L/min) from last 24 hours of EWC logs
+ */
+export const getAssetFlowRate = async (assetId: string, options?: RequestInit): Promise<FlowRateResult> => {
+
+  return customFetch<FlowRateResult>(getGetAssetFlowRateUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssetFlowRateQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/assets/${assetId}/flow-rate`
+    ] as const;
+    }
+
+
+export const getGetAssetFlowRateQueryOptions = <TData = Awaited<ReturnType<typeof getAssetFlowRate>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetFlowRate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssetFlowRateQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssetFlowRate>>> = ({ signal }) => getAssetFlowRate(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssetFlowRate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssetFlowRateQueryResult = NonNullable<Awaited<ReturnType<typeof getAssetFlowRate>>>
+export type GetAssetFlowRateQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get most recent valid flow rate (L/min) from last 24 hours of EWC logs
+ */
+
+export function useGetAssetFlowRate<TData = Awaited<ReturnType<typeof getAssetFlowRate>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetFlowRate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssetFlowRateQueryOptions(assetId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

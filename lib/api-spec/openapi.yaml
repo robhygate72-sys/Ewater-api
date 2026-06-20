@@ -292,6 +292,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/flow-rate:
+    get:
+      operationId: getAssetFlowRate
+      tags: [ewater]
+      summary: Get most recent valid flow rate (L/min) from last 24 hours of EWC logs
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Flow rate result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlowRateResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/proxy:
     post:
       operationId: proxyRequest
@@ -338,6 +363,22 @@ components:
       properties:
         error:
           type: string
+
+    FlowRateResult:
+      type: object
+      required: [timedOut]
+      properties:
+        flowRate:
+          type: number
+          nullable: true
+          description: Most recent flow rate in L/min (null if none found)
+        timestamp:
+          type: string
+          nullable: true
+          description: ISO timestamp of the most recent valid dispense event
+        timedOut:
+          type: boolean
+          description: True when no valid dispense event found in the last 24 hours
 
     CredentialsInput:
       type: object
