@@ -23,6 +23,7 @@ import { FavouriteButton } from "@/components/FavouriteButton";
 import { useFavourites } from "@/contexts/FavouritesContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { EwcSettingsPanel } from "@/components/ewc-settings-panel";
+import { MeterReadingPanel } from "@/components/water-meter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -541,6 +542,9 @@ export default function AssetDetail() {
             </div>
           )}
         </SectionCard>
+
+        {/* Meter reading */}
+        <MeterReadingPanel assetId={id} />
 
         {/* EWC Settings */}
         <EwcSettingsPanel assetId={id} isEsense={tech.purpose?.toLowerCase() === "esense"} />

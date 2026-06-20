@@ -1,185 +1,78 @@
-import { cn } from "@/lib/utils";
+import { useGetAssetMeterReading, getGetAssetMeterReadingQueryKey } from "@workspace/api-client-react";
+import { Gauge } from "lucide-react";
+import { formatDateTime } from "@/lib/date";
 
-interface WaterMeterProps {
-  litres: number | null;
-  loading?: boolean;
-  found?: boolean;
-  className?: string;
+interface MeterReadingPanelProps {
+  assetId: string;
 }
 
-function formatLitres(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
-  if (n >= 10_000)    return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
-}
-
-// Odometer-style digit roller
-function DigitRoller({ digits }: { digits: string }) {
+function DigitChar({ ch }: { ch: string }) {
+  const isSep = ch === "," || ch === ".";
+  if (isSep) {
+    return (
+      <span className="text-blue-400/60 text-xl font-mono leading-none select-none px-0.5">
+        {ch}
+      </span>
+    );
+  }
   return (
-    <div className="flex items-center gap-[2px]">
-      {digits.split("").map((ch, i) => (
-        <div
-          key={i}
-          className={cn(
-            "w-[22px] h-[30px] rounded-[3px] flex items-center justify-center font-mono text-base font-bold leading-none select-none",
-            ch === "." || ch === ","
-              ? "w-[8px] bg-transparent text-blue-300 text-lg pb-1"
-              : "bg-[#0b1e35] border border-[#1e4060] text-blue-100 shadow-inner",
-          )}
-          style={ch !== "." && ch !== "," ? {
-            textShadow: "0 0 8px rgba(96,165,250,0.7)",
-            boxShadow: "inset 0 2px 4px rgba(0,0,0,0.5), inset 0 -1px 2px rgba(96,165,250,0.1)",
-          } : undefined}
-        >
-          {ch}
-        </div>
-      ))}
-    </div>
+    <span
+      className="inline-flex items-center justify-center w-8 h-10 rounded bg-[#0b1826] border border-[#1e3a5c] text-blue-100 text-xl font-mono font-bold leading-none select-none shadow-inner"
+      style={{ textShadow: "0 0 10px rgba(96,165,250,0.6)" }}
+    >
+      {ch}
+    </span>
   );
 }
 
-// Polar coordinate helper
-function polar(cx: number, cy: number, r: number, angleDeg: number) {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
-  const s = polar(cx, cy, r, startDeg);
-  const e = polar(cx, cy, r, endDeg);
-  const large = endDeg - startDeg > 180 ? 1 : 0;
-  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
-}
-
-export function WaterMeter({ litres, loading, found, className }: WaterMeterProps) {
-  // Gauge sweep: -135° to +135° (270° total)
-  const START = -135;
-  const END   =  135;
-  const SWEEP = END - START;
-  const CX = 80, CY = 80, R = 60;
-
-  // Determine needle angle
-  let fraction = 0;
-  if (litres != null && litres > 0) {
-    // Dynamic scale: round to next order of magnitude
-    const mag = Math.pow(10, Math.ceil(Math.log10(litres + 1)));
-    fraction = Math.min(litres / mag, 1);
-  }
-  const needleDeg = START + fraction * SWEEP;
-  const needlePt  = polar(CX, CY, 44, needleDeg);
-
-  // Tick marks (9 major ticks = 0, 1/8 … 8/8)
-  const ticks = Array.from({ length: 9 }, (_, i) => {
-    const deg = START + (i / 8) * SWEEP;
-    const outer = polar(CX, CY, 58, deg);
-    const inner = polar(CX, CY, 50, deg);
-    return { outer, inner, deg, i };
+export function MeterReadingPanel({ assetId }: MeterReadingPanelProps) {
+  const { data, isLoading } = useGetAssetMeterReading(assetId, {
+    query: { queryKey: getGetAssetMeterReadingQueryKey(assetId), staleTime: 5 * 60 * 1000 },
   });
 
-  const filledPath = litres != null && litres > 0
-    ? arcPath(CX, CY, R, START, needleDeg)
-    : null;
-
-  const displayStr = litres != null
-    ? litres.toLocaleString(undefined, { maximumFractionDigits: 1 })
-    : "—";
-
-  const digits = litres != null ? displayStr : null;
+  const litresStr =
+    data?.found && data.litres != null
+      ? data.litres.toLocaleString(undefined, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })
+      : null;
 
   return (
-    <div className={cn("flex flex-col items-center", className)}>
-      {/* SVG dial */}
-      <svg width="160" height="130" viewBox="0 0 160 130" className="overflow-visible">
-        {/* Outer bezel */}
-        <circle cx={CX} cy={CY} r={74} fill="#0a1628" stroke="#1a3a5c" strokeWidth="2" />
-        {/* Background arc track */}
-        <path
-          d={arcPath(CX, CY, R, START, END)}
-          fill="none" stroke="#1a3a5c" strokeWidth="8" strokeLinecap="round"
-        />
-        {/* Filled arc */}
-        {filledPath && (
-          <path
-            d={filledPath}
-            fill="none" stroke="#3b82f6" strokeWidth="8" strokeLinecap="round"
-            style={{ filter: "drop-shadow(0 0 4px rgba(59,130,246,0.6))" }}
-          />
-        )}
-        {/* Tick marks */}
-        {ticks.map(({ outer, inner, i }) => (
-          <line
-            key={i}
-            x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y}
-            stroke={i === 0 ? "#64748b" : "#1e4060"}
-            strokeWidth={i % 4 === 0 ? 2 : 1}
-          />
-        ))}
-        {/* Needle */}
-        {litres != null && (
-          <>
-            <line
-              x1={CX} y1={CY}
-              x2={needlePt.x} y2={needlePt.y}
-              stroke="#f87171" strokeWidth="2" strokeLinecap="round"
-              style={{ filter: "drop-shadow(0 0 3px rgba(248,113,113,0.8))" }}
-            />
-            <circle cx={CX} cy={CY} r={4} fill="#f87171" />
-            <circle cx={CX} cy={CY} r={2} fill="#fff" />
-          </>
-        )}
-        {/* Center reading */}
-        {loading ? (
-          <text x={CX} y={CY + 4} textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="monospace">
-            …
-          </text>
-        ) : !found ? (
-          <text x={CX} y={CY + 4} textAnchor="middle" fill="#475569" fontSize="10" fontFamily="monospace">
-            no data
-          </text>
+    <div className="rounded-xl border bg-[#060f1a] border-[#1a3a5c] p-4 shadow-inner">
+      <div className="flex items-center gap-2 mb-3">
+        <Gauge className="w-3.5 h-3.5 text-blue-400" />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-400/70">
+          Water Meter Reading
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1 flex-wrap">
+        {isLoading ? (
+          <span className="text-sm text-blue-300/50 font-mono animate-pulse">
+            Reading meter…
+          </span>
+        ) : !data?.found || litresStr == null ? (
+          <span className="text-sm text-blue-300/30 font-mono">No reading available</span>
         ) : (
           <>
-            <text x={CX} y={CY - 4} textAnchor="middle" fill="#93c5fd" fontSize="13" fontFamily="monospace" fontWeight="bold"
-              style={{ textShadow: "0 0 6px rgba(147,197,253,0.5)" }}>
-              {digits != null ? formatLitres(litres!) : "—"}
-            </text>
-            <text x={CX} y={CY + 11} textAnchor="middle" fill="#60a5fa" fontSize="8.5" fontFamily="sans-serif" letterSpacing="1">
-              LITRES
-            </text>
+            {litresStr.split("").map((ch, i) => (
+              <DigitChar key={i} ch={ch} />
+            ))}
+            <span className="ml-2 text-xs text-blue-300/60 font-medium self-end pb-1">L</span>
           </>
         )}
-        {/* Labels: 0 and max */}
-        {litres != null && litres > 0 && (
-          <>
-            {(() => {
-              const mag = Math.pow(10, Math.ceil(Math.log10(litres + 1)));
-              const zeroP = polar(CX, CY, 67, START);
-              const maxP  = polar(CX, CY, 67, END);
-              return (
-                <>
-                  <text x={zeroP.x - 2} y={zeroP.y + 3} textAnchor="end" fill="#334155" fontSize="7" fontFamily="monospace">0</text>
-                  <text x={maxP.x + 2} y={maxP.y + 3} textAnchor="start" fill="#334155" fontSize="7" fontFamily="monospace">
-                    {mag >= 1000 ? `${mag/1000}k` : mag}
-                  </text>
-                </>
-              );
-            })()}
-          </>
-        )}
-        {/* "WATER METER" label at bottom */}
-        <text x={CX} y={120} textAnchor="middle" fill="#1e3a5c" fontSize="7.5" fontFamily="sans-serif" letterSpacing="1.5" fontWeight="500">
-          WATER METER
-        </text>
-      </svg>
+      </div>
 
-      {/* Odometer display */}
-      {digits != null && (
-        <div className="mt-[-8px] flex flex-col items-center gap-1">
-          <div className="bg-[#061120] rounded-lg px-3 py-2 border border-[#1a3a5c] shadow-inner"
-            style={{ boxShadow: "0 0 12px rgba(59,130,246,0.15), inset 0 2px 4px rgba(0,0,0,0.6)" }}>
-            <DigitRoller digits={displayStr} />
-          </div>
-          <span className="text-[9px] text-slate-500 tracking-wider uppercase mt-0.5">Litres</span>
-        </div>
+      {data?.found && data.timestamp && (
+        <p className="mt-2 text-[10px] text-blue-300/40 font-mono">
+          as of {formatDateTime(data.timestamp)}
+        </p>
+      )}
+      {data?.found && data.ticks != null && data.lcf != null && (
+        <p className="mt-0.5 text-[10px] text-blue-300/30 font-mono">
+          {data.ticks.toLocaleString()} ticks · LCF {data.lcf}
+        </p>
       )}
     </div>
   );
