@@ -569,7 +569,7 @@ function FlowRateChart({
       </ResponsiveContainer>
 
       <p className="text-[10px] text-muted-foreground px-2 pt-1">
-        flow_rate = 60 × ΔFCC / (LCF × FT) · dispense events · FT &gt; 10 s
+        flow_rate = 60 × FC / (LCF × FT) · events 0x09 &amp; 0x0B · FT &gt; 10 s
       </p>
     </ChartSection>
   );

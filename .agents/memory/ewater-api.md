@@ -46,6 +46,48 @@ Response: { lastKnownVoltage, lastKnownVoltageReadingDt, trendDirection, todayAv
 GET /api/Asset/AssetHealthStatus?assetId={id}
 Returns bundle: { connectivityStatus, powerStatus, flowStatus, tankHeightStatus, assetUsageStatus }
 
+## EWC2.5 DATALOG Packet — 39-byte layout (CONFIRMED from protocol spec)
+
+```
+byte[0]      = 0x44  (HDR)
+bytes[1–4]   = EWC_ID (4 bytes)
+byte[5]      = EE  event/error code
+bytes[6–8]   = SS MM HH  (BCD seconds, minutes, hours) ← NOT the flow counter
+bytes[9–11]  = DD MT YY  (BCD day, month, year)
+bytes[12–15] = card UID (4 bytes, MSB first)
+byte[16]     = AN  battery ADC; volts = ADC/256 × 15
+byte[17]     = RS  reserved
+bytes[18–19] = UC UC  usage counter
+bytes[20–23] = SCR SCR SCR SCR  start credit (MSB first), in MITs (MilliCredits)
+bytes[24–27] = ECR ECR ECR ECR  end credit (MSB first)
+bytes[28–30] = FC FC FC  per-session flow count (MSB, MID, LSB)  ← THE FLOW COUNTER
+bytes[31–32] = FT FT  flow time in seconds (MSB, LSB)
+bytes[33–34] = CONVH CONVL  LCF ticks/litre (MSB, LSB)  ← read from packet directly
+bytes[35–36] = DLPH DLPL  datalog pointer
+byte[37]     = ETX (0x03)
+byte[38]     = XOR checksum
+```
+
+### Flow rate formula (correct)
+```
+flow_rate [L/min] = 60 × FC / (LCF × FT)
+```
+- FC is **per-session** (not cumulative). No delta needed.
+- LCF comes from bytes[33–34] (CONVH CONVL) in the packet itself (most reliable).
+- FT is at bytes[31–32] (MSB, LSB big-endian). Filter: FT > 10 s.
+- Dispense event types: 0x09 (tag removed / session end), 0x0B (dispense-limit intermediate)
+- Exclude: 0x19 (HEALTH_STATE periodic) — FC semantics differ for health reports.
+
+### Event codes (key ones)
+- 0x09 = No card (tag removed) — normal end-of-dispense event
+- 0x0B = Dispense Limit — intermediate packet during long VALVE ON session
+- 0x19 = HEALTH_STATE — periodic system status report (not a dispense event)
+
+### Common mistake (do NOT repeat)
+bytes[6–8] are SS MM HH (BCD time), NOT the flow counter.
+bytes[9–10] are DD MT (BCD date), NOT the flow time.
+FC is always at bytes[28–30] and FT at bytes[31–32].
+
 ## eSense asset identification
 - purpose === 'eSense' (case-insensitive match)
 - Active test assets: 2105, 2211, 1748, 1749
