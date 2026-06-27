@@ -213,7 +213,18 @@ function ChartSection({
   );
 }
 
-export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; isEsense?: boolean }) {
+export function ESenseCharts({
+  assetId,
+  isEsense = false,
+  show,
+}: {
+  assetId: string;
+  isEsense?: boolean;
+  show?: { tankHeight?: boolean; usage?: boolean; flow?: boolean };
+}) {
+  const showTank = show ? (show.tankHeight ?? false) : true;
+  const showUsage = show ? (show.usage ?? false) : true;
+  const showFlow = show ? (show.flow ?? false) : true;
   const [days, setDays] = useState(3);
 
   const { data, isLoading } = useGetESenseCharts(
@@ -290,7 +301,7 @@ export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; i
       </div>
 
       {/* Tank Height Chart — eSense only */}
-      {isEsense && (
+      {isEsense && showTank && (
         isLoading ? (
           <Skeleton className="h-52 w-full rounded-xl" />
         ) : (
@@ -372,7 +383,7 @@ export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; i
       )}
 
       {/* Water Usage */}
-      {isLoading ? (
+      {showUsage && (isLoading ? (
         <Skeleton className="h-52 w-full rounded-xl" />
       ) : (
         <ChartSection
@@ -427,10 +438,10 @@ export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; i
             </BarChart>
           </ResponsiveContainer>
         </ChartSection>
-      )}
+      ))}
 
       {/* Flow Rate */}
-      {isLoading ? (
+      {showFlow && (isLoading ? (
         <Skeleton className="h-52 w-full rounded-xl" />
       ) : (
         <FlowRateChart
@@ -439,7 +450,7 @@ export function ESenseCharts({ assetId, isEsense = false }: { assetId: string; i
           tickColor={tickColor}
           gridColor={gridColor}
         />
-      )}
+      ))}
 
     </div>
   );

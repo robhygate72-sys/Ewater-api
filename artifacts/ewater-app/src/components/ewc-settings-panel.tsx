@@ -110,9 +110,16 @@ function rawStr(v: string | number | null | undefined): string {
 interface EwcSettingsPanelProps {
   assetId: string;
   isEsense?: boolean;
+  /**
+   * Which sections to render:
+   * - "all" (default): everything
+   * - "ewc-only": every section except Sensor Calibration
+   * - "sensor-only": only the Sensor Calibration (VSEN) section
+   */
+  variant?: "all" | "ewc-only" | "sensor-only";
 }
 
-export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanelProps) {
+export function EwcSettingsPanel({ assetId, isEsense = false, variant = "all" }: EwcSettingsPanelProps) {
   const { data, isLoading, isError } = useGetAssetEwc(assetId, {
     query: { queryKey: getGetAssetEwcQueryKey(assetId) },
   });
@@ -170,7 +177,7 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
         <CardHeader className="pb-2 pt-4 px-4">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <Settings className="w-3.5 h-3.5 text-muted-foreground" />
-            EWC Settings
+            {variant === "sensor-only" ? "Sensor Calibration" : "EWC Settings"}
             {data?.settingsDate && (
               <span className="ml-auto text-[10px] font-normal text-muted-foreground font-mono">
                 as of {data.settingsDate.slice(0, 19).replace("T", " ")}
@@ -192,7 +199,7 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
           {data && (
             <>
               {/* eSENSE Sensor Calibration */}
-              {isEsense && (
+              {isEsense && variant !== "ewc-only" && (
                 <SubSection title="Sensor Calibration" icon={<Gauge className="w-3 h-3" />}>
                   {(["VSEN1 (water tank)", "VSEN2 (chlorine tank)", "VSEN3"] as const).map((label, i) => (
                     <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0 gap-4">
@@ -223,6 +230,8 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
                 </SubSection>
               )}
 
+              {variant !== "sensor-only" && (
+              <>
               {/* Calibration */}
               <SubSection title="Calibration" icon={<Droplet className="w-3 h-3" />}>
                 <Row label="FCF — ticks/credit" value={data.ewcFcf} rawValue={data.ewcFcf} mono onTap={tap}
@@ -373,6 +382,8 @@ export function EwcSettingsPanel({ assetId, isEsense = false }: EwcSettingsPanel
                   description="PowerCount: cumulative power-on/reset count. Increments on each power-up or reset event. Reported in the START_UP datalog packet (event code 0x16). EEPROM byte 0x36. Not cleared by Factory Reset."
                 />
               </SubSection>
+              </>
+              )}
             </>
           )}
         </CardContent>

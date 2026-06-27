@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
 import { useFavourites } from "@/contexts/FavouritesContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { EwcSettingsPanel } from "@/components/ewc-settings-panel";
 import { MeterReadingPanel } from "@/components/water-meter";
 
@@ -393,197 +394,229 @@ export default function AssetDetail() {
           <AssetAlertRules assetId={id} assetName={tech.name} />
         </SheetContent>
       </Sheet>
-      <div className="space-y-3">
+      <Tabs defaultValue="status" className="w-full">
+        <TabsList className={cn("grid w-full h-auto gap-1 p-1", isEsense ? "grid-cols-6" : "grid-cols-5")}>
+          <TabsTrigger value="status" className="text-xs px-1 py-1.5">Status</TabsTrigger>
+          <TabsTrigger value="battery" className="text-xs px-1 py-1.5">Battery</TabsTrigger>
+          <TabsTrigger value="water" className="text-xs px-1 py-1.5">Water</TabsTrigger>
+          <TabsTrigger value="ewc" className="text-xs px-1 py-1.5">EWC</TabsTrigger>
+          {isEsense && (
+            <TabsTrigger value="sense" className="text-xs px-1 py-1.5">Sense</TabsTrigger>
+          )}
+          <TabsTrigger value="logs" className="text-xs px-1 py-1.5">Logs</TabsTrigger>
+        </TabsList>
 
-        {/* Header card */}
-        <Card className="border-none shadow-md overflow-hidden relative">
-          <div className={cn(
-            "absolute top-0 left-0 w-full h-1",
-            tamper || lowBattery ? "bg-amber-500" : isOnline ? "bg-emerald-500" : "bg-zinc-400",
-          )} />
-          <CardContent className="p-4 pt-5">
-            <div className="flex justify-between items-start mb-3 gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold tracking-tight truncate">{tech.name}</h2>
-                  <FavouriteButton assetId={id} assetName={tech.name} />
+        {/* ─── Status ─── */}
+        <TabsContent value="status" className="space-y-3 mt-3">
+          {/* Header / details card */}
+          <Card className="border-none shadow-md overflow-hidden relative">
+            <div className={cn(
+              "absolute top-0 left-0 w-full h-1",
+              tamper || lowBattery ? "bg-amber-500" : isOnline ? "bg-emerald-500" : "bg-zinc-400",
+            )} />
+            <CardContent className="p-4 pt-5">
+              <div className="flex justify-between items-start mb-3 gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold tracking-tight truncate">{tech.name}</h2>
+                    <FavouriteButton assetId={id} assetName={tech.name} />
+                  </div>
+                  <div className="flex items-center text-xs text-muted-foreground mt-0.5 gap-1.5 flex-wrap">
+                    {tech.waterSystemName && (
+                      <>
+                        <Droplet className="w-3 h-3" />
+                        <span>{tech.waterSystemName}</span>
+                      </>
+                    )}
+                    {tech.countryName && (
+                      <>
+                        <span className="opacity-40">·</span>
+                        <MapPin className="w-3 h-3" />
+                        <span>{tech.countryName}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center text-xs text-muted-foreground mt-0.5 gap-1.5 flex-wrap">
-                  {tech.waterSystemName && (
-                    <>
-                      <Droplet className="w-3 h-3" />
-                      <span>{tech.waterSystemName}</span>
-                    </>
-                  )}
-                  {tech.countryName && (
-                    <>
-                      <span className="opacity-40">·</span>
-                      <MapPin className="w-3 h-3" />
-                      <span>{tech.countryName}</span>
-                    </>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge
+                    variant={isOnline ? "default" : "secondary"}
+                    className={cn(
+                      "text-xs px-2 py-0.5 font-medium uppercase tracking-wider shadow-none",
+                      isOnline ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0" : "",
+                    )}
+                  >
+                    {isOnline ? "Online" : "Offline"}
+                  </Badge>
+                  {tech.lifecycleState && (
+                    <span className="text-[10px] text-muted-foreground">{tech.lifecycleState}</span>
                   )}
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                <Badge
-                  variant={isOnline ? "default" : "secondary"}
-                  className={cn(
-                    "text-xs px-2 py-0.5 font-medium uppercase tracking-wider shadow-none",
-                    isOnline ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0" : "",
-                  )}
-                >
-                  {isOnline ? "Online" : "Offline"}
-                </Badge>
-                {tech.lifecycleState && (
-                  <span className="text-[10px] text-muted-foreground">{tech.lifecycleState}</span>
+
+              <div className="grid grid-cols-2 gap-3 text-xs bg-muted/40 p-3 rounded-lg">
+                <div>
+                  <span className="text-muted-foreground block mb-0.5">Asset ID</span>
+                  <span className="font-mono text-[11px]">{id}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block mb-0.5">Last comms</span>
+                  <span className="font-mono text-[11px]">{tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : "—"}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block mb-0.5">Network</span>
+                  <span className="font-medium capitalize">{tech.lastNetwork ?? "—"}</span>
+                </div>
+                {tech.purpose && (
+                  <div>
+                    <span className="text-muted-foreground block mb-0.5">Type</span>
+                    <span className="font-medium">{tech.purpose}</span>
+                  </div>
+                )}
+                {tech.imei && (
+                  <div>
+                    <span className="text-muted-foreground block mb-0.5">IMEI</span>
+                    <span className="font-mono text-[11px]">{tech.imei}</span>
+                  </div>
                 )}
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div className="grid grid-cols-2 gap-3 text-xs bg-muted/40 p-3 rounded-lg">
-              <div>
-                <span className="text-muted-foreground block mb-0.5">Asset ID</span>
-                <span className="font-mono text-[11px]">{id}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block mb-0.5">Last comms</span>
-                <span className="font-mono text-[11px]">{tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : "—"}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block mb-0.5">Network</span>
-                <span className="font-medium capitalize">{tech.lastNetwork ?? "—"}</span>
-              </div>
-              {tech.purpose && (
-                <div>
-                  <span className="text-muted-foreground block mb-0.5">Type</span>
-                  <span className="font-medium">{tech.purpose}</span>
-                </div>
-              )}
-              {tech.imei && (
-                <div>
-                  <span className="text-muted-foreground block mb-0.5">IMEI</span>
-                  <span className="font-mono text-[11px]">{tech.imei}</span>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Meter reading */}
-        <MeterReadingPanel assetId={id} />
-
-        {/* Alerts */}
-        {hasAlerts && (
-          <div className="space-y-2">
-            {tamper && (
-              <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
-                <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-red-600 dark:text-red-400">Tamper Detected</p>
-                  {tech.tamperSwitchState && (
-                    <p className="text-xs text-red-500/80 font-mono mt-0.5">{tech.tamperSwitchState}</p>
-                  )}
-                </div>
-              </div>
-            )}
-            {lowBattery && (
-              <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
-                <Battery className="w-5 h-5 text-amber-500 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Low Battery</p>
-                  {tech.batteryVoltage != null && (
-                    <p className="text-xs text-amber-500/80 font-mono mt-0.5">{tech.batteryVoltage}V</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* DATALOG Charts (eSense + CommunityTap) */}
-        {hasDatalogCharts && (
-          <ESenseCharts assetId={id} isEsense={isEsense} />
-        )}
-
-        {/* Connectivity */}
-        <SectionCard title="Connectivity" icon={<Wifi className="w-3.5 h-3.5" />}>
-          <Row label="Last comms" value={tech.lastCommsDt ? formatTimeAgo(tech.lastCommsDt) : null} />
-          <Row label="Last comms (exact)" value={tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : null} mono />
-          <Row label="Network" value={tech.lastNetwork ?? null} />
-          <Row label="Tap events/min (today)" value={tech.tapEventsPerMinuteToday?.toFixed(4) ?? null} mono />
-          <Row label="Tap events/min (week)" value={tech.tapEventsPerMinuteThisWeek?.toFixed(4) ?? null} mono />
-        </SectionCard>
-
-        {/* Battery */}
-        <BatteryPanel assetId={id} tech={tech} />
-
-        {/* Usage */}
-        <SectionCard title="Water Usage" icon={<Droplet className="w-3.5 h-3.5" />}>
-          {tech.litresDispensedToday != null && (
-            <div className="py-3">
-              <span className="text-3xl font-bold font-mono">{tech.litresDispensedToday.toFixed(1)}</span>
-              <span className="ml-1.5 text-sm text-muted-foreground">litres today</span>
-            </div>
-          )}
-          <Row label="Last usage" value={tech.lastUsageDt ? formatDateTime(tech.lastUsageDt) : null} mono />
-          <Row label="Flow rate (this hour)" value={tech.flowRateHour != null ? `${tech.flowRateHour.toFixed(2)} L/min` : null} mono />
-          <Row label="Flow rate (today avg)" value={tech.flowRateToday != null ? `${tech.flowRateToday.toFixed(2)} L/min` : null} mono />
-          <Row label="Flow rate (week avg)" value={tech.flowRateWeek != null ? `${tech.flowRateWeek.toFixed(2)} L/min` : null} mono />
-          {tech.priceOfWater != null && (
-            <div className="mt-2 pt-2 border-t border-border/40">
-              <div className="flex items-baseline gap-2 py-1">
-                <CircleDollarSign className="w-4 h-4 text-muted-foreground shrink-0" />
-                <div className="flex-1">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl font-bold font-mono">{tech.priceOfWater.toFixed(4)}</span>
-                    <span className="text-xs text-muted-foreground">price of water</span>
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                    {tech.ewcFx != null && <span className="text-[10px] text-muted-foreground font-mono">FX {tech.ewcFx.toLocaleString()}</span>}
-                    {tech.ewcLcf != null && <span className="text-[10px] text-muted-foreground font-mono">LCF {tech.ewcLcf}</span>}
-                    {tech.ewcFcf != null && <span className="text-[10px] text-muted-foreground font-mono">FCF {tech.ewcFcf}</span>}
-                    {tech.ewcPreload != null && <span className="text-[10px] text-muted-foreground font-mono">Preload {tech.ewcPreload}</span>}
+          {/* Alerts */}
+          {hasAlerts && (
+            <div className="space-y-2">
+              {tamper && (
+                <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
+                  <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">Tamper Detected</p>
+                    {tech.tamperSwitchState && (
+                      <p className="text-xs text-red-500/80 font-mono mt-0.5">{tech.tamperSwitchState}</p>
+                    )}
                   </div>
                 </div>
-              </div>
+              )}
+              {lowBattery && (
+                <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
+                  <Battery className="w-5 h-5 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Low Battery</p>
+                    {tech.batteryVoltage != null && (
+                      <p className="text-xs text-amber-500/80 font-mono mt-0.5">{tech.batteryVoltage}V</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </SectionCard>
 
-        {/* EWC Settings */}
-        <EwcSettingsPanel assetId={id} isEsense={tech.purpose?.toLowerCase() === "esense"} />
-
-        {/* Firmware */}
-        {tech.firmware && tech.firmware.length > 0 && (
-          <SectionCard title="Firmware" icon={<Cpu className="w-3.5 h-3.5" />}>
-            {tech.firmware.map((fw, i) => (
-              <div key={i} className="py-2 border-b border-border/40 last:border-0">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-medium">{fw.deviceType}</span>
-                  <span className="text-xs font-mono text-muted-foreground">{fw.version ?? "—"}</span>
-                </div>
-                <div className="flex justify-between items-center mt-0.5">
-                  {fw.phase && (
-                    <span className="text-[10px] text-muted-foreground">{fw.phase}</span>
-                  )}
-                  {fw.lastKnownDate && (
-                    <span className="text-[10px] text-muted-foreground font-mono">{formatDateTime(fw.lastKnownDate)}</span>
-                  )}
-                </div>
-              </div>
-            ))}
+          {/* Connectivity */}
+          <SectionCard title="Connectivity" icon={<Wifi className="w-3.5 h-3.5" />}>
+            <Row label="Last comms" value={tech.lastCommsDt ? formatTimeAgo(tech.lastCommsDt) : null} />
+            <Row label="Last comms (exact)" value={tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : null} mono />
+            <Row label="Network" value={tech.lastNetwork ?? null} />
+            <Row label="Tap events/min (today)" value={tech.tapEventsPerMinuteToday?.toFixed(4) ?? null} mono />
+            <Row label="Tap events/min (week)" value={tech.tapEventsPerMinuteThisWeek?.toFixed(4) ?? null} mono />
           </SectionCard>
+
+          {/* Firmware */}
+          {tech.firmware && tech.firmware.length > 0 && (
+            <SectionCard title="Firmware" icon={<Cpu className="w-3.5 h-3.5" />}>
+              {tech.firmware.map((fw, i) => (
+                <div key={i} className="py-2 border-b border-border/40 last:border-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-medium">{fw.deviceType}</span>
+                    <span className="text-xs font-mono text-muted-foreground">{fw.version ?? "—"}</span>
+                  </div>
+                  <div className="flex justify-between items-center mt-0.5">
+                    {fw.phase && (
+                      <span className="text-[10px] text-muted-foreground">{fw.phase}</span>
+                    )}
+                    {fw.lastKnownDate && (
+                      <span className="text-[10px] text-muted-foreground font-mono">{formatDateTime(fw.lastKnownDate)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </SectionCard>
+          )}
+        </TabsContent>
+
+        {/* ─── Battery ─── */}
+        <TabsContent value="battery" className="space-y-3 mt-3">
+          <BatteryPanel assetId={id} tech={tech} />
+        </TabsContent>
+
+        {/* ─── Water ─── */}
+        <TabsContent value="water" className="space-y-3 mt-3">
+          {/* Meter reading */}
+          <MeterReadingPanel assetId={id} />
+
+          {/* Usage */}
+          <SectionCard title="Water Usage" icon={<Droplet className="w-3.5 h-3.5" />}>
+            {tech.litresDispensedToday != null && (
+              <div className="py-3">
+                <span className="text-3xl font-bold font-mono">{tech.litresDispensedToday.toFixed(1)}</span>
+                <span className="ml-1.5 text-sm text-muted-foreground">litres today</span>
+              </div>
+            )}
+            <Row label="Last usage" value={tech.lastUsageDt ? formatDateTime(tech.lastUsageDt) : null} mono />
+            <Row label="Flow rate (this hour)" value={tech.flowRateHour != null ? `${tech.flowRateHour.toFixed(2)} L/min` : null} mono />
+            <Row label="Flow rate (today avg)" value={tech.flowRateToday != null ? `${tech.flowRateToday.toFixed(2)} L/min` : null} mono />
+            <Row label="Flow rate (week avg)" value={tech.flowRateWeek != null ? `${tech.flowRateWeek.toFixed(2)} L/min` : null} mono />
+            {tech.priceOfWater != null && (
+              <div className="mt-2 pt-2 border-t border-border/40">
+                <div className="flex items-baseline gap-2 py-1">
+                  <CircleDollarSign className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold font-mono">{tech.priceOfWater.toFixed(4)}</span>
+                      <span className="text-xs text-muted-foreground">price of water</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                      {tech.ewcFx != null && <span className="text-[10px] text-muted-foreground font-mono">FX {tech.ewcFx.toLocaleString()}</span>}
+                      {tech.ewcLcf != null && <span className="text-[10px] text-muted-foreground font-mono">LCF {tech.ewcLcf}</span>}
+                      {tech.ewcFcf != null && <span className="text-[10px] text-muted-foreground font-mono">FCF {tech.ewcFcf}</span>}
+                      {tech.ewcPreload != null && <span className="text-[10px] text-muted-foreground font-mono">Preload {tech.ewcPreload}</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+
+          {/* Water usage + flow rate charts (eSense + CommunityTap) */}
+          {hasDatalogCharts && (
+            <ESenseCharts assetId={id} isEsense={isEsense} show={{ usage: true, flow: true }} />
+          )}
+        </TabsContent>
+
+        {/* ─── EWC ─── */}
+        <TabsContent value="ewc" className="space-y-3 mt-3">
+          <EwcSettingsPanel assetId={id} isEsense={isEsense} variant="ewc-only" />
+        </TabsContent>
+
+        {/* ─── Sense (eSense only) ─── */}
+        {isEsense && (
+          <TabsContent value="sense" className="space-y-3 mt-3">
+            {/* Tank height chart */}
+            <ESenseCharts assetId={id} isEsense={isEsense} show={{ tankHeight: true }} />
+            {/* VSEN sensor settings */}
+            <EwcSettingsPanel assetId={id} isEsense={isEsense} variant="sensor-only" />
+          </TabsContent>
         )}
 
-        {/* Protocol logs */}
-        <section>
-          <div className="flex items-center gap-2 mb-2 px-0.5">
-            <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-            <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Protocol Logs</h3>
-          </div>
-          <AssetLogs assetId={id} isEsense={tech.purpose?.toLowerCase() === "esense"} />
-        </section>
-      </div>
+        {/* ─── Protocol logs ─── */}
+        <TabsContent value="logs" className="space-y-3 mt-3">
+          <section>
+            <div className="flex items-center gap-2 mb-2 px-0.5">
+              <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Protocol Logs</h3>
+            </div>
+            <AssetLogs assetId={id} isEsense={isEsense} />
+          </section>
+        </TabsContent>
+      </Tabs>
     </Layout>
   );
 }
