@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import { Info, Loader2 } from "lucide-react";
+import { Info, Loader2, Radio } from "lucide-react";
 import { Ewc25PacketView, EwcReplyView, CommandApiPacketView } from "@/components/ewc25-packet-view";
+
+const LIVE_POLL_MS = 30_000;
+const NEW_HIGHLIGHT_MS = 6_000;
 
 interface LogEntry {
   id: string;
@@ -94,10 +97,11 @@ function firstByte(b64: string): number | null {
 
 // ─── log row ──────────────────────────────────────────────────────────────────
 
-function LogRow({ entry, isEsense, lcf, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
+function LogRow({ entry, isEsense, lcf, isNew = false, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
   entry: LogEntry;
   isEsense: boolean;
   lcf?: number | null;
+  isNew?: boolean;
   sensorRangeMetres1?: number | null;
   sensorRangeMetres2?: number | null;
   sensorRangeMetres3?: number | null;
@@ -117,7 +121,10 @@ function LogRow({ entry, isEsense, lcf, sensorRangeMetres1, sensorRangeMetres2, 
   const long = !isDecoded && hexStr.length > 80;
 
   return (
-    <div className="px-3 py-2.5 hover:bg-muted/30 transition-colors">
+    <div className={cn(
+      "px-3 py-2.5 hover:bg-muted/30 transition-colors duration-1000",
+      isNew && "bg-emerald-500/10 border-l-2 border-emerald-500",
+    )}>
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         <span className="font-mono text-[10px] text-muted-foreground shrink-0">
           {formatDateTime(entry.timestamp)}
@@ -172,6 +179,20 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [sensorRanges, setSensorRanges] = useState<[number | null, number | null, number | null]>([null, null, null]);
 
+  // ── Live tail: opt-in polling that prepends newly-detected entries ──
+  const [live, setLive] = useState(false);
+  const [liveEntries, setLiveEntries] = useState<LogEntry[]>([]);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const pollingRef = useRef(false);
+
+  // Reset live state when switching assets
+  useEffect(() => {
+    setLive(false);
+    setLiveEntries([]);
+    setNewIds(new Set());
+  }, [assetId]);
+
   // Authoritative LCF (ticks/litre) for decoding per-session litres in packets.
   const { data: ewc } = useGetAssetEwc(assetId, {
     query: { queryKey: getGetAssetEwcQueryKey(assetId) },
@@ -219,7 +240,73 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const allEntries = data?.pages.flatMap((p) => p.entries) ?? [];
+  const fetchedEntries = useMemo(
+    () => data?.pages.flatMap((p) => p.entries) ?? [],
+    [data],
+  );
+
+  // Merge live-tail entries (newest, polled) with fetched history, deduped by id,
+  // kept in descending time order.
+  const allEntries = useMemo(() => {
+    const map = new Map<string, LogEntry>();
+    for (const e of liveEntries) map.set(e.id, e);
+    for (const e of fetchedEntries) if (!map.has(e.id)) map.set(e.id, e);
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+  }, [liveEntries, fetchedEntries]);
+
+  // Keep a ref of all known ids so the poll loop can detect genuinely-new entries.
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const e of allEntries) ids.add(e.id);
+    knownIdsRef.current = ids;
+  }, [allEntries]);
+
+  // Live poll: fetch the newest page and prepend any entries we haven't seen.
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const poll = async () => {
+      if (pollingRef.current) return; // skip if a previous poll is still in-flight
+      pollingRef.current = true;
+      try {
+        const page = await fetchLogPage(assetId, new Date().toISOString());
+        if (cancelled) return;
+        const fresh = page.entries.filter((e) => !knownIdsRef.current.has(e.id));
+        if (fresh.length === 0) return;
+        setLiveEntries((prev) => [...fresh, ...prev]);
+        setNewIds((prev) => {
+          const next = new Set(prev);
+          for (const e of fresh) next.add(e.id);
+          return next;
+        });
+        const freshIds = fresh.map((e) => e.id);
+        timers.push(setTimeout(() => {
+          if (cancelled) return;
+          setNewIds((prev) => {
+            const next = new Set(prev);
+            for (const id of freshIds) next.delete(id);
+            return next;
+          });
+        }, NEW_HIGHLIGHT_MS));
+      } catch {
+        /* transient poll error — ignore, next tick retries */
+      } finally {
+        pollingRef.current = false;
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, LIVE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      timers.forEach(clearTimeout);
+    };
+  }, [live, assetId]);
 
   // Count entries per category (from what's loaded so far)
   const counts = allEntries.reduce<Record<LogCategory, number>>(
@@ -233,6 +320,26 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
 
   return (
     <div className="space-y-2">
+      {/* Header: title + live toggle */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+          Protocol Logs
+        </span>
+        <button
+          onClick={() => setLive((v) => !v)}
+          aria-pressed={live}
+          className={cn(
+            "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors",
+            live
+              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/40"
+              : "bg-background text-muted-foreground border-border hover:border-foreground/30",
+          )}
+        >
+          <Radio className={cn("w-3 h-3", live && "animate-pulse")} />
+          {live ? "Live" : "Go live"}
+        </button>
+      </div>
+
       {/* Semantic category filter chips — always visible */}
       <div className="flex gap-1.5 flex-wrap">
         <button
@@ -301,7 +408,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
               )}
             </div>
           ) : (
-            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} lcf={lcf} sensorRangeMetres1={sensorRanges[0]} sensorRangeMetres2={sensorRanges[1]} sensorRangeMetres3={sensorRanges[2]} />)
+            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} lcf={lcf} isNew={newIds.has(entry.id)} sensorRangeMetres1={sensorRanges[0]} sensorRangeMetres2={sensorRanges[1]} sensorRangeMetres3={sensorRanges[2]} />)
           )}
         </div>
       </Card>

@@ -154,3 +154,10 @@ Adding query params to an OpenAPI endpoint causes Orval to generate `GetXxxParam
 **Why:** Orval `schemas: {path, type: "typescript"}` config generates TS types in a separate directory, and both it and the Zod schemas file get the same export name.
 
 **Fix applied:** Removed `schemas: { path: "generated/types", type: "typescript" }` from `lib/api-spec/orval.config.ts` (zod output section), then deleted stale `lib/api-zod/src/index.ts` so Orval regenerates it without the conflicting re-export.
+
+## Live-tail logs — must poll (no upstream push)
+eWater provides **no push/websocket**; near-real-time log tailing is poll-only end-to-end.
+Device cadence is sporadic (health-state ~hourly, dispense-on-use), so "Live" is NOT a
+fast console — set that expectation. Implemented as an **opt-in** toggle (OFF by default),
+30s poll of the newest page, dedup by id against known set, prepend newest-first.
+**Why:** user explicitly chose opt-in over always-on; avoids needless upstream load.
