@@ -300,23 +300,33 @@ export function decodeEwc25(hexPayload: string, lcf?: number | null): Ewc25Resul
 
 // ─── EWC command names (shared by reply + command-api decoders) ────────────────
 
+// Command codes per the EWC2.5 / eSENSE-Lite RS232 command specifications
+// (Summary of Command codes table). ASCII letter shown in comments.
 export const EWC_CMD_NAMES: Record<number, string> = {
-  0x41: "Read Tick Accumulator",
-  0x43: "Set Clock",
-  0x45: "Read EEPROM",
-  0x46: "Factory Reset",
-  0x4B: "Request to Program",
-  0x4F: "Valve OFF",
-  0x50: "Write EEPROM",
-  0x52: "Read SPI Log",
-  0x54: "Get Time",
-  0x55: "Tap Top-Up",
-  0x56: "Valve ON",
-  0x58: "Get Status",
-  0x65: "Read EEPROM Word",
-  0x70: "Write EEPROM Word",
-  0x72: "Read Log Pointer",
-  0x77: "Write Log Pointer",
+  0x41: "Read Tick Accumulator",     // A
+  0x42: "Bulk Clear Supertap Table", // B
+  0x43: "Set Clock",                 // C — Set RTC clock / calendar
+  0x44: "Datalog Output",            // D — Automatic datalog output
+  0x45: "Read EEPROM Byte",          // E
+  0x46: "Factory Reset",             // F
+  0x4B: "Request to Program",        // K — Request to PROGRAM (bootloader)
+  0x4C: "Load Supertap UID + Top-Up",// L
+  0x4D: "Version Message",           // M — Message1 (version string)
+  0x4E: "Write Tick Accumulator",    // N
+  0x4F: "Valve OFF",                 // O — Host Valve OFF
+  0x50: "Write EEPROM Byte",         // P
+  0x52: "Read SPI Log",              // R — Read SPI EEPROM datalog packet
+  0x53: "Consumer Data Message",     // S — SMARTD display message
+  0x54: "Get Time",                  // T — Get RTC clock / calendar
+  0x55: "Tap Top-Up",                // U — Host tap top-up
+  0x56: "Valve ON",                  // V — Host Valve ON
+  0x58: "Get Status",                // X — flags, ADC readings, flow check
+  0x5A: "Clear Supertap UID + Top-Up", // Z
+  0x65: "Read EEPROM Word",          // e
+  0x6D: "Copyright Message",         // m — Message2 (copyright string)
+  0x70: "Write EEPROM Word",         // p
+  0x72: "Read Log Pointer",          // r — Read datalog pointer
+  0x77: "Write Log Pointer",         // w — Write datalog pointer
 };
 
 // ─── Decode 28-byte embedded datalog (bytes 4-31 of a READ SPI LOG reply) ─────
