@@ -118,6 +118,18 @@ Tick accumulator is the 8-byte field at offset 21, NOT the 4-byte ECR at offset 
 - Active test assets: 2105, 2211, 1748, 1749
 - Capabilities include: ["AutomaticValve","BulkCredit","Ewc","Sense","FlowMeter","Modem","BatteryVoltageReading"]
 
+## Reset tick accumulator (command base)
+- POST https://command.ewater.io/api/Ewc/ResetTickAccumulator
+  body: { correlationId: null, secondaryUserId: null, imei, assetId, litreValue }
+- **litreValue is LITRES sent DIRECTLY — NO litres→ticks conversion.** The device
+  does its own conversion. An earlier impl wrongly multiplied by LCF and sent
+  `newValue` ticks; that is wrong.
+- Requires the device **IMEI** (not just assetId). Resolve via state base
+  `/api/Asset/GetIdentifiersByAssetId?assetId=...` → { identifiers:[{imei,...}] };
+  scan for first non-empty imei (rows can be blank/stale).
+- Effect is deferred: the accumulated meter value updates only on the EWC's next
+  health packet — surface that to the user, do not expect an immediate reading change.
+
 ## API base URLs
 - auth: https://auth.ewater.io
 - query: https://query.ewater.io

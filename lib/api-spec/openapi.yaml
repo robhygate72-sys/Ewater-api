@@ -428,25 +428,19 @@ components:
 
     ResetMeterBody:
       type: object
-      required: [litres, lcf]
+      required: [litres]
       properties:
         litres:
           type: number
-          description: Target meter reading in litres
-        lcf:
-          type: number
-          description: Ticks per litre (LCF) used to convert litres to ticks
+          description: Target accumulated meter reading in litres (litreValue)
 
     ResetMeterResult:
       type: object
-      required: [ticks, litres, success]
+      required: [litres, success]
       properties:
-        ticks:
-          type: number
-          description: Tick value sent to the device
         litres:
           type: number
-          description: Litre value set
+          description: Litre value sent to the device
         success:
           type: boolean
         error:

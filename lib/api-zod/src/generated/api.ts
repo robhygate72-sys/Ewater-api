@@ -333,13 +333,11 @@ export const ResetAssetMeterParams = zod.object({
 })
 
 export const ResetAssetMeterBody = zod.object({
-  "litres": zod.number().describe('Target meter reading in litres'),
-  "lcf": zod.number().describe('Ticks per litre (LCF) used to convert litres to ticks')
+  "litres": zod.number().describe('Target accumulated meter reading in litres (litreValue)')
 })
 
 export const ResetAssetMeterResponse = zod.object({
-  "ticks": zod.number().describe('Tick value sent to the device'),
-  "litres": zod.number().describe('Litre value set'),
+  "litres": zod.number().describe('Litre value sent to the device'),
   "success": zod.boolean(),
   "error": zod.string().nullish()
 })

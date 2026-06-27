@@ -63,15 +63,17 @@ export function MeterReadingPanel({ assetId }: MeterReadingPanelProps) {
   function handleSetMeter() {
     const litres = parseFloat(inputLitres);
     if (isNaN(litres) || litres < 0) return;
-    if (!lcf) return;
 
     setResetResult(null);
     resetMeter(
-      { assetId, data: { litres, lcf } },
+      { assetId, data: { litres } },
       {
         onSuccess: (result) => {
           if (result.success) {
-            setResetResult({ success: true, message: `Set to ${litres.toLocaleString()} L (${result.ticks.toLocaleString()} ticks)` });
+            setResetResult({
+              success: true,
+              message: `Reset command sent for ${litres.toLocaleString()} L. The accumulated meter value will update the next time the EWC responds with a health packet.`,
+            });
             setShowInput(false);
             setInputLitres("");
           } else {
@@ -100,7 +102,6 @@ export function MeterReadingPanel({ assetId }: MeterReadingPanelProps) {
             variant="outline"
             className="h-7 text-xs px-2"
             onClick={() => { setShowInput(true); setResetResult(null); }}
-            disabled={!lcf}
           >
             Set meter value
           </Button>
@@ -139,8 +140,7 @@ export function MeterReadingPanel({ assetId }: MeterReadingPanelProps) {
       {showInput && (
         <div className="mt-3 pt-3 border-t border-zinc-100 space-y-2">
           <p className="text-xs text-zinc-500">
-            Enter the new meter reading in litres
-            {lcf ? <span className="ml-1 text-zinc-400">(LCF {lcf} → {Math.round(parseFloat(inputLitres || "0") * lcf).toLocaleString()} ticks)</span> : null}
+            Enter the new accumulated meter reading in litres.
           </p>
           <div className="flex gap-2">
             <Input
@@ -157,7 +157,7 @@ export function MeterReadingPanel({ assetId }: MeterReadingPanelProps) {
               size="sm"
               className="h-8 shrink-0"
               onClick={handleSetMeter}
-              disabled={isResetting || !inputLitres || !lcf}
+              disabled={isResetting || !inputLitres}
             >
               {isResetting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Confirm"}
             </Button>
@@ -170,6 +170,10 @@ export function MeterReadingPanel({ assetId }: MeterReadingPanelProps) {
               Cancel
             </Button>
           </div>
+          <p className="text-[11px] text-zinc-400 leading-snug">
+            The accumulated meter value will update the next time the EWC responds
+            with a health packet.
+          </p>
         </div>
       )}
 

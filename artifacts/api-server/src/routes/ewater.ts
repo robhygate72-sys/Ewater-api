@@ -1275,7 +1275,9 @@ function healthRatingIsFault(rating: string | null): boolean | null {
 // ---------------------------------------------------------------------------
 // Meter reading — ECR tick accumulator from latest HEALTH_STATE (0x19) packet
 // POST /api/ewater/assets/:assetId/reset-meter
-// Converts litres → ticks using provided LCF and calls /api/Ewc/ResetTickAccumulator
+// Sends the litre value directly (litreValue) plus the device IMEI to
+// /api/Ewc/ResetTickAccumulator. No litres→ticks conversion (the command API
+// takes litres). The device applies it on its next health packet response.
 // ---------------------------------------------------------------------------
 
 router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<void> => {
@@ -1283,30 +1285,38 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
   if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
   if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
 
-  const { litres, lcf } = req.body as { litres?: unknown; lcf?: unknown };
+  const { litres } = req.body as { litres?: unknown };
   if (typeof litres !== "number" || litres < 0) {
     res.status(400).json({ error: "litres must be a non-negative number" }); return;
   }
-  if (typeof lcf !== "number" || lcf <= 0) {
-    res.status(400).json({ error: "lcf must be a positive number" }); return;
-  }
 
-  const ticks = Math.round(litres * lcf);
+  // The eWater command API takes the litre value directly (litreValue) plus the
+  // device IMEI — no ticks conversion. Resolve the IMEI from the asset's identifiers.
+  const imei = await fetchAssetImei(assetId);
+  if (!imei) {
+    res.status(400).json({ error: "Could not determine device IMEI for this asset" }); return;
+  }
 
   try {
     const result = await ewaterFetch("command", "/api/Ewc/ResetTickAccumulator", {
       method: "POST",
-      body: JSON.stringify({ assetId: Number(assetId), newValue: ticks }),
+      body: JSON.stringify({
+        correlationId: null,
+        secondaryUserId: null,
+        imei,
+        assetId: Number(assetId),
+        litreValue: litres,
+      }),
     });
 
     if (result.status >= 200 && result.status < 300) {
-      res.json({ ticks, litres, success: true, error: null });
+      res.json({ litres, success: true, error: null });
     } else {
       const errMsg = typeof result.data === "object" && result.data !== null
         ? JSON.stringify(result.data)
         : String(result.data ?? result.status);
-      req.log.warn({ assetId, ticks, status: result.status }, "ResetTickAccumulator non-success");
-      res.json({ ticks, litres, success: false, error: errMsg });
+      req.log.warn({ assetId, litres, status: result.status }, "ResetTickAccumulator non-success");
+      res.json({ litres, success: false, error: errMsg });
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1333,6 +1343,33 @@ async function fetchTicksPerLitre(assetId: string): Promise<number | null> {
     if (raw == null) return null;
     const n = Number(raw);
     return isNaN(n) || n <= 0 ? null : n;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch the device IMEI for an asset from its identifiers list.
+// Shape: { identifiers: [{ assetId, imei, modemType, createdDate }] }.
+// Must be called on the `state` base. Required by the ResetTickAccumulator command.
+// ---------------------------------------------------------------------------
+async function fetchAssetImei(assetId: string): Promise<string | null> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Asset/GetIdentifiersByAssetId?assetId=${encodeURIComponent(assetId)}`,
+    );
+    if (result.status !== 200) return null;
+    const data = result.data as Record<string, unknown> | null;
+    const idList = Array.isArray(data?.["identifiers"])
+      ? (data!["identifiers"] as Record<string, unknown>[])
+      : [];
+    // Prefer an entry whose IMEI is non-empty; identifiers may contain stale/blank rows.
+    for (const entry of idList) {
+      const imei = strOrNull(entry["imei"]);
+      if (imei) return imei;
+    }
+    return null;
   } catch {
     return null;
   }

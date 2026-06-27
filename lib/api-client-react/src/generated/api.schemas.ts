@@ -14,16 +14,12 @@ export interface ErrorResponse {
 }
 
 export interface ResetMeterBody {
-  /** Target meter reading in litres */
+  /** Target accumulated meter reading in litres (litreValue) */
   litres: number;
-  /** Ticks per litre (LCF) used to convert litres to ticks */
-  lcf: number;
 }
 
 export interface ResetMeterResult {
-  /** Tick value sent to the device */
-  ticks: number;
-  /** Litre value set */
+  /** Litre value sent to the device */
   litres: number;
   success: boolean;
   error?: string | null;
