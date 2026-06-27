@@ -59,7 +59,7 @@ byte[16]     = AN  battery ADC; volts = ADC/256 × 15
 byte[17]     = RS  reserved
 bytes[18–19] = UC UC  usage counter
 bytes[20–23] = SCR SCR SCR SCR  start credit (MSB first), in MITs (MilliCredits)
-bytes[24–27] = ECR ECR ECR ECR  end credit (MSB first)
+bytes[24–27] = ECR ECR ECR ECR  end credit (MSB first)  ← in DISPENSE events only
 bytes[28–30] = FC FC FC  per-session flow count (MSB, MID, LSB)  ← THE FLOW COUNTER
 bytes[31–32] = FT FT  flow time in seconds (MSB, LSB)
 bytes[33–34] = CONVH CONVL  LCF ticks/litre (MSB, LSB)  ← read from packet directly
@@ -83,10 +83,17 @@ flow_rate [L/min] = 60 × FC / (LCF × FT)
 - 0x0B = Dispense Limit — intermediate packet during long VALVE ON session
 - 0x19 = HEALTH_STATE — periodic system status report (not a dispense event)
 
+### Tick accumulator (meter reading) — HEALTH_STATE (0x19) packets
+- The device's **lifetime tick accumulator** is an **8-byte big-endian** value at **offset 21** (bytes[21..28], i.e. 1-based "bytes 22–29"). Confirmed against eWater portal: bytes `00 00 00 00 00 11 DA 8D` = 0x0011DA8D = 1,170,061.
+- Do NOT read it as the 4-byte ECR at bytes[24–27] — that gives a wrong, much smaller number (the ECR end-credit field, not the lifetime tick total).
+- Meter litres = ticks / LCF, where LCF is bytes[33–34]. eSense devices can have LCF=100.
+- Read high/low 32-bit halves and combine (`high*2^32 + low`) to stay in JS safe-integer range.
+
 ### Common mistake (do NOT repeat)
 bytes[6–8] are SS MM HH (BCD time), NOT the flow counter.
 bytes[9–10] are DD MT (BCD date), NOT the flow time.
 FC is always at bytes[28–30] and FT at bytes[31–32].
+Tick accumulator is the 8-byte field at offset 21, NOT the 4-byte ECR at offset 24.
 
 ## eSense asset identification
 - purpose === 'eSense' (case-insensitive match)

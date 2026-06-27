@@ -1354,8 +1354,15 @@ router.get("/ewater/assets/:assetId/meter-reading", async (req, res): Promise<vo
         if (bytes.length !== 39 || bytes[0] !== 0x44) continue;
         if (bytes[5] !== 0x19) continue; // only HEALTH_STATE packets
 
-        // ECR (bytes[24–27] MSB-first) = tick accumulator in health packets
-        const ticks = bytes[24]! * 16777216 + bytes[25]! * 65536 + bytes[26]! * 256 + bytes[27]!;
+        // Tick accumulator = 8-byte big-endian value at offset 21 (bytes[21..28]).
+        // The eWater portal reports this as the device's lifetime tick accumulator
+        // (e.g. 0x000000000011DA8D = 1,170,061). The top 4 bytes are effectively
+        // always zero, so combine high/low 32-bit halves to stay in safe-integer range.
+        const high =
+          bytes[21]! * 16777216 + bytes[22]! * 65536 + bytes[23]! * 256 + bytes[24]!;
+        const low =
+          bytes[25]! * 16777216 + bytes[26]! * 65536 + bytes[27]! * 256 + bytes[28]!;
+        const ticks = high * 4294967296 + low;
         // LCF from bytes[33–34]
         const lcf = bytes[33]! * 256 + bytes[34]!;
         const effectiveLcf = lcf > 0 ? lcf : 360;
