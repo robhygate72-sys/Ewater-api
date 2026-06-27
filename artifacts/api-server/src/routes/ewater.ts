@@ -374,9 +374,13 @@ router.get("/ewater/assets/:assetId/ewc", async (req, res): Promise<void> => {
     };
 
     const fcf = getSetting("FlowConversion");
-    const lcf = getSetting("LitresConversion");
+    let lcf = getSetting("LitresConversion");
     const fx  = getSetting("CurrencyConversion");
     const preload = getSetting("Preload");
+    // LitresConversion is primary; fall back to GetTicksPerLitre when absent.
+    if (lcf == null || lcf <= 0) {
+      lcf = await fetchTicksPerLitre(id);
+    }
     const priceOfWater = fcf != null && lcf != null && fx != null && fcf > 0
       ? (fx * lcf) / (fcf * 1_000_000)
       : null;
@@ -1106,7 +1110,12 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         : [];
     const lcfSetting = settingsList.find((x) => x["settingKey"] === "LitresConversion");
     const lcfRaw = (lcfSetting?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
-    const lcf = lcfRaw != null && !isNaN(Number(lcfRaw)) ? Number(lcfRaw) : null;
+    const lcfFromSetting = lcfRaw != null && !isNaN(Number(lcfRaw)) ? Number(lcfRaw) : null;
+    // LitresConversion is primary; fall back to GetTicksPerLitre when absent/≤0
+    // (e.g. asset 1846) so flow-rate history populates for those assets too.
+    const lcf = lcfFromSetting != null && lcfFromSetting > 0
+      ? lcfFromSetting
+      : await fetchTicksPerLitre(String(assetId));
 
     const voltageHistory: { time: string; value: number }[] = [];
     const flowRateHistory: { time: string; flowRate: number; ticks: number; flowTimeSec: number }[] = [];
@@ -1307,13 +1316,38 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
 });
 
 // ---------------------------------------------------------------------------
-// Fetch the authoritative Litres Conversion Factor (LCF, ticks per litre) from
-// the asset's EWC settings.
+// GetTicksPerLitre (state base) returns the LCF directly and resolves a value
+// for assets that have no LitresConversion setting (e.g. partially configured
+// devices). Used as the fallback after the authoritative LitresConversion
+// setting. NOTE: it must be called on the `state` base — `query`/`command` 404.
+// Values can be fractional (e.g. 0.1 = 1 tick per 10 L), so do not assume ints.
+// ---------------------------------------------------------------------------
+async function fetchTicksPerLitre(assetId: string): Promise<number | null> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Asset/GetTicksPerLitre?assetId=${encodeURIComponent(assetId)}`,
+    );
+    if (result.status !== 200) return null;
+    const raw = (result.data as Record<string, unknown> | null)?.["ticksPerLitre"];
+    if (raw == null) return null;
+    const n = Number(raw);
+    return isNaN(n) || n <= 0 ? null : n;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch the authoritative Litres Conversion Factor (LCF, ticks per litre).
+// Primary source: the EWC `LitresConversion` setting. When that setting is
+// missing/invalid, fall back to GetTicksPerLitre (resolves a value for more
+// assets, e.g. 1846 which has no LitresConversion setting).
 //
 // IMPORTANT: packet trailer bytes[33–34] is the FlowConversion (FCF, ticks per
-// credit), NOT the LitresConversion (LCF). Only the LitresConversion setting
-// converts flow-meter ticks → litres. e.g. asset 2706: LCF=71, FCF=100, and the
-// packet trailer reads 100 (= FCF). Always use this helper for ticks→litres.
+// credit), NOT the LitresConversion (LCF). Only the LCF converts flow-meter
+// ticks → litres. e.g. asset 2706: LCF=71, FCF=100, and the packet trailer
+// reads 100 (= FCF). Always use this helper for ticks→litres.
 // ---------------------------------------------------------------------------
 async function fetchAssetLcf(assetId: string): Promise<number | null> {
   try {
@@ -1321,22 +1355,26 @@ async function fetchAssetLcf(assetId: string): Promise<number | null> {
       "state",
       `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(assetId)}`,
     );
-    if (result.status !== 200) return null;
-    const settingsRaw = result.data as Record<string, unknown>;
-    const inner = settingsRaw?.["data"] as Record<string, unknown> | null | undefined;
-    const settings: Record<string, unknown>[] = Array.isArray(inner?.["settings"])
-      ? (inner!["settings"] as Record<string, unknown>[])
-      : Array.isArray(settingsRaw?.["settings"])
-        ? (settingsRaw!["settings"] as Record<string, unknown>[])
-        : [];
-    const s = settings.find((x) => x["settingKey"] === "LitresConversion");
-    const val = (s?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
-    if (val == null) return null;
-    const n = Number(val);
-    return isNaN(n) || n <= 0 ? null : n;
+    if (result.status === 200) {
+      const settingsRaw = result.data as Record<string, unknown>;
+      const inner = settingsRaw?.["data"] as Record<string, unknown> | null | undefined;
+      const settings: Record<string, unknown>[] = Array.isArray(inner?.["settings"])
+        ? (inner!["settings"] as Record<string, unknown>[])
+        : Array.isArray(settingsRaw?.["settings"])
+          ? (settingsRaw!["settings"] as Record<string, unknown>[])
+          : [];
+      const s = settings.find((x) => x["settingKey"] === "LitresConversion");
+      const val = (s?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
+      if (val != null) {
+        const n = Number(val);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    }
   } catch {
-    return null;
+    // ignore — fall through to GetTicksPerLitre fallback
   }
+  // Primary LitresConversion setting absent/invalid — fall back.
+  return fetchTicksPerLitre(assetId);
 }
 
 // ---------------------------------------------------------------------------
