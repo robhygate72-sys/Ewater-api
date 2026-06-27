@@ -4,6 +4,7 @@ import { ESenseCharts } from "@/components/esense-charts";
 import { BatteryPanel } from "@/components/battery-panel";
 import { useGetAssetTech, getGetAssetTechQueryKey } from "@workspace/api-client-react";
 import { AssetLogs } from "@/components/asset-logs";
+import { DeviceStatusCard } from "@/components/device-status-card";
 import { useRoute } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,7 +14,7 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatTimeAgo } from "@/lib/date";
 import {
-  MapPin, Battery, Signal, Wifi, WifiOff, ShieldAlert, ShieldCheck,
+  MapPin, Battery, Signal, Wifi, WifiOff, ShieldCheck,
   TrendingDown, TrendingUp, Minus, Droplet, Zap, Cpu, Radio,
   AlertTriangle, CheckCircle2, Clock, Activity, Info,
   Bell, Lock, RefreshCw, Star, CircleDollarSign,
@@ -370,7 +371,7 @@ export default function AssetDetail() {
   const hasDatalogCharts = isEsense || isCommunityTap;
   const tamper = hasFlag(tech.healthFlags, "tamper") || (tech.tamperSwitchState != null && tech.tamperSwitchState !== "None" && tech.tamperSwitchState !== "");
   const lowBattery = hasFlag(tech.healthFlags, "lowbattery") || hasFlag(tech.healthFlags, "low battery");
-  const hasAlerts = tamper || lowBattery || (tech.healthFlags && tech.healthFlags.toLowerCase() !== "none" && tech.healthFlags !== "");
+  const hasAlerts = lowBattery;
 
   const alertHeaderButton = (
     <button
@@ -482,20 +483,12 @@ export default function AssetDetail() {
             </CardContent>
           </Card>
 
+          {/* Device status (from latest GetStatus reply) */}
+          <DeviceStatusCard assetId={id} />
+
           {/* Alerts */}
           {hasAlerts && (
             <div className="space-y-2">
-              {tamper && (
-                <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
-                  <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">Tamper Detected</p>
-                    {tech.tamperSwitchState && (
-                      <p className="text-xs text-red-500/80 font-mono mt-0.5">{tech.tamperSwitchState}</p>
-                    )}
-                  </div>
-                </div>
-              )}
               {lowBattery && (
                 <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
                   <Battery className="w-5 h-5 text-amber-500 shrink-0" />

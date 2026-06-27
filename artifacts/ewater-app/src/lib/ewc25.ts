@@ -416,7 +416,7 @@ export type EwcReplyData =
   | {
       kind: "get-status";
       deviceTime: Ewc25DeviceTime; deviceTimeStr: string; uid: string;
-      batteryVolts: number; pressureOk: boolean;
+      batteryVolts: number; pressureOk: boolean; pressureAdc: number;
       valveOn: boolean; tamp1: boolean; tamp2: boolean;
       lowBattery: boolean; rfidDisabled: boolean;
       flowCount: number; samplePeriodMs: number;
@@ -475,6 +475,7 @@ export function decodeEwcReply(hexPayload: string, lcf?: number | null): EwcRepl
       kind: "get-status",
       deviceTime, deviceTimeStr, uid, batteryVolts,
       pressureOk: bytes[13] === 0,
+      pressureAdc: bytes[13]!,
       valveOn: !!(flg0 & 0x08),
       tamp1: !!(flg0 & 0x02),
       tamp2: !!(flg0 & 0x01),
