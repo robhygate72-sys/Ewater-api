@@ -7,9 +7,12 @@ import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { Info, Loader2, Radio } from "lucide-react";
 import { Ewc25PacketView, EwcReplyView, CommandApiPacketView } from "@/components/ewc25-packet-view";
+import { TapVisualizer, type ActiveTapAnim } from "@/components/tap-visualizer";
+import { entryToTapAnim } from "@/lib/tap-animation";
 
 const LIVE_POLL_MS = 30_000;
 const NEW_HIGHLIGHT_MS = 6_000;
+const ANIM_SETTLE_MS = 9_000;
 
 interface LogEntry {
   id: string;
@@ -184,8 +187,10 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
   const [liveEntries, setLiveEntries] = useState<LogEntry[]>([]);
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [countdown, setCountdown] = useState(LIVE_POLL_MS / 1000);
+  const [activeAnim, setActiveAnim] = useState<ActiveTapAnim | null>(null);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef(false);
+  const animNonceRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   // Short synthesized chime for newly-arrived log entries (no asset file needed).
@@ -238,7 +243,24 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
     setLive(false);
     setLiveEntries([]);
     setNewIds(new Set());
+    setActiveAnim(null);
   }, [assetId]);
+
+  // Clear the tap animation when live mode is turned off.
+  useEffect(() => {
+    if (!live) setActiveAnim(null);
+  }, [live]);
+
+  // Settle the animation back to idle after a short while so a stale
+  // dispense/error state doesn't linger between (30s-apart) polls.
+  useEffect(() => {
+    if (!activeAnim || activeAnim.kind === "idle") return;
+    const t = setTimeout(() => {
+      animNonceRef.current += 1;
+      setActiveAnim({ kind: "idle", label: "", tone: "water", nonce: animNonceRef.current });
+    }, ANIM_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [activeAnim]);
 
   // Tick the countdown to the next poll once per second while live.
   useEffect(() => {
@@ -338,6 +360,13 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
         const fresh = page.entries.filter((e) => !knownIdsRef.current.has(e.id));
         if (fresh.length === 0) return;
         playChime();
+        // Drive the tap visualizer from the newest fresh entry.
+        const newest = fresh[0];
+        if (newest) {
+          const anim = entryToTapAnim(newest.protocol, newest.message);
+          animNonceRef.current += 1;
+          setActiveAnim({ ...anim, nonce: animNonceRef.current });
+        }
         setLiveEntries((prev) => [...fresh, ...prev]);
         setNewIds((prev) => {
           const next = new Set(prev);
@@ -409,6 +438,13 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
           )}
         </button>
       </div>
+
+      {/* Live tap visualizer — reacts to incoming entries while live */}
+      {live && (
+        <div className="py-1">
+          <TapVisualizer active={activeAnim} />
+        </div>
+      )}
 
       {/* Semantic category filter chips — always visible */}
       <div className="flex gap-1.5 flex-wrap">
