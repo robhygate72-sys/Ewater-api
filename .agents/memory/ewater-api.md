@@ -30,7 +30,10 @@ Body: { assetId: number, startDate, endDate }
 Response: { data: [{ lowerBound, upperBound, estimateTotalLitres, totalTicks, totalCredits, tickAccumulatorDerivedTotalLitres (null) }] }
 - Returns individual tap event buckets (not daily); `estimateTotalLitres` is badly wrong
 - Correct formula: totalTicks / GetTicksPerLitre = actual litres (matches disbursement history)
-- GetTicksPerLitre: GET /api/Asset/GetTicksPerLitre?assetId={id} → { ticksPerLitre: 365, ... }
+- **GetTicksPerLitre LIVES ON THE `state` BASE** (https://state.ewater.io), NOT query/command.
+  GET https://state.ewater.io/api/Asset/GetTicksPerLitre?assetId={id} → { ticksPerLitre, success, errorMessage }.
+  Confirmed 2026-06-27 asset 2706 → ticksPerLitre:71, exactly matching settings LitresConversion=71.
+  Calling it on the `query` base 404s — that was the earlier "unusable" mistake.
 
 ### LitresDispensedPerDay (query API) — returns empty for individual assets
 GET /api/Entity/LitresDispensedPerDay?entityType=Asset&entityId={id}&startDt=...&endDt=...
@@ -74,9 +77,10 @@ flow_rate [L/min] = 60 × FC / (LCF × FT)
 ```
 - FC is **per-session** (not cumulative). No delta needed.
 - **LCF (ticks/litre) does NOT come from the packet.** bytes[33–34] is the FCF
-  (ticks/credit). The LCF must be fetched from EWC settings `LitresConversion`
-  (GetSettingsMapForAsset) — it is the ONLY authoritative source. If settings
-  has no LCF, do not fabricate one (no `?? 360` fallback) — report null/skip.
+  (ticks/credit). Two confirmed authoritative sources, both on the `state` base:
+  (1) GetSettingsMapForAsset → settingKey `LitresConversion`; (2) GetTicksPerLitre
+  → `ticksPerLitre` (cleaner/direct). Both returned 71 for asset 2706. If neither
+  yields a value, do not fabricate one (no `?? 360` fallback) — report null/skip.
 - FT is at bytes[31–32] (MSB, LSB big-endian). Filter: FT > 10 s.
 - Dispense event types: 0x09 (tag removed / session end), 0x0B (dispense-limit intermediate)
 - Exclude: 0x19 (HEALTH_STATE periodic) — FC semantics differ for health reports.
