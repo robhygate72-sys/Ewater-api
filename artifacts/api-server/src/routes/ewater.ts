@@ -596,9 +596,9 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
       // Usage
       litresDispensedToday: round2(numOrNull(usage?.["litresDispensedToday"])),
       lastUsageDt: strOrNull(usage?.["lastUsageDt"]),
-      flowRateHour: round2(numOrNull(flow?.["averageFlowRateThisHour"])),
-      flowRateToday: round2(numOrNull(flow?.["averageFlowRateToday"])),
-      flowRateWeek: round2(numOrNull(flow?.["averageFlowRateThisWeek"])),
+      flowRateHour: round2(numOrNull(flow?.["hourAverageFlowRate"])),
+      flowRateToday: round2(numOrNull(flow?.["todayAverageFlowRate"])),
+      flowRateWeek: round2(numOrNull(flow?.["weekAverageFlowRate"])),
       // Identifiers & firmware
       imei,
       firmware,

@@ -49,6 +49,16 @@ Response: { lastKnownVoltage, lastKnownVoltageReadingDt, trendDirection, todayAv
 GET /api/Asset/AssetHealthStatus?assetId={id}
 Returns bundle: { connectivityStatus, powerStatus, flowStatus, tankHeightStatus, assetUsageStatus }
 
+### Asset Flow Status (query API) — average flow rates for the Water Usage panel
+GET /api/Asset/AssetFlowStatus?assetId={id}
+Response (FLAT, no `data` wrapper): { assetId, hourAverageFlowRate, todayAverageFlowRate, yesterdayAverageFlowRate, weekAverageFlowRate, monthAverageFlowRate }
+- **Field names are `*AverageFlowRate` prefixed by period (hour/today/week), NOT `averageFlowRateThisHour/Today/ThisWeek`.** Reading the wrong names silently yields null (the Water Usage flow-rate rows stayed blank because of exactly this). Confirmed 2026-06-27 asset 662.
+- These are the AVERAGE flow rates shown in the Water Usage panel; distinct from the per-session flowRateHistory chart computed from datalog packets.
+
+### Asset Usage Status (query API)
+GET /api/Asset/AssetUsageStatus?assetId={id}
+Response (FLAT): { assetId, litresDispensedToday, lastUsageDt }
+
 ## EWC2.5 DATALOG Packet — 39-byte layout (CONFIRMED from protocol spec)
 
 ```
