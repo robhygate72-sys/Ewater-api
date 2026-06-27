@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useGetAssetEwc, getGetAssetEwcQueryKey } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/date";
@@ -93,9 +94,10 @@ function firstByte(b64: string): number | null {
 
 // ─── log row ──────────────────────────────────────────────────────────────────
 
-function LogRow({ entry, isEsense, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
+function LogRow({ entry, isEsense, lcf, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
   entry: LogEntry;
   isEsense: boolean;
+  lcf?: number | null;
   sensorRangeMetres1?: number | null;
   sensorRangeMetres2?: number | null;
   sensorRangeMetres3?: number | null;
@@ -136,9 +138,9 @@ function LogRow({ entry, isEsense, sensorRangeMetres1, sensorRangeMetres2, senso
       </div>
 
       {isDatalog && raw ? (
-        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} sensorRangeMetres1={sensorRangeMetres1} sensorRangeMetres2={sensorRangeMetres2} sensorRangeMetres3={sensorRangeMetres3} />
+        <Ewc25PacketView hexPayload={hexStr} isEsense={isEsense} lcf={lcf} sensorRangeMetres1={sensorRangeMetres1} sensorRangeMetres2={sensorRangeMetres2} sensorRangeMetres3={sensorRangeMetres3} />
       ) : isReply && raw ? (
-        <EwcReplyView hexPayload={hexStr} />
+        <EwcReplyView hexPayload={hexStr} lcf={lcf} />
       ) : isCommandApi && raw ? (
         <CommandApiPacketView base64Payload={raw} />
       ) : (
@@ -169,6 +171,12 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
   const [category, setCategory] = useState<LogCategory | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [sensorRanges, setSensorRanges] = useState<[number | null, number | null, number | null]>([null, null, null]);
+
+  // Authoritative LCF (ticks/litre) for decoding per-session litres in packets.
+  const { data: ewc } = useGetAssetEwc(assetId, {
+    query: { queryKey: getGetAssetEwcQueryKey(assetId) },
+  });
+  const lcf = ewc?.ewcLcf ?? null;
 
   useEffect(() => {
     if (!isEsense) return;
@@ -293,7 +301,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
               )}
             </div>
           ) : (
-            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} sensorRangeMetres1={sensorRanges[0]} sensorRangeMetres2={sensorRanges[1]} sensorRangeMetres3={sensorRanges[2]} />)
+            visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} isEsense={isEsense} lcf={lcf} sensorRangeMetres1={sensorRanges[0]} sensorRangeMetres2={sensorRanges[1]} sensorRangeMetres3={sensorRanges[2]} />)
           )}
         </div>
       </Card>

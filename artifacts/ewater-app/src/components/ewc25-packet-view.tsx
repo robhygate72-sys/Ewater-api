@@ -137,7 +137,7 @@ function StandardFields({ d }: { d: Ewc25Decoded }) {
           )}
           <Divider />
           <Field label="Flow ticks" value={d.flowTicks.toLocaleString()} mono />
-          <Field label="Litres dispensed" value={`~${d.litres.toFixed(2)} L`} />
+          <Field label="Litres dispensed" value={d.litres != null ? `~${d.litres.toFixed(2)} L` : "—"} dim={d.litres == null} />
           <Field label="Flow time" value={`${d.flowTimeSecs} s`} />
         </>
       )}
@@ -158,7 +158,7 @@ function NoCreditFields({ d }: { d: Ewc25Decoded }) {
       <Field label="End credit" value={`${mitsToCredits(d.endCreditMits)} credits`} />
       <Divider />
       <Field label="Flow ticks" value={d.flowTicks.toLocaleString()} mono />
-      <Field label="Litres dispensed" value={`~${d.litres.toFixed(2)} L`} />
+      <Field label="Litres dispensed" value={d.litres != null ? `~${d.litres.toFixed(2)} L` : "—"} dim={d.litres == null} />
       <Field label="Flow time" value={`${d.flowTimeSecs} s`} />
       {d.unmeteredFlowTicks !== undefined && (
         <Field label="Unmetered ticks (valve close)" value={d.unmeteredFlowTicks.toLocaleString()} mono />
@@ -226,15 +226,16 @@ function HealthStateFields({ d }: { d: Ewc25Decoded }) {
 
 // ─── EWC2.5 datalog packet (0x44) ─────────────────────────────────────────────
 
-export function Ewc25PacketView({ hexPayload, isEsense = false, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
+export function Ewc25PacketView({ hexPayload, isEsense = false, lcf, sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3 }: {
   hexPayload: string;
   isEsense?: boolean;
+  lcf?: number | null;
   sensorRangeMetres1?: number | null;
   sensorRangeMetres2?: number | null;
   sensorRangeMetres3?: number | null;
 }) {
   const [showRaw, setShowRaw] = useState(false);
-  const result = decodeEwc25(hexPayload);
+  const result = decodeEwc25(hexPayload, lcf);
 
   if (!result.valid) {
     return (
@@ -440,9 +441,9 @@ function CommandArgsFields({ args, cmdByte }: { args: CommandApiArgs; cmdByte: n
 
 // ─── EWC reply packet view (0x80 / 0x88) ──────────────────────────────────────
 
-export function EwcReplyView({ hexPayload }: { hexPayload: string }) {
+export function EwcReplyView({ hexPayload, lcf }: { hexPayload: string; lcf?: number | null }) {
   const [showRaw, setShowRaw] = useState(false);
-  const result = decodeEwcReply(hexPayload);
+  const result = decodeEwcReply(hexPayload, lcf);
 
   if (!result.valid) {
     return (

@@ -62,7 +62,7 @@ bytes[20–23] = SCR SCR SCR SCR  start credit (MSB first), in MITs (MilliCredit
 bytes[24–27] = ECR ECR ECR ECR  end credit (MSB first)  ← in DISPENSE events only
 bytes[28–30] = FC FC FC  per-session flow count (MSB, MID, LSB)  ← THE FLOW COUNTER
 bytes[31–32] = FT FT  flow time in seconds (MSB, LSB)
-bytes[33–34] = CONVH CONVL  LCF ticks/litre (MSB, LSB)  ← read from packet directly
+bytes[33–34] = CONVH CONVL  FCF ticks/credit (MSB, LSB)  ← this is the FCF, NOT the LCF
 bytes[35–36] = DLPH DLPL  datalog pointer
 byte[37]     = ETX (0x03)
 byte[38]     = XOR checksum
@@ -73,7 +73,10 @@ byte[38]     = XOR checksum
 flow_rate [L/min] = 60 × FC / (LCF × FT)
 ```
 - FC is **per-session** (not cumulative). No delta needed.
-- LCF comes from bytes[33–34] (CONVH CONVL) in the packet itself (most reliable).
+- **LCF (ticks/litre) does NOT come from the packet.** bytes[33–34] is the FCF
+  (ticks/credit). The LCF must be fetched from EWC settings `LitresConversion`
+  (GetSettingsMapForAsset) — it is the ONLY authoritative source. If settings
+  has no LCF, do not fabricate one (no `?? 360` fallback) — report null/skip.
 - FT is at bytes[31–32] (MSB, LSB big-endian). Filter: FT > 10 s.
 - Dispense event types: 0x09 (tag removed / session end), 0x0B (dispense-limit intermediate)
 - Exclude: 0x19 (HEALTH_STATE periodic) — FC semantics differ for health reports.
@@ -86,7 +89,9 @@ flow_rate [L/min] = 60 × FC / (LCF × FT)
 ### Tick accumulator (meter reading) — HEALTH_STATE (0x19) packets
 - The device's **lifetime tick accumulator** is an **8-byte big-endian** value at **offset 21** (bytes[21..28], i.e. 1-based "bytes 22–29"). Confirmed against eWater portal: bytes `00 00 00 00 00 11 DA 8D` = 0x0011DA8D = 1,170,061.
 - Do NOT read it as the 4-byte ECR at bytes[24–27] — that gives a wrong, much smaller number (the ECR end-credit field, not the lifetime tick total).
-- Meter litres = ticks / LCF, where LCF is bytes[33–34]. eSense devices can have LCF=100.
+- Meter litres = ticks / LCF, where LCF is the EWC settings `LitresConversion`
+  (NOT bytes[33–34], which is the FCF). Example asset 2706: settings LCF=71,
+  FCF=100; packet bytes[33–34]=100 confirmed = FCF.
 - Read high/low 32-bit halves and combine (`high*2^32 + low`) to stay in JS safe-integer range.
 
 ### Common mistake (do NOT repeat)

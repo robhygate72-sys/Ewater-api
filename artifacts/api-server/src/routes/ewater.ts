@@ -1126,7 +1126,8 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     //   bytes[24–27]= ECR ECR ECR ECR  end credit (MSB first)
     //   bytes[28–30]= FC FC FC  per-session flow count (MSB, MID, LSB). Litres ≈ FC / LCF
     //   bytes[31–32]= FT FT  flow time in seconds (MSB, LSB)
-    //   bytes[33–34]= CONVH CONVL  LCF ticks/litre (MSB, LSB)
+    //   bytes[33–34]= CONVH CONVL  FCF ticks/credit (MSB, LSB) — NOT the LCF;
+    //                 the LCF (ticks/litre) comes from EWC settings only
     //   bytes[35–36]= DLPH DLPL  datalog pointer
     //   byte[37]    = ETX (0x03)
     //   byte[38]    = XOR checksum
@@ -1161,12 +1162,11 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         const fc = bytes[28]! * 65536 + bytes[29]! * 256 + bytes[30]!;
         // FT: 2-byte MSB-first flow time (seconds) at bytes[31–32]
         const ft = bytes[31]! * 256 + bytes[32]!;
-        // LCF: read from packet bytes[33–34] (CONVH CONVL), fall back to settings value
-        const packetLcf = bytes[33]! * 256 + bytes[34]!;
-        const effectiveLcf = packetLcf > 0 ? packetLcf : (lcf ?? 360);
-
-        if (ft > 10 && fc > 0) {
-          const flowRate = Math.round((60 * fc / (effectiveLcf * ft)) * 1000) / 1000;
+        // LCF (ticks/litre) from EWC settings — NOT packet bytes[33–34] (that is
+        // FCF). Without a real LCF we cannot convert ticks → litres, so skip
+        // rather than fabricate a flow rate with a guessed divisor.
+        if (lcf != null && ft > 10 && fc > 0) {
+          const flowRate = Math.round((60 * fc / (lcf * ft)) * 1000) / 1000;
           flowRateHistory.push({ time, flowRate, ticks: fc, flowTimeSec: ft });
         }
       } catch { /* skip malformed */ }
@@ -1307,6 +1307,39 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
 });
 
 // ---------------------------------------------------------------------------
+// Fetch the authoritative Litres Conversion Factor (LCF, ticks per litre) from
+// the asset's EWC settings.
+//
+// IMPORTANT: packet trailer bytes[33–34] is the FlowConversion (FCF, ticks per
+// credit), NOT the LitresConversion (LCF). Only the LitresConversion setting
+// converts flow-meter ticks → litres. e.g. asset 2706: LCF=71, FCF=100, and the
+// packet trailer reads 100 (= FCF). Always use this helper for ticks→litres.
+// ---------------------------------------------------------------------------
+async function fetchAssetLcf(assetId: string): Promise<number | null> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(assetId)}`,
+    );
+    if (result.status !== 200) return null;
+    const settingsRaw = result.data as Record<string, unknown>;
+    const inner = settingsRaw?.["data"] as Record<string, unknown> | null | undefined;
+    const settings: Record<string, unknown>[] = Array.isArray(inner?.["settings"])
+      ? (inner!["settings"] as Record<string, unknown>[])
+      : Array.isArray(settingsRaw?.["settings"])
+        ? (settingsRaw!["settings"] as Record<string, unknown>[])
+        : [];
+    const s = settings.find((x) => x["settingKey"] === "LitresConversion");
+    const val = (s?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
+    if (val == null) return null;
+    const n = Number(val);
+    return isNaN(n) || n <= 0 ? null : n;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/ewater/assets/:assetId/meter-reading
 // ---------------------------------------------------------------------------
 
@@ -1339,6 +1372,10 @@ router.get("/ewater/assets/:assetId/meter-reading", async (req, res): Promise<vo
       ? (body["logLines"] as Record<string, unknown>[])
       : [];
 
+    // Authoritative LCF (ticks/litre) from EWC settings — NOT packet bytes[33–34]
+    // (that trailer is the FCF). Only LitresConversion converts ticks → litres.
+    const lcf = await fetchAssetLcf(assetId);
+
     // Sort descending — pick the most recent HEALTH_STATE packet
     lines.sort((a, b) =>
       new Date(String(b["timeReceived"] ?? 0)).getTime() -
@@ -1363,12 +1400,9 @@ router.get("/ewater/assets/:assetId/meter-reading", async (req, res): Promise<vo
         const low =
           bytes[25]! * 16777216 + bytes[26]! * 65536 + bytes[27]! * 256 + bytes[28]!;
         const ticks = high * 4294967296 + low;
-        // LCF from bytes[33–34]
-        const lcf = bytes[33]! * 256 + bytes[34]!;
-        const effectiveLcf = lcf > 0 ? lcf : 360;
-        const litres = Math.round((ticks / effectiveLcf) * 10) / 10;
+        const litres = lcf != null ? Math.round((ticks / lcf) * 10) / 10 : null;
 
-        res.json({ ticks, lcf: effectiveLcf, litres, timestamp: time, found: true });
+        res.json({ ticks, lcf, litres, timestamp: time, found: true });
         return;
       } catch { /* skip malformed */ }
     }
@@ -1423,6 +1457,16 @@ router.get("/ewater/assets/:assetId/flow-rate", async (req, res): Promise<void> 
 
     const DISPENSE_EVENTS = new Set([0x09, 0x0b]);
 
+    // Authoritative LCF (ticks/litre) from EWC settings — NOT packet bytes[33–34]
+    // (that trailer is the FCF). flow_rate [L/min] = 60 × FC / (LCF × FT).
+    // Without a real LCF we cannot convert ticks → litres, so report no reading
+    // rather than fabricate a flow rate with a guessed divisor.
+    const lcf = await fetchAssetLcf(assetId);
+    if (lcf == null) {
+      res.json({ flowRate: null, timestamp: null, timedOut: false });
+      return;
+    }
+
     for (const line of lines) {
       const payload = strOrNull(line["payload"]);
       const time    = strOrNull(line["timeReceived"]);
@@ -1436,11 +1480,9 @@ router.get("/ewater/assets/:assetId/flow-rate", async (req, res): Promise<void> 
 
         const fc  = bytes[28]! * 65536 + bytes[29]! * 256 + bytes[30]!;
         const ft  = bytes[31]! * 256 + bytes[32]!;
-        const lcf = bytes[33]! * 256 + bytes[34]!;
-        const effectiveLcf = lcf > 0 ? lcf : 360;
 
         if (ft > 10 && fc > 0) {
-          const flowRate = Math.round((60 * fc / (effectiveLcf * ft)) * 100) / 100;
+          const flowRate = Math.round((60 * fc / (lcf * ft)) * 100) / 100;
           res.json({ flowRate, timestamp: time, timedOut: false });
           return;
         }

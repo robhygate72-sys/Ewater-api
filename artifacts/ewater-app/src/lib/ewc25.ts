@@ -52,6 +52,14 @@ function uint24(b0: number, b1: number, b2: number): number {
   return (b0 << 16) | (b1 << 8) | b2;
 }
 
+// Convert flow-meter ticks → litres using the asset's LCF (LitresConversion,
+// ticks per litre). The LCF comes from EWC settings — NOT packet bytes[33–34]
+// (that trailer is the FCF). Returns null when the LCF is unknown so the UI can
+// avoid showing a fabricated value.
+function ticksToLitres(flowTicks: number, lcf?: number | null): number | null {
+  return lcf != null && lcf > 0 ? Math.round((flowTicks / lcf) * 100) / 100 : null;
+}
+
 function uint32(b0: number, b1: number, b2: number, b3: number): number {
   return ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3) >>> 0;
 }
@@ -115,7 +123,7 @@ export interface Ewc25Decoded {
   endCreditMits: number;
   creditUsedMits: number;
   flowTicks: number;
-  litres: number; // flowTicks / 360
+  litres: number | null; // flowTicks / LCF; null when LCF unknown
   flowTimeSecs: number;
 
   // Conversion factor (FCF from packet trailer, ticks per credit)
@@ -152,7 +160,7 @@ function parseHex(hex: string): number[] | null {
   return bytes;
 }
 
-export function decodeEwc25(hexPayload: string): Ewc25Result {
+export function decodeEwc25(hexPayload: string, lcf?: number | null): Ewc25Result {
   const bytes = parseHex(hexPayload);
   if (!bytes) return { valid: false, reason: "Cannot parse hex" };
   if (bytes.length !== 39) return { valid: false, reason: `Expected 39 bytes, got ${bytes.length}` };
@@ -235,7 +243,7 @@ export function decodeEwc25(hexPayload: string): Ewc25Result {
   const endCreditMits = uint32(bytes[24]!, bytes[25]!, bytes[26]!, bytes[27]!);
   const creditUsedMits = startCreditMits >= endCreditMits ? startCreditMits - endCreditMits : 0;
   const flowTicks = uint24(bytes[28]!, bytes[29]!, bytes[30]!);
-  const litres = Math.round((flowTicks / 360) * 100) / 100;
+  const litres = ticksToLitres(flowTicks, lcf);
   const flowTimeSecs = uint16(bytes[31]!, bytes[32]!);
 
   const base: Omit<Ewc25Decoded, "tamper" | "pressureOk" | "startUp" | "healthState" | "unmeteredFlowTicks"> = {
@@ -313,7 +321,7 @@ export const EWC_CMD_NAMES: Record<number, string> = {
 
 // ─── Decode 28-byte embedded datalog (bytes 4-31 of a READ SPI LOG reply) ─────
 
-function decodeDatalog28(b: number[]): Ewc25Result {
+function decodeDatalog28(b: number[], lcf?: number | null): Ewc25Result {
   if (b.length < 28) return { valid: false, reason: `Expected 28 bytes, got ${b.length}` };
   const event = b[0]!;
   const eventName = EWC25_EVENT_NAMES[event] ?? `Unknown (0x${event.toString(16)})`;
@@ -365,7 +373,7 @@ function decodeDatalog28(b: number[]): Ewc25Result {
   const endCreditMits = uint32(b[19]!, b[20]!, b[21]!, b[22]!);
   const creditUsedMits = startCreditMits >= endCreditMits ? startCreditMits - endCreditMits : 0;
   const flowTicks = uint24(b[23]!, b[24]!, b[25]!);
-  const litres = Math.round((flowTicks / 360) * 100) / 100;
+  const litres = ticksToLitres(flowTicks, lcf);
   const flowTimeSecs = uint16(b[26]!, b[27]!);
 
   const base: Omit<Ewc25Decoded, "tamper" | "pressureOk" | "startUp" | "healthState" | "unmeteredFlowTicks"> = {
@@ -425,7 +433,7 @@ export interface EwcReplyDecoded {
 export interface EwcReplyInvalid { valid: false; reason: string; }
 export type EwcReplyResult = EwcReplyDecoded | EwcReplyInvalid;
 
-export function decodeEwcReply(hexPayload: string): EwcReplyResult {
+export function decodeEwcReply(hexPayload: string, lcf?: number | null): EwcReplyResult {
   const bytes = parseHex(hexPayload);
   if (!bytes) return { valid: false, reason: "Cannot parse hex" };
   if (bytes.length < 4) return { valid: false, reason: `Too short: ${bytes.length} bytes` };
@@ -468,7 +476,7 @@ export function decodeEwcReply(hexPayload: string): EwcReplyResult {
   } else if (cmdByte === 0x52 && bytes.length === 34) {
     // READ SPI LOG reply: 80 52 DLH DLL <28-byte datalog> ETX XOR
     const logNumber = uint16(bytes[2]!, bytes[3]!);
-    const datalog = decodeDatalog28([...bytes.slice(4, 32)]);
+    const datalog = decodeDatalog28([...bytes.slice(4, 32)], lcf);
     data = { kind: "read-log", logNumber, datalog };
   } else if ((cmdByte === 0x56 || cmdByte === 0x4F || cmdByte === 0x55) && bytes.length === 8) {
     // Valve ON / OFF / Top-Up reply: 80 XX CR[4] ETX XOR
