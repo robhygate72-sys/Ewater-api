@@ -217,10 +217,12 @@ export function ESenseCharts({
   assetId,
   isEsense = false,
   show,
+  showTitle = true,
 }: {
   assetId: string;
   isEsense?: boolean;
   show?: { tankHeight?: boolean; usage?: boolean; flow?: boolean };
+  showTitle?: boolean;
 }) {
   const showTank = show ? (show.tankHeight ?? false) : true;
   const showUsage = show ? (show.usage ?? false) : true;
@@ -278,12 +280,16 @@ export function ESenseCharts({
     <div className="space-y-3">
       {/* Header + range selector */}
       <div className="flex items-center justify-between px-0.5">
-        <div className="flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            {isEsense ? "eSense Charts" : "Datalog Charts"}
-          </h3>
-        </div>
+        {showTitle ? (
+          <div className="flex items-center gap-2">
+            <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+            <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+              {isEsense ? "eSense Charts" : "Datalog Charts"}
+            </h3>
+          </div>
+        ) : (
+          <span />
+        )}
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
