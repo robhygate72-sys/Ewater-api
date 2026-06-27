@@ -442,6 +442,10 @@ export default function AssetDetail() {
 
             <div className="grid grid-cols-2 gap-3 text-xs bg-muted/40 p-3 rounded-lg">
               <div>
+                <span className="text-muted-foreground block mb-0.5">Asset ID</span>
+                <span className="font-mono text-[11px]">{id}</span>
+              </div>
+              <div>
                 <span className="text-muted-foreground block mb-0.5">Last comms</span>
                 <span className="font-mono text-[11px]">{tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : "—"}</span>
               </div>
