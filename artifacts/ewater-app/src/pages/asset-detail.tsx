@@ -465,6 +465,9 @@ export default function AssetDetail() {
           </CardContent>
         </Card>
 
+        {/* Meter reading */}
+        <MeterReadingPanel assetId={id} />
+
         {/* Alerts */}
         {hasAlerts && (
           <div className="space-y-2">
@@ -542,9 +545,6 @@ export default function AssetDetail() {
             </div>
           )}
         </SectionCard>
-
-        {/* Meter reading */}
-        <MeterReadingPanel assetId={id} />
 
         {/* EWC Settings */}
         <EwcSettingsPanel assetId={id} isEsense={tech.purpose?.toLowerCase() === "esense"} />
