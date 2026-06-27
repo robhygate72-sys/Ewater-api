@@ -5,14 +5,36 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import { Info, Loader2, Radio } from "lucide-react";
+import { Info, Loader2, Radio, FlaskConical } from "lucide-react";
 import { Ewc25PacketView, EwcReplyView, CommandApiPacketView } from "@/components/ewc25-packet-view";
 import { TapVisualizer, type ActiveTapAnim } from "@/components/tap-visualizer";
-import { entryToTapAnim } from "@/lib/tap-animation";
+import { entryToTapAnim, type TapAnim } from "@/lib/tap-animation";
 
 const LIVE_POLL_MS = 30_000;
 const NEW_HIGHLIGHT_MS = 6_000;
 const ANIM_SETTLE_MS = 9_000;
+
+// ── TESTING ONLY: every animation the tap visualizer can play, so the
+// animations can be forced manually without waiting for a real log.
+// Remove this block (and its UI panel below) once testing is finished.
+const TEST_ANIMS: TapAnim[] = [
+  { kind: "dispense", label: "Water dispensed", tone: "water" },
+  { kind: "tag-removed", label: "Tag removed", tone: "warn" },
+  { kind: "dispense-limit", label: "Dispense limit reached", tone: "warn" },
+  { kind: "no-credit", label: "No credit", tone: "warn" },
+  { kind: "valve-off", label: "Host valve off", tone: "warn" },
+  { kind: "no-flow", label: "No flow", tone: "warn" },
+  { kind: "low-battery", label: "Low battery", tone: "warn" },
+  { kind: "tamper", label: "Tamper detected", tone: "error" },
+  { kind: "prox", label: "Proximity detect", tone: "info" },
+  { kind: "pressure", label: "Pressure event", tone: "info" },
+  { kind: "health", label: "Healthy signal", tone: "good" },
+  { kind: "startup", label: "Start-up", tone: "info" },
+  { kind: "command", label: "Command reply", tone: "info" },
+  { kind: "gadwall", label: "Gadwall signal", tone: "info" },
+  { kind: "beam", label: "Beam signal", tone: "info" },
+  { kind: "error", label: "Error event", tone: "error" },
+];
 
 interface LogEntry {
   id: string;
@@ -188,6 +210,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [countdown, setCountdown] = useState(LIVE_POLL_MS / 1000);
   const [activeAnim, setActiveAnim] = useState<ActiveTapAnim | null>(null);
+  const [showTester, setShowTester] = useState(false); // TESTING ONLY
   const knownIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef(false);
   const animNonceRef = useRef(0);
@@ -228,6 +251,12 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
       }
       return next;
     });
+  };
+
+  // TESTING ONLY: force a given animation to play, mimicking a fresh log.
+  const fireTestAnim = (anim: TapAnim) => {
+    animNonceRef.current += 1;
+    setActiveAnim({ ...anim, nonce: animNonceRef.current });
   };
 
   // Close the AudioContext when the component unmounts.
@@ -415,32 +444,70 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
         <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           Protocol Logs
         </span>
-        <button
-          onClick={toggleLive}
-          aria-pressed={live}
-          className={cn(
-            "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors",
-            live
-              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/40"
-              : "bg-background text-muted-foreground border-border hover:border-foreground/30",
-          )}
-        >
-          <Radio className={cn("w-3 h-3", live && "animate-pulse")} />
-          {live ? (
-            <>
-              Live
-              <span className="font-mono tabular-nums text-emerald-600/70">
-                {countdown}s
-              </span>
-            </>
-          ) : (
-            "Go live"
-          )}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* TESTING ONLY: toggle the animation tester panel */}
+          <button
+            onClick={() => setShowTester((v) => !v)}
+            aria-pressed={showTester}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors",
+              showTester
+                ? "bg-purple-500/10 text-purple-600 border-purple-500/40"
+                : "bg-background text-muted-foreground border-border hover:border-foreground/30",
+            )}
+          >
+            <FlaskConical className="w-3 h-3" />
+            Test
+          </button>
+          <button
+            onClick={toggleLive}
+            aria-pressed={live}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors",
+              live
+                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/40"
+                : "bg-background text-muted-foreground border-border hover:border-foreground/30",
+            )}
+          >
+            <Radio className={cn("w-3 h-3", live && "animate-pulse")} />
+            {live ? (
+              <>
+                Live
+                <span className="font-mono tabular-nums text-emerald-600/70">
+                  {countdown}s
+                </span>
+              </>
+            ) : (
+              "Go live"
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Live tap visualizer — reacts to incoming entries while live */}
-      {live && (
+      {/* TESTING ONLY: animation tester — pick any animation to force it.
+          Remove this block and the TEST_ANIMS / fireTestAnim helpers when done. */}
+      {showTester && (
+        <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-2.5 space-y-2">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-purple-600">
+            <FlaskConical className="w-3 h-3" />
+            Animation tester
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {TEST_ANIMS.map((anim) => (
+              <button
+                key={anim.kind}
+                onClick={() => fireTestAnim(anim)}
+                className="text-xs px-2.5 py-1 rounded-full border border-purple-500/30 bg-background text-foreground/80 hover:border-purple-500/60 hover:bg-purple-500/10 transition-colors"
+              >
+                {anim.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Live tap visualizer — reacts to incoming entries while live or testing */}
+      {(live || showTester) && (
         <div className="py-1">
           <TapVisualizer active={activeAnim} />
         </div>
