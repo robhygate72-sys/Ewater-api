@@ -183,6 +183,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
   const [live, setLive] = useState(false);
   const [liveEntries, setLiveEntries] = useState<LogEntry[]>([]);
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const [countdown, setCountdown] = useState(LIVE_POLL_MS / 1000);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef(false);
 
@@ -192,6 +193,18 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
     setLiveEntries([]);
     setNewIds(new Set());
   }, [assetId]);
+
+  // Tick the countdown to the next poll once per second while live.
+  useEffect(() => {
+    if (!live) {
+      setCountdown(LIVE_POLL_MS / 1000);
+      return;
+    }
+    const tick = setInterval(() => {
+      setCountdown((s) => (s <= 1 ? LIVE_POLL_MS / 1000 : s - 1));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [live]);
 
   // Authoritative LCF (ticks/litre) for decoding per-session litres in packets.
   const { data: ewc } = useGetAssetEwc(assetId, {
@@ -272,6 +285,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
     const poll = async () => {
       if (pollingRef.current) return; // skip if a previous poll is still in-flight
       pollingRef.current = true;
+      setCountdown(LIVE_POLL_MS / 1000);
       try {
         const page = await fetchLogPage(assetId, new Date().toISOString());
         if (cancelled) return;
@@ -336,7 +350,16 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
           )}
         >
           <Radio className={cn("w-3 h-3", live && "animate-pulse")} />
-          {live ? "Live" : "Go live"}
+          {live ? (
+            <>
+              Live
+              <span className="font-mono tabular-nums text-emerald-600/70">
+                {countdown}s
+              </span>
+            </>
+          ) : (
+            "Go live"
+          )}
         </button>
       </div>
 
