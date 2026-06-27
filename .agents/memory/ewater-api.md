@@ -82,13 +82,14 @@ flow_rate [L/min] = 60 × FC / (LCF × FT)
   **Resolution order (decided): LitresConversion primary, GetTicksPerLitre fallback
   when the setting is absent/≤0.** If neither yields a value, do not fabricate one
   (no `?? 360` fallback) — report null/skip.
-- **The two sources can DISAGREE.** Asset 1846 has NO LitresConversion setting
-  (settings map only shows FlowConversion=65535=0xFFFF, a default/unconfigured
-  sentinel) yet GetTicksPerLitre returns 0.1. So GetTicksPerLitre resolves a value
-  for more assets, but for unconfigured devices that value may be an eWater default
-  rather than real calibration — treat with suspicion when FCF=65535 / no FX.
-- **LCF can be fractional and <1** (0.1 = 1 tick per 10 L). Never assume integer or
-  ≥1 when consuming it; only reject values ≤0.
+- **The two sources can DISAGREE on coverage.** Some assets (e.g. 1846) have NO
+  LitresConversion setting in the settings map yet GetTicksPerLitre returns a valid
+  value — so GetTicksPerLitre resolves an LCF for more assets. That's why it's the
+  fallback. The returned value is a real LCF, not a placeholder.
+- **LCF can be fractional and <1, and that is normal — 0.1 (1 tick per 10 L) is a
+  typical, valid LCF for a sense asset.** Do NOT treat fractional/small LCFs as
+  suspicious or as defaults. Never assume integer or ≥1 when consuming it; only
+  reject values ≤0.
 - FT is at bytes[31–32] (MSB, LSB big-endian). Filter: FT > 10 s.
 - Dispense event types: 0x09 (tag removed / session end), 0x0B (dispense-limit intermediate)
 - Exclude: 0x19 (HEALTH_STATE periodic) — FC semantics differ for health reports.
