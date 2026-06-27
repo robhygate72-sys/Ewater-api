@@ -186,6 +186,52 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
   const [countdown, setCountdown] = useState(LIVE_POLL_MS / 1000);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Short synthesized chime for newly-arrived log entries (no asset file needed).
+  const playChime = () => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.setValueAtTime(1175, now + 0.12);
+    osc.connect(gain);
+    osc.start(now);
+    osc.stop(now + 0.36);
+  };
+
+  // Toggle live mode; lazily create/resume the AudioContext on the user gesture
+  // so the browser permits sound playback.
+  const toggleLive = () => {
+    setLive((v) => {
+      const next = !v;
+      if (next) {
+        try {
+          audioCtxRef.current ??= new (window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+          void audioCtxRef.current.resume();
+        } catch {
+          /* audio unsupported — live tail still works silently */
+        }
+      }
+      return next;
+    });
+  };
+
+  // Close the AudioContext when the component unmounts.
+  useEffect(() => {
+    return () => {
+      void audioCtxRef.current?.close();
+      audioCtxRef.current = null;
+    };
+  }, []);
 
   // Reset live state when switching assets
   useEffect(() => {
@@ -291,6 +337,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
         if (cancelled) return;
         const fresh = page.entries.filter((e) => !knownIdsRef.current.has(e.id));
         if (fresh.length === 0) return;
+        playChime();
         setLiveEntries((prev) => [...fresh, ...prev]);
         setNewIds((prev) => {
           const next = new Set(prev);
@@ -340,7 +387,7 @@ export function AssetLogs({ assetId, isEsense = false }: { assetId: string; isEs
           Protocol Logs
         </span>
         <button
-          onClick={() => setLive((v) => !v)}
+          onClick={toggleLive}
           aria-pressed={live}
           className={cn(
             "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors",
