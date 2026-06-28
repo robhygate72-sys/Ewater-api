@@ -50,7 +50,6 @@ function RunEntry({ run }: { run: CheckRun }) {
   const [open, setOpen] = useState(false);
   const triggered = run.entries.filter(e => e.triggered);
   const notified = run.entries.filter(e => e.notified);
-  const ok = run.entries.filter(e => !e.triggered && e.alertType !== "fetch");
   const failed = run.entries.filter(e => e.detail.startsWith("FAIL") || e.detail.startsWith("SKIP"));
 
   return (
@@ -63,8 +62,10 @@ function RunEntry({ run }: { run: CheckRun }) {
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium">{formatTime(run.checkedAt)}</p>
           <p className="text-[11px] text-muted-foreground">
-            {run.entries.length} check{run.entries.length !== 1 ? "s" : ""} · {ok.length} OK
-            {triggered.length > 0 && <span className="text-amber-600 ml-1">· {triggered.length} triggered</span>}
+            {run.entries.length} check{run.entries.length !== 1 ? "s" : ""}
+            {triggered.length > 0
+              ? <span className="text-amber-600 ml-1">· {triggered.length} triggered</span>
+              : <span className="ml-1">· none triggered</span>}
             {notified.length > 0 && <span className="text-emerald-600 ml-1">· {notified.length} notified</span>}
           </p>
         </div>
@@ -79,31 +80,28 @@ function RunEntry({ run }: { run: CheckRun }) {
 
       {open && (
         <div className="border-t border-border divide-y divide-border/60 bg-muted/20">
-          {run.entries.map((e, i) => (
-            <div key={i} className="px-4 py-2.5 flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">
-                {e.triggered ? (
+          {triggered.length === 0 ? (
+            <p className="px-4 py-2.5 text-[11px] text-muted-foreground">
+              No alerts triggered in this run.
+            </p>
+          ) : (
+            triggered.map((e, i) => (
+              <div key={i} className="px-4 py-2.5 flex items-start gap-3">
+                <div className="mt-0.5 shrink-0">
                   <XCircle className="w-3.5 h-3.5 text-amber-500" />
-                ) : e.detail.startsWith("SKIP") || e.detail.startsWith("Failed") ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-muted-foreground/50" />
-                ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium text-foreground/80">
+                    {e.assetName} — {alertTypeLabel(e.alertType)}
+                    {e.notified && <span className="ml-1 text-emerald-600 font-normal">· push sent</span>}
+                  </p>
+                  <p className="text-[11px] font-mono mt-0.5 text-amber-600">
+                    {e.detail}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-medium text-foreground/80">
-                  {e.assetName} — {alertTypeLabel(e.alertType)}
-                  {e.notified && <span className="ml-1 text-emerald-600 font-normal">· push sent</span>}
-                </p>
-                <p className={cn(
-                  "text-[11px] font-mono mt-0.5",
-                  e.triggered ? "text-amber-600" : e.detail.startsWith("SKIP") || e.detail.startsWith("Failed") ? "text-muted-foreground/60" : "text-emerald-700 dark:text-emerald-400"
-                )}>
-                  {e.detail}
-                </p>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
     </div>
