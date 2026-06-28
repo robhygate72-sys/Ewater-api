@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Bell, BellOff, RefreshCw, AlertCircle, Star, CheckCircle2, XCircle, Clock, ChevronDown, ChevronRight } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 
@@ -46,8 +46,7 @@ function alertTypeLabel(t: string): string {
   return { offline: "Offline", low_battery: "Low Battery", low_tank: "Low Tank", low_flow: "Low Flow", high_flow: "High Flow", stuck_valve: "Stuck Valve", fetch: "Data Fetch" }[t] ?? t;
 }
 
-function RunEntry({ run }: { run: CheckRun }) {
-  const [open, setOpen] = useState(false);
+function RunEntry({ run, open, onToggle }: { run: CheckRun; open: boolean; onToggle: () => void }) {
   const triggered = run.entries.filter(e => e.triggered);
   const notified = run.entries.filter(e => e.notified);
   const failed = run.entries.filter(e => e.detail.startsWith("FAIL") || e.detail.startsWith("SKIP"));
@@ -55,7 +54,7 @@ function RunEntry({ run }: { run: CheckRun }) {
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
       >
         {open ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
@@ -119,6 +118,17 @@ export default function Notifications() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [checkLog, setCheckLog] = useState<CheckRun[]>([]);
   const [logLoading, setLogLoading] = useState(false);
+  const [openRunIds, setOpenRunIds] = useState<Set<string>>(new Set());
+  const newestRunIdRef = useRef<string | null>(null);
+
+  const toggleRun = useCallback((runId: string) => {
+    setOpenRunIds(prev => {
+      const next = new Set(prev);
+      if (next.has(runId)) next.delete(runId);
+      else next.add(runId);
+      return next;
+    });
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -147,6 +157,15 @@ export default function Notifications() {
     const logInterval = setInterval(fetchLog, 30000);
     return () => { clearInterval(statusInterval); clearInterval(logInterval); };
   }, [fetchStatus, fetchLog]);
+
+  // Keep the most recent run expanded; collapse older runs when a newer one arrives.
+  useEffect(() => {
+    const newest = checkLog[0]?.runId ?? null;
+    if (newest && newest !== newestRunIdRef.current) {
+      newestRunIdRef.current = newest;
+      setOpenRunIds(new Set([newest]));
+    }
+  }, [checkLog]);
 
   // Live countdown tick
   useEffect(() => {
@@ -358,7 +377,14 @@ export default function Notifications() {
             </div>
           ) : (
             <div className="space-y-2">
-              {checkLog.map(run => <RunEntry key={run.runId} run={run} />)}
+              {checkLog.map(run => (
+                <RunEntry
+                  key={run.runId}
+                  run={run}
+                  open={openRunIds.has(run.runId)}
+                  onToggle={() => toggleRun(run.runId)}
+                />
+              ))}
             </div>
           )}
         </div>
