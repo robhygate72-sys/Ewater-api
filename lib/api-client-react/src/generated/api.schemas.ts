@@ -27,14 +27,14 @@ export interface ResetMeterResult {
 
 export interface ApplyCalibrationBody {
   /**
-     * Preload tick offset to write (LCF is never changed)
-     * @minimum 0
+     * LCF (LitresConversion, ticks per litre) to write
+     * @minimum 1
      */
-  preload: number;
+  lcf: number;
 }
 
 export interface ApplyCalibrationSettingResult {
-  /** eWater setting key written (Preload) */
+  /** eWater setting key written (LitresConversion) */
   settingKey: string;
   success: boolean;
   error?: string | null;
@@ -403,12 +403,17 @@ export interface ESenseDispenseVolumes {
      */
   kdePeak: number | null;
   /**
-     * Preload required (keeping the current LCF) to shift the KDE peak to 20 L: round(currentLcf x (20 - kdePeak) + currentPreload); null when unavailable, negative, or a v3 flow meter
+     * Average unmetered ticks (FC) from event-type 0x01 "no credit" DATALOG packets in the period; null when no such packets were received
      * @nullable
      */
-  suggestedPreload: number | null;
-  /** True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a hardware fault) */
-  preloadUncorrectable: boolean;
+  measuredPreload: number | null;
+  /** Number of event-type 0x01 packets the measured preload average is based on */
+  preloadSampleCount: number;
+  /**
+     * Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) / 20), measuredPreload null -> 0; null when kdePeak unavailable, the result is not positive, or a v3 flow meter
+     * @nullable
+     */
+  suggestedLcf: number | null;
   /** True when the asset uses a v3 flow meter (LCF < 100, typically ~71) — calibration suggestion not applicable */
   v3Meter: boolean;
 }

@@ -1158,6 +1158,10 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     // Filter: FT > 10 s; FC > 0.
     // -------------------------------------------------------------------------
     const DISPENSE_EVENT_TYPES = new Set([0x09, 0x0b]);
+    // Event 0x01 "no credit": FC = unmetered ticks (no credited dispense) —
+    // averaged over the period to directly measure the preload offset.
+    const NO_CREDIT_EVENT_TYPE = 0x01;
+    const noCreditTicks: number[] = [];
 
     for (const line of logLines) {
       const payload = strOrNull(line["payload"]);
@@ -1173,10 +1177,15 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         voltageHistory.push({ time, value: volts });
 
         const eventType = bytes[5]!;
-        if (!DISPENSE_EVENT_TYPES.has(eventType)) continue;
 
         // FC: 3-byte MSB-first flow count at bytes[28–30]
         const fc = bytes[28]! * 65536 + bytes[29]! * 256 + bytes[30]!;
+
+        if (eventType === NO_CREDIT_EVENT_TYPE) {
+          noCreditTicks.push(fc);
+          continue;
+        }
+        if (!DISPENSE_EVENT_TYPES.has(eventType)) continue;
         // FT: 2-byte MSB-first flow time (seconds) at bytes[31–32]
         const ft = bytes[31]! * 256 + bytes[32]!;
         // LCF (ticks/litre) from EWC settings — NOT packet bytes[33–34] (that is
@@ -1199,7 +1208,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     voltageHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     flowRateHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
-    const dispenseVolumes = computeDispenseVolumeStats(dispenseVolumesRaw, lcf, currentPreload);
+    const dispenseVolumes = computeDispenseVolumeStats(dispenseVolumesRaw, lcf, currentPreload, noCreditTicks);
 
     res.json({
       tankHeight,
@@ -1288,16 +1297,17 @@ function formatLocation(lat: number | null, lon: number | null): string | null {
 // Typical dispense = maximum of a Gaussian KDE with Silverman's-rule bandwidth
 // h = 0.9·min(sd, IQR/1.34)·n^(−1/5), evaluated on a 0.05 L grid over 10–30 L.
 // Calibration suggestion (assumes the true typical fill is 20 L):
-// The physical error at a tap is a near-constant tick offset per dispense
-// (preload plus valve-close overrun), so the correction lever is the Preload
-// setting — the LCF is NEVER changed.
-//   suggestedPreload = round(currentLcf × (20 − kdePeak) + currentPreload)
-//     (i.e. the preload that shifts the recorded KDE peak to 20 L while
-//      keeping the current LCF; per-session FC includes any configured
-//      preload offset, hence the +currentPreload term, null → 0)
-// If suggestedPreload is negative the meter is over-counting beyond what
-// preload can correct (likely a hardware fault) → no suggestion,
-// preloadUncorrectable flag instead.
+// The preload (unmetered tick offset per dispense) is directly MEASURED from
+// event-type 0x01 "no credit" DATALOG packets: their FC is ticks counted with
+// no credited dispense. measuredPreload = average FC over those packets in
+// the requested period (null when none received → treated as 0).
+// The correction lever is the LCF (LitresConversion):
+//   suggestedLcf = round((kdePeak × currentLcf − measuredPreload) / 20)
+//     (typical raw ticks = kdePeak × currentLcf; subtract the measured
+//      unmetered ticks to get true water ticks for a 20 L fill, then
+//      divide by 20 to get true ticks per litre)
+// If the result is not positive (measured preload exceeds the typical raw
+// tick count) the suggestion is nonsensical → no suggestion.
 // v3 flow meters (LCF < 100, typically ~71) are excluded entirely — the
 // calibration model does not apply to them (v3Meter flag, no suggestion).
 // Requires ≥ 10 in-range samples for a meaningful KDE; below that, kdePeak and
@@ -1310,7 +1320,17 @@ const DISPENSE_KDE_GRID_STEP = 0.05;
 const DISPENSE_MIN_SAMPLES = 10;
 const V3_METER_LCF_MAX = 100;
 
-function computeDispenseVolumeStats(volumes: number[], lcf: number | null, preload: number | null) {
+function computeDispenseVolumeStats(
+  volumes: number[],
+  lcf: number | null,
+  preload: number | null,
+  noCreditTicks: number[],
+) {
+  const preloadSampleCount = noCreditTicks.length;
+  const measuredPreload =
+    preloadSampleCount > 0
+      ? Math.round((noCreditTicks.reduce((s, v) => s + v, 0) / preloadSampleCount) * 10) / 10
+      : null;
   const bins: { binStart: number; count: number }[] = [];
   for (let b = DISPENSE_VOL_MIN; b < DISPENSE_VOL_MAX; b++) {
     bins.push({ binStart: b, count: 0 });
@@ -1329,6 +1349,8 @@ function computeDispenseVolumeStats(volumes: number[], lcf: number | null, prelo
     sampleCount: n,
     currentLcf: lcf != null && lcf > 0 ? lcf : null,
     currentPreload: preload,
+    measuredPreload,
+    preloadSampleCount,
     v3Meter,
   };
   if (n < DISPENSE_MIN_SAMPLES || lcf == null || lcf <= 0) {
@@ -1336,8 +1358,7 @@ function computeDispenseVolumeStats(volumes: number[], lcf: number | null, prelo
       ...base,
       kdeCurve: [],
       kdePeak: null,
-      suggestedPreload: null,
-      preloadUncorrectable: false,
+      suggestedLcf: null,
     };
   }
 
@@ -1392,22 +1413,19 @@ function computeDispenseVolumeStats(volumes: number[], lcf: number | null, prelo
       ...base,
       kdeCurve: scaledCurve,
       kdePeak,
-      suggestedPreload: null,
-      preloadUncorrectable: false,
+      suggestedLcf: null,
     };
   }
 
-  // Preload that shifts the typical dispense to 20 L, keeping the current
-  // LCF unchanged. See the calibration model comment above.
-  const suggestedPreloadRaw = Math.round(lcf * (20 - kdePeak) + (preload ?? 0));
-  const preloadUncorrectable = suggestedPreloadRaw < 0;
+  // LCF that makes the typical dispense a true 20 L fill, using the measured
+  // preload (avg unmetered ticks). See the calibration model comment above.
+  const suggestedLcfRaw = Math.round((kdePeak * lcf - (measuredPreload ?? 0)) / 20);
 
   return {
     ...base,
     kdeCurve: scaledCurve,
     kdePeak,
-    suggestedPreload: preloadUncorrectable ? null : suggestedPreloadRaw,
-    preloadUncorrectable,
+    suggestedLcf: suggestedLcfRaw > 0 ? suggestedLcfRaw : null,
   };
 }
 
@@ -1472,7 +1490,7 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
 });
 
 // ---------------------------------------------------------------------------
-// Apply calibration — write the Preload setting only (LCF is never changed)
+// Apply calibration — write the suggested LCF (LitresConversion setting only)
 // POST /api/ewater/assets/:assetId/apply-calibration
 // Uses the eWater command API /api/Ewc/RequestSettingChange (the managed
 // desired-value path — the device applies the change on its next comms).
@@ -1488,13 +1506,13 @@ router.post("/ewater/assets/:assetId/apply-calibration", async (req, res): Promi
 
   const parsed = ApplyAssetCalibrationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const { preload } = parsed.data;
-  if (!Number.isInteger(preload)) {
-    res.status(400).json({ error: "preload must be an integer" }); return;
+  const { lcf } = parsed.data;
+  if (!Number.isInteger(lcf)) {
+    res.status(400).json({ error: "lcf must be an integer" }); return;
   }
 
   const writes: { settingKey: string; newValue: number }[] = [
-    { settingKey: "Preload", newValue: preload },
+    { settingKey: "LitresConversion", newValue: lcf },
   ];
 
   const results: { settingKey: string; success: boolean; error: string | null }[] = [];

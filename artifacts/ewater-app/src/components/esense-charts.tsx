@@ -39,7 +39,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge, BarChart3, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge, BarChart3, CheckCircle2 } from "lucide-react";
 
 interface LeakageRate {
   date: string;
@@ -501,8 +501,9 @@ interface DispenseVolumesData {
   currentLcf: number | null;
   currentPreload: number | null;
   kdePeak: number | null;
-  suggestedPreload: number | null;
-  preloadUncorrectable: boolean;
+  measuredPreload: number | null;
+  preloadSampleCount: number;
+  suggestedLcf: number | null;
   v3Meter: boolean;
 }
 
@@ -685,26 +686,20 @@ function DispenseVolumesChart({
           <p className="text-[10px] text-muted-foreground">
             V3 flow meter (LCF {data.currentLcf}) — calibration suggestion not applicable
           </p>
-        ) : data.preloadUncorrectable ? (
-          <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-500 font-medium">
-            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <p>
-              Cannot correct via preload — the meter is over-counting more than a preload
-              offset can fix. Check the meter hardware.
-            </p>
-          </div>
         ) : nearTwenty ? (
           <p className="text-[10px] text-muted-foreground">
-            Typical fill is already ≈ 20 L — current settings (LCF {data.currentLcf}, preload {data.currentPreload ?? 0}) look well calibrated
+            Typical fill is already ≈ 20 L — current LCF {data.currentLcf} looks well calibrated
           </p>
         ) : (
-          data.suggestedPreload != null && (
+          data.suggestedLcf != null && (
             <div className="space-y-1.5">
               <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
-                Suggested preload for a 20 L fill: {data.suggestedPreload} (LCF unchanged)
+                Suggested LCF for a 20 L fill: {data.suggestedLcf} (current {data.currentLcf})
               </p>
               <p className="text-[10px] text-muted-foreground">
-                Current: LCF {data.currentLcf} · preload {data.currentPreload ?? "not set"}
+                {data.measuredPreload != null
+                  ? `Measured preload ≈ ${data.measuredPreload} unmetered ticks (avg of ${data.preloadSampleCount} no-credit event${data.preloadSampleCount === 1 ? "" : "s"})`
+                  : "No no-credit events in this period — preload assumed 0 ticks"}
               </p>
               {applyResult ? (
                 <div
@@ -729,15 +724,19 @@ function DispenseVolumesChart({
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Apply preload to device?</AlertDialogTitle>
+                      <AlertDialogTitle>Apply LCF to device?</AlertDialogTitle>
                       <AlertDialogDescription asChild>
                         <div className="space-y-2 text-sm">
-                          <p>This writes a new Preload setting to the physical dispenser (applied on its next check-in). The LCF is not changed.</p>
+                          <p>This writes a new LCF (LitresConversion) setting to the physical dispenser (applied on its next check-in).</p>
                           <div className="rounded-md border p-2 space-y-1 font-mono text-xs">
                             <p>
-                              Preload: {data.currentPreload ?? "not set"} → {data.suggestedPreload}
+                              LCF: {data.currentLcf} → {data.suggestedLcf}
                             </p>
-                            <p>LCF: {data.currentLcf} (unchanged)</p>
+                            <p>
+                              Measured preload: {data.measuredPreload != null
+                                ? `≈ ${data.measuredPreload} ticks (${data.preloadSampleCount} no-credit events)`
+                                : "none measured (assumed 0)"}
+                            </p>
                           </div>
                           <p>
                             This shifts the typical recorded dispense from ≈ {peak.toFixed(2)} L to ≈ 20 L.
@@ -751,7 +750,7 @@ function DispenseVolumesChart({
                         onClick={() =>
                           applyCalibration({
                             assetId,
-                            data: { preload: data.suggestedPreload! },
+                            data: { lcf: data.suggestedLcf! },
                           })
                         }
                       >
