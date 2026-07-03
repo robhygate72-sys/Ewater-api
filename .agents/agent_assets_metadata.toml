@@ -12,3 +12,9 @@ id = "21-MBU9EU7NrW9j0bxvRB"
 uri = "file://exports/Ol_Moran_Asset_Report.xlsx"
 type = "table"
 title = "Ol Moran, Kenya — Asset Report (corrected preload values)"
+
+[[outputs]]
+id = "uoG25WOw30x81-ACb_OFw"
+uri = "file://exports/Ol_Moran_NRW_Calibration_Review.pdf"
+type = "pdf"
+title = "Ol Moran, Kenya — Non-Revenue Water Calibration Review"
