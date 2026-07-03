@@ -25,6 +25,32 @@ export interface ResetMeterResult {
   error?: string | null;
 }
 
+export interface ApplyCalibrationBody {
+  /**
+     * LCF (LitresConversion, ticks per litre) to write — normally the factory value 360
+     * @minimum 1
+     */
+  lcf: number;
+  /**
+     * Preload tick offset to write
+     * @minimum 0
+     */
+  preload: number;
+}
+
+export interface ApplyCalibrationSettingResult {
+  /** eWater setting key written (LitresConversion or Preload) */
+  settingKey: string;
+  success: boolean;
+  error?: string | null;
+}
+
+export interface ApplyCalibrationResult {
+  /** True only if every setting change was accepted */
+  success: boolean;
+  results: ApplyCalibrationSettingResult[];
+}
+
 export interface MeterReadingResult {
   /** Raw ECR tick accumulator from latest HEALTH_STATE packet */
   ticks?: number | null;
@@ -372,15 +398,27 @@ export interface ESenseDispenseVolumes {
      */
   currentLcf: number | null;
   /**
+     * The asset's current Preload setting (tick offset); null when not configured (treated as 0 in the correction math)
+     * @nullable
+     */
+  currentPreload: number | null;
+  /**
      * Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10
      * @nullable
      */
   kdePeak: number | null;
   /**
-     * Suggested LCF assuming a true 20 L typical fill (currentLcf x kdePeak / 20, rounded); null when kdePeak or LCF unavailable
+     * Suggested LCF — always the factory value 360 when a preload correction is available; null when kdePeak unavailable or the correction is not possible
      * @nullable
      */
   suggestedLcf: number | null;
+  /**
+     * Preload required (with LCF = 360) to shift the KDE peak to 20 L: round(20 x 360 - (kdePeak x currentLcf - currentPreload)); null when unavailable or negative
+     * @nullable
+     */
+  suggestedPreload: number | null;
+  /** True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a genuine LCF/hardware fault) */
+  preloadUncorrectable: boolean;
 }
 
 export interface ESenseChartsData {

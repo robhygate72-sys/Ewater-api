@@ -13,6 +13,7 @@ import {
   FetchAssetTelemetryParams,
   ProxyRequestBody,
   GetESenseChartsQueryParams,
+  ApplyAssetCalibrationBody,
 } from "@workspace/api-zod";
 import { db, alertRulesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -1117,6 +1118,12 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
       ? lcfFromSetting
       : await fetchTicksPerLitre(String(assetId));
 
+    // Current Preload setting (tick offset added to the per-session flow count
+    // at dispense start) — needed for the calibration suggestion math.
+    const preloadSetting = settingsList.find((x) => x["settingKey"] === "Preload");
+    const preloadRaw = (preloadSetting?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
+    const currentPreload = preloadRaw != null && !isNaN(Number(preloadRaw)) ? Number(preloadRaw) : null;
+
     const voltageHistory: { time: string; value: number }[] = [];
     const flowRateHistory: { time: string; flowRate: number; ticks: number; flowTimeSec: number }[] = [];
     const dispenseVolumesRaw: number[] = [];
@@ -1192,7 +1199,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     voltageHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     flowRateHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
-    const dispenseVolumes = computeDispenseVolumeStats(dispenseVolumesRaw, lcf);
+    const dispenseVolumes = computeDispenseVolumeStats(dispenseVolumesRaw, lcf, currentPreload);
 
     res.json({
       tankHeight,
@@ -1280,18 +1287,29 @@ function formatLocation(lat: number | null, lon: number | null): string | null {
 // Dispense volume histogram + KDE (10–30 L window, 1 L bins)
 // Typical dispense = maximum of a Gaussian KDE with Silverman's-rule bandwidth
 // h = 0.9·min(sd, IQR/1.34)·n^(−1/5), evaluated on a 0.05 L grid over 10–30 L.
-// suggestedLcf assumes the true typical fill is 20 L:
-//   suggestedLcf = round(currentLcf × kdePeak / 20)
+// Calibration suggestion (assumes the true typical fill is 20 L):
+// The physical error at a tap is a near-constant tick offset per dispense
+// (preload plus valve-close overrun), so the correction lever is the Preload
+// setting — NOT bending the LCF away from its factory calibration (360).
+//   typicalTicks      = kdePeak × currentLcf − currentPreload
+//     (per-session FC includes any configured preload offset, so subtract it
+//      to recover the raw metered ticks of a typical dispense)
+//   suggestedPreload  = round(20 × 360 − typicalTicks)
+//   suggested pair    = LCF 360 (factory) + suggestedPreload
+// If suggestedPreload is negative the meter is over-counting beyond what
+// preload can correct (likely a genuine LCF/hardware fault) → no suggestion,
+// preloadUncorrectable flag instead.
 // Requires ≥ 10 in-range samples for a meaningful KDE; below that, kdePeak and
-// suggestedLcf are null (client shows the "no data" empty state).
+// the suggestion fields are null (client shows the "no data" empty state).
 // ---------------------------------------------------------------------------
 
 const DISPENSE_VOL_MIN = 10;
 const DISPENSE_VOL_MAX = 30;
 const DISPENSE_KDE_GRID_STEP = 0.05;
 const DISPENSE_MIN_SAMPLES = 10;
+const FACTORY_LCF = 360;
 
-function computeDispenseVolumeStats(volumes: number[], lcf: number | null) {
+function computeDispenseVolumeStats(volumes: number[], lcf: number | null, preload: number | null) {
   const bins: { binStart: number; count: number }[] = [];
   for (let b = DISPENSE_VOL_MIN; b < DISPENSE_VOL_MAX; b++) {
     bins.push({ binStart: b, count: 0 });
@@ -1308,9 +1326,17 @@ function computeDispenseVolumeStats(volumes: number[], lcf: number | null) {
     bins,
     sampleCount: n,
     currentLcf: lcf != null && lcf > 0 ? lcf : null,
+    currentPreload: preload,
   };
   if (n < DISPENSE_MIN_SAMPLES || lcf == null || lcf <= 0) {
-    return { ...base, kdeCurve: [], kdePeak: null, suggestedLcf: null };
+    return {
+      ...base,
+      kdeCurve: [],
+      kdePeak: null,
+      suggestedLcf: null,
+      suggestedPreload: null,
+      preloadUncorrectable: false,
+    };
   }
 
   // Silverman's rule of thumb bandwidth
@@ -1357,9 +1383,21 @@ function computeDispenseVolumeStats(volumes: number[], lcf: number | null) {
   }));
 
   const kdePeak = Math.round(peakX * 100) / 100;
-  const suggestedLcf = Math.round((lcf * kdePeak) / 20);
 
-  return { ...base, kdeCurve: scaledCurve, kdePeak, suggestedLcf };
+  // Suggested settings pair: LCF fixed at factory 360, preload shifts the
+  // typical dispense to 20 L. See the calibration model comment above.
+  const typicalTicks = kdePeak * lcf - (preload ?? 0);
+  const suggestedPreloadRaw = Math.round(20 * FACTORY_LCF - typicalTicks);
+  const preloadUncorrectable = suggestedPreloadRaw < 0;
+
+  return {
+    ...base,
+    kdeCurve: scaledCurve,
+    kdePeak,
+    suggestedLcf: preloadUncorrectable ? null : FACTORY_LCF,
+    suggestedPreload: preloadUncorrectable ? null : suggestedPreloadRaw,
+    preloadUncorrectable,
+  };
 }
 
 function healthRatingIsFault(rating: string | null): boolean | null {
@@ -1420,6 +1458,66 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
     req.log.error({ err }, "Failed to reset tick accumulator");
     res.status(502).json({ error: `eWater command error: ${msg}` });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Apply calibration pair — write LCF (LitresConversion) + Preload settings
+// POST /api/ewater/assets/:assetId/apply-calibration
+// Uses the eWater command API /api/Ewc/RequestSettingChange (the managed
+// desired-value path — the device applies the change on its next comms),
+// one call per setting. Returns per-setting results; success only when both
+// were accepted.
+// ---------------------------------------------------------------------------
+
+router.post("/ewater/assets/:assetId/apply-calibration", async (req, res): Promise<void> => {
+  const assetId = req.params["assetId"];
+  if (!assetId || isNaN(Number(assetId))) {
+    res.status(400).json({ error: "Numeric assetId required" }); return;
+  }
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+
+  const parsed = ApplyAssetCalibrationBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const { lcf, preload } = parsed.data;
+  if (!Number.isInteger(lcf) || !Number.isInteger(preload)) {
+    res.status(400).json({ error: "lcf and preload must be integers" }); return;
+  }
+
+  const writes: { settingKey: string; newValue: number }[] = [
+    { settingKey: "LitresConversion", newValue: lcf },
+    { settingKey: "Preload", newValue: preload },
+  ];
+
+  const results: { settingKey: string; success: boolean; error: string | null }[] = [];
+  for (const w of writes) {
+    try {
+      const result = await ewaterFetch("command", "/api/Ewc/RequestSettingChange", {
+        method: "POST",
+        body: JSON.stringify({
+          correlationId: null,
+          secondaryUserId: null,
+          assetId: Number(assetId),
+          settingKey: w.settingKey,
+          newValue: w.newValue,
+        }),
+      });
+      if (result.status >= 200 && result.status < 300) {
+        results.push({ settingKey: w.settingKey, success: true, error: null });
+      } else {
+        const errMsg = typeof result.data === "object" && result.data !== null
+          ? JSON.stringify(result.data)
+          : String(result.data ?? result.status);
+        req.log.warn({ assetId, ...w, status: result.status }, "RequestSettingChange non-success");
+        results.push({ settingKey: w.settingKey, success: false, error: errMsg });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      req.log.error({ err, assetId, ...w }, "RequestSettingChange failed");
+      results.push({ settingKey: w.settingKey, success: false, error: msg });
+    }
+  }
+
+  res.json({ success: results.every((r) => r.success), results });
 });
 
 // ---------------------------------------------------------------------------

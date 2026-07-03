@@ -354,6 +354,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/apply-calibration:
+    post:
+      operationId: applyAssetCalibration
+      tags: [ewater]
+      summary: Write the suggested calibration pair (LCF + Preload) to the device via the eWater RequestSettingChange API
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyCalibrationBody"
+      responses:
+        "200":
+          description: Per-setting write results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyCalibrationResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/assets/{assetId}/flow-rate:
     get:
       operationId: getAssetFlowRate
@@ -446,6 +483,44 @@ components:
         error:
           type: string
           nullable: true
+
+    ApplyCalibrationBody:
+      type: object
+      required: [lcf, preload]
+      properties:
+        lcf:
+          type: integer
+          minimum: 1
+          description: LCF (LitresConversion, ticks per litre) to write — normally the factory value 360
+        preload:
+          type: integer
+          minimum: 0
+          description: Preload tick offset to write
+
+    ApplyCalibrationSettingResult:
+      type: object
+      required: [settingKey, success]
+      properties:
+        settingKey:
+          type: string
+          description: eWater setting key written (LitresConversion or Preload)
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+
+    ApplyCalibrationResult:
+      type: object
+      required: [success, results]
+      properties:
+        success:
+          type: boolean
+          description: True only if every setting change was accepted
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplyCalibrationSettingResult"
 
     MeterReadingResult:
       type: object
@@ -913,7 +988,7 @@ components:
 
     ESenseDispenseVolumes:
       type: object
-      required: [bins, sampleCount, currentLcf, kdePeak, suggestedLcf]
+      required: [bins, sampleCount, currentLcf, currentPreload, kdePeak, suggestedLcf, suggestedPreload, preloadUncorrectable]
       properties:
         bins:
           type: array
@@ -937,12 +1012,21 @@ components:
         currentLcf:
           type: ["number", "null"]
           description: The asset's LCF (ticks per litre); null when not configured
+        currentPreload:
+          type: ["number", "null"]
+          description: The asset's current Preload setting (tick offset); null when not configured (treated as 0 in the correction math)
         kdePeak:
           type: ["number", "null"]
           description: Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10
         suggestedLcf:
           type: ["integer", "null"]
-          description: Suggested LCF assuming a true 20 L typical fill (currentLcf x kdePeak / 20, rounded); null when kdePeak or LCF unavailable
+          description: Suggested LCF — always the factory value 360 when a preload correction is available; null when kdePeak unavailable or the correction is not possible
+        suggestedPreload:
+          type: ["integer", "null"]
+          description: "Preload required (with LCF = 360) to shift the KDE peak to 20 L: round(20 x 360 - (kdePeak x currentLcf - currentPreload)); null when unavailable or negative"
+        preloadUncorrectable:
+          type: boolean
+          description: True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a genuine LCF/hardware fault)
 
     ProxyInput:
       type: object

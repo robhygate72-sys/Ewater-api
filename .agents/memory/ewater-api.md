@@ -158,9 +158,11 @@ Adding query params to an OpenAPI endpoint causes Orval to generate `GetXxxParam
 ## Dispense-volume calibration analysis (decided conventions)
 - Typical dispense = Gaussian KDE peak (Silverman h = 0.9·min(sd, IQR/1.34)·n^(−1/5), 0.05 L grid), NOT bin midpoint or median.
 - Fixed window 10–30 L, 1 L bins (30 L exactly counts in the last bin); require ≥10 in-range samples else report null.
-- Suggested LCF assumes the true typical fill is 20 L: round(currentLcf × kdePeak ÷ 20). Display only — never write back automatically.
-- **Why:** user-approved against live 7-day data: asset 2706 (LCF 71) → peak 21.25 L → 75; asset 2240 (LCF 373) → peak 16.65 L → 311.
+- Suggestion is a settings PAIR, not a bent LCF: LCF fixed at factory 360 + suggestedPreload = round(20×360 − (kdePeak×currentLcf − currentPreload)), currentPreload null→0.
+- **Why:** the physical error is a near-constant tick offset per dispense (preload + valve-close overrun), so the correction lever is Preload; bending LCF away from factory 360 was the earlier (superseded) model. Negative suggestedPreload → no suggestion, `preloadUncorrectable` warning (meter over-counting; live example asset 662, peak 25.5 L @ LCF 365).
+- One-click apply writes via command API `POST /api/Ewc/RequestSettingChange` {correlationId:null, secondaryUserId:null, assetId, settingKey, newValue} — managed desired-value path, device applies on next check-in. Setting keys: "LitresConversion", "Preload". NEVER auto-fire; user-confirmed dialog only (writes to real dispensers).
 - Volumes come from dispense events 0x09/0x0B only (FC ÷ LCF), no FT filter for volumes (unlike flow-rate which needs FT > 10 s).
+- Assumption (undocumented in packet spec): per-session FC includes the configured preload offset, hence the −currentPreload term; both test assets had preload null so term was 0 in validation.
 
 ## Live-tail logs — must poll (no upstream push)
 eWater provides **no push/websocket**; near-real-time log tailing is poll-only end-to-end.

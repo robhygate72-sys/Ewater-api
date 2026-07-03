@@ -2,9 +2,24 @@ import { useState } from "react";
 import {
   useGetESenseCharts,
   getGetESenseChartsQueryKey,
+  useApplyAssetCalibration,
+  getGetAssetEwcQueryKey,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
@@ -24,7 +39,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge, BarChart3 } from "lucide-react";
+import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge, BarChart3, CheckCircle2, AlertTriangle } from "lucide-react";
 
 interface LeakageRate {
   date: string;
@@ -466,6 +481,7 @@ export function ESenseCharts({
         <Skeleton className="h-52 w-full rounded-xl" />
       ) : (
         <DispenseVolumesChart
+          assetId={assetId}
           data={data?.dispenseVolumes ?? null}
           tickColor={tickColor}
           gridColor={gridColor}
@@ -483,21 +499,48 @@ interface DispenseVolumesData {
   kdeCurve?: { x: number; y: number }[];
   sampleCount: number;
   currentLcf: number | null;
+  currentPreload: number | null;
   kdePeak: number | null;
   suggestedLcf: number | null;
+  suggestedPreload: number | null;
+  preloadUncorrectable: boolean;
 }
 
 function DispenseVolumesChart({
+  assetId,
   data,
   tickColor,
   gridColor,
 }: {
+  assetId: string;
   data: DispenseVolumesData | null;
   tickColor: string;
   gridColor: string;
 }) {
   const title = "Dispense Volumes";
   const icon = <BarChart3 className="w-3.5 h-3.5" />;
+  const queryClient = useQueryClient();
+  const [applyResult, setApplyResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const { mutate: applyCalibration, isPending: isApplying } = useApplyAssetCalibration({
+    mutation: {
+      onSuccess: (res) => {
+        if (res.success) {
+          setApplyResult({
+            success: true,
+            message: "Setting changes requested — the device will apply them on its next check-in",
+          });
+        } else {
+          const failed = res.results.filter((r) => !r.success).map((r) => r.settingKey).join(", ");
+          setApplyResult({ success: false, message: `Failed to write: ${failed}` });
+        }
+        queryClient.invalidateQueries({ queryKey: getGetAssetEwcQueryKey(assetId) });
+      },
+      onError: () => {
+        setApplyResult({ success: false, message: "Request failed — settings were not changed" });
+      },
+    },
+  });
 
   if (!data || data.currentLcf == null) {
     return (
@@ -638,15 +681,85 @@ function DispenseVolumesChart({
         <p className="text-xs font-medium text-foreground">
           Typical dispense ≈ {peak.toFixed(2)} L
         </p>
-        {nearTwenty ? (
+        {data.preloadUncorrectable ? (
+          <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-500 font-medium">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <p>
+              Cannot correct via preload — the meter is over-counting more than a preload
+              offset can fix. Check the LCF setting or the meter hardware.
+            </p>
+          </div>
+        ) : nearTwenty ? (
           <p className="text-[10px] text-muted-foreground">
-            Typical fill is already ≈ 20 L — current LCF {data.currentLcf} looks well calibrated
+            Typical fill is already ≈ 20 L — current settings (LCF {data.currentLcf}, preload {data.currentPreload ?? 0}) look well calibrated
           </p>
         ) : (
-          data.suggestedLcf != null && (
-            <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
-              Suggested LCF for 20 L fill: {data.suggestedLcf} (current {data.currentLcf})
-            </p>
+          data.suggestedLcf != null && data.suggestedPreload != null && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
+                Suggested settings for a 20 L fill: LCF {data.suggestedLcf} (factory) + preload {data.suggestedPreload}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Current: LCF {data.currentLcf} · preload {data.currentPreload ?? "not set"}
+              </p>
+              {applyResult ? (
+                <div
+                  className={cn(
+                    "flex items-start gap-1.5 text-[11px] font-medium",
+                    applyResult.success ? "text-emerald-600 dark:text-emerald-500" : "text-red-600 dark:text-red-500",
+                  )}
+                >
+                  {applyResult.success ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  )}
+                  <p>{applyResult.message}</p>
+                </div>
+              ) : (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={isApplying}>
+                      {isApplying ? "Applying…" : "Apply suggested settings"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Apply calibration to device?</AlertDialogTitle>
+                      <AlertDialogDescription asChild>
+                        <div className="space-y-2 text-sm">
+                          <p>This writes new settings to the physical dispenser (applied on its next check-in):</p>
+                          <div className="rounded-md border p-2 space-y-1 font-mono text-xs">
+                            <p>
+                              LCF: {data.currentLcf} → {data.suggestedLcf}
+                            </p>
+                            <p>
+                              Preload: {data.currentPreload ?? "not set"} → {data.suggestedPreload}
+                            </p>
+                          </div>
+                          <p>
+                            This shifts the typical recorded dispense from ≈ {peak.toFixed(2)} L to ≈ 20 L.
+                          </p>
+                        </div>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() =>
+                          applyCalibration({
+                            assetId,
+                            data: { lcf: data.suggestedLcf!, preload: data.suggestedPreload! },
+                          })
+                        }
+                      >
+                        Apply
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           )
         )}
         <p className="text-[10px] text-muted-foreground pt-0.5">

@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApplyCalibrationBody,
+  ApplyCalibrationResult,
   Asset,
   AssetEwcSettings,
   AssetTechStatus,
@@ -1131,6 +1133,78 @@ export const useResetAssetMeter = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getResetAssetMeterMutationOptions(options));
+    }
+
+export const getApplyAssetCalibrationUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/apply-calibration`
+}
+
+/**
+ * @summary Write the suggested calibration pair (LCF + Preload) to the device via the eWater RequestSettingChange API
+ */
+export const applyAssetCalibration = async (assetId: string,
+    applyCalibrationBody: ApplyCalibrationBody, options?: RequestInit): Promise<ApplyCalibrationResult> => {
+
+  return customFetch<ApplyCalibrationResult>(getApplyAssetCalibrationUrl(assetId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      applyCalibrationBody,)
+  }
+);}
+
+
+
+
+export const getApplyAssetCalibrationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyAssetCalibration>>, TError,{assetId: string;data: BodyType<ApplyCalibrationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyAssetCalibration>>, TError,{assetId: string;data: BodyType<ApplyCalibrationBody>}, TContext> => {
+
+const mutationKey = ['applyAssetCalibration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyAssetCalibration>>, {assetId: string;data: BodyType<ApplyCalibrationBody>}> = (props) => {
+          const {assetId,data} = props ?? {};
+
+          return  applyAssetCalibration(assetId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyAssetCalibrationMutationResult = NonNullable<Awaited<ReturnType<typeof applyAssetCalibration>>>
+    export type ApplyAssetCalibrationMutationBody = BodyType<ApplyCalibrationBody>
+    export type ApplyAssetCalibrationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Write the suggested calibration pair (LCF + Preload) to the device via the eWater RequestSettingChange API
+ */
+export const useApplyAssetCalibration = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyAssetCalibration>>, TError,{assetId: string;data: BodyType<ApplyCalibrationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyAssetCalibration>>,
+        TError,
+        {assetId: string;data: BodyType<ApplyCalibrationBody>},
+        TContext
+      > => {
+      return useMutation(getApplyAssetCalibrationMutationOptions(options));
     }
 
 export const getGetAssetFlowRateUrl = (assetId: string,) => {
