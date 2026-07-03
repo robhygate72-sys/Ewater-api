@@ -719,18 +719,19 @@ function DispenseVolumesChart({
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Apply LCF to device?</AlertDialogTitle>
+                      <AlertDialogTitle>Apply calibration to device?</AlertDialogTitle>
                       <AlertDialogDescription asChild>
                         <div className="space-y-2 text-sm">
-                          <p>This writes a new LCF (LitresConversion) setting to the physical dispenser (applied on its next check-in).</p>
+                          <p>This writes new LCF (LitresConversion) and Preload settings to the physical dispenser (applied on its next check-in).</p>
                           <div className="rounded-md border p-2 space-y-1 font-mono text-xs">
                             <p>
                               LCF: {data.currentLcf} → {data.suggestedLcf}
                             </p>
                             <p>
-                              Measured preload: {data.measuredPreload != null
-                                ? `≈ ${data.measuredPreload} ticks (${data.preloadSampleCount} no-credit events)`
-                                : "none measured (assumed 0)"}
+                              Preload: {data.currentPreload ?? "not set"} → {Math.round(data.measuredPreload ?? 0)}
+                              {data.measuredPreload != null
+                                ? ` (measured, ${data.preloadSampleCount} no-credit events)`
+                                : " (none measured)"}
                             </p>
                           </div>
                           <p>
@@ -745,7 +746,10 @@ function DispenseVolumesChart({
                         onClick={() =>
                           applyCalibration({
                             assetId,
-                            data: { lcf: data.suggestedLcf! },
+                            data: {
+                              lcf: data.suggestedLcf!,
+                              preload: Math.round(data.measuredPreload ?? 0),
+                            },
                           })
                         }
                       >

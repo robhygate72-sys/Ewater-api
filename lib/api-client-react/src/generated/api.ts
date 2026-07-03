@@ -1144,7 +1144,7 @@ export const getApplyAssetCalibrationUrl = (assetId: string,) => {
 }
 
 /**
- * @summary Write the suggested LCF (LitresConversion) setting to the device via the eWater RequestSettingChange API
+ * @summary Write the suggested LCF (LitresConversion) and measured Preload settings to the device via the eWater RequestSettingChange API
  */
 export const applyAssetCalibration = async (assetId: string,
     applyCalibrationBody: ApplyCalibrationBody, options?: RequestInit): Promise<ApplyCalibrationResult> => {
@@ -1194,7 +1194,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ApplyAssetCalibrationMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Write the suggested LCF (LitresConversion) setting to the device via the eWater RequestSettingChange API
+ * @summary Write the suggested LCF (LitresConversion) and measured Preload settings to the device via the eWater RequestSettingChange API
  */
 export const useApplyAssetCalibration = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyAssetCalibration>>, TError,{assetId: string;data: BodyType<ApplyCalibrationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -1480,7 +1480,8 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
 });
 
 // ---------------------------------------------------------------------------
-// Apply calibration — write the suggested LCF (LitresConversion setting only)
+// Apply calibration — write the suggested LCF (LitresConversion) and the
+// measured Preload (both settings, one RequestSettingChange call each)
 // POST /api/ewater/assets/:assetId/apply-calibration
 // Uses the eWater command API /api/Ewc/RequestSettingChange (the managed
 // desired-value path — the device applies the change on its next comms).
@@ -1496,13 +1497,14 @@ router.post("/ewater/assets/:assetId/apply-calibration", async (req, res): Promi
 
   const parsed = ApplyAssetCalibrationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const { lcf } = parsed.data;
-  if (!Number.isInteger(lcf)) {
-    res.status(400).json({ error: "lcf must be an integer" }); return;
+  const { lcf, preload } = parsed.data;
+  if (!Number.isInteger(lcf) || !Number.isInteger(preload)) {
+    res.status(400).json({ error: "lcf and preload must be integers" }); return;
   }
 
   const writes: { settingKey: string; newValue: number }[] = [
     { settingKey: "LitresConversion", newValue: lcf },
+    { settingKey: "Preload", newValue: preload },
   ];
 
   const results: { settingKey: string; success: boolean; error: string | null }[] = [];

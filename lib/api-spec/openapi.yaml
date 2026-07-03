@@ -358,7 +358,7 @@ paths:
     post:
       operationId: applyAssetCalibration
       tags: [ewater]
-      summary: Write the suggested LCF (LitresConversion) setting to the device via the eWater RequestSettingChange API
+      summary: Write the suggested LCF (LitresConversion) and measured Preload settings to the device via the eWater RequestSettingChange API
       parameters:
         - name: assetId
           in: path
@@ -486,12 +486,16 @@ components:
 
     ApplyCalibrationBody:
       type: object
-      required: [lcf]
+      required: [lcf, preload]
       properties:
         lcf:
           type: integer
           minimum: 1
           description: LCF (LitresConversion, ticks per litre) to write
+        preload:
+          type: integer
+          minimum: 0
+          description: Preload (unmetered tick offset) to write — the measured preload rounded to an integer, 0 when none was measured
 
     ApplyCalibrationSettingResult:
       type: object
@@ -499,7 +503,7 @@ components:
       properties:
         settingKey:
           type: string
-          description: eWater setting key written (LitresConversion)
+          description: eWater setting key written (LitresConversion or Preload)
         success:
           type: boolean
         error:

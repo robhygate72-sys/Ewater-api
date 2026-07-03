@@ -163,7 +163,7 @@ Adding query params to an OpenAPI endpoint causes Orval to generate `GetXxxParam
 - **Why:** user-directed. The unmetered offset is directly observable from no-credit events, so use the measured value and correct the ticks-per-litre conversion itself. Supersedes all earlier models (bent LCF, factory-360 pair, preload-only).
 - 0x01 packets are sparse (some assets emit none for days) but their unmetered-tick values are tight (~190–245 on the asset observed) — the "no measurement → assume 0" path is common and must stay visible in the UI.
 - v3 flow meters (LCF ≈ 71) are NOT excluded — the formula scales with the current LCF so it handles them. (An earlier exclusion directive was reversed by the user; do not re-add a v3Meter flag.)
-- One-click apply writes ONLY the "LitresConversion" setting via command API `POST /api/Ewc/RequestSettingChange` {correlationId:null, secondaryUserId:null, assetId, settingKey, newValue} — managed desired-value path, device applies on next check-in. NEVER auto-fire; user-confirmed dialog only (writes to real dispensers).
+- One-click apply writes BOTH "LitresConversion" (= suggested LCF) and "Preload" (= measured preload rounded to int, 0 when none measured) via command API `POST /api/Ewc/RequestSettingChange` {correlationId:null, secondaryUserId:null, assetId, settingKey, newValue} — one call per setting, managed desired-value path, device applies on next check-in. NEVER auto-fire; user-confirmed dialog only (writes to real dispensers).
 - Volumes come from dispense events 0x09/0x0B only (FC ÷ LCF), no FT filter for volumes (unlike flow-rate which needs FT > 10 s).
 
 ## Live-tail logs — must poll (no upstream push)

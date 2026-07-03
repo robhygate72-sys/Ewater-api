@@ -361,23 +361,26 @@ export const ResetAssetMeterResponse = zod.object({
 
 
 /**
- * @summary Write the suggested LCF (LitresConversion) setting to the device via the eWater RequestSettingChange API
+ * @summary Write the suggested LCF (LitresConversion) and measured Preload settings to the device via the eWater RequestSettingChange API
  */
 export const ApplyAssetCalibrationParams = zod.object({
   "assetId": zod.coerce.string()
 })
 
 
+export const applyAssetCalibrationBodyPreloadMin = 0;
+
 
 
 export const ApplyAssetCalibrationBody = zod.object({
-  "lcf": zod.number().min(1).describe('LCF (LitresConversion, ticks per litre) to write')
+  "lcf": zod.number().min(1).describe('LCF (LitresConversion, ticks per litre) to write'),
+  "preload": zod.number().min(applyAssetCalibrationBodyPreloadMin).describe('Preload (unmetered tick offset) to write — the measured preload rounded to an integer, 0 when none was measured')
 })
 
 export const ApplyAssetCalibrationResponse = zod.object({
   "success": zod.boolean().describe('True only if every setting change was accepted'),
   "results": zod.array(zod.object({
-  "settingKey": zod.string().describe('eWater setting key written (LitresConversion)'),
+  "settingKey": zod.string().describe('eWater setting key written (LitresConversion or Preload)'),
   "success": zod.boolean(),
   "error": zod.string().nullish()
 }))

@@ -31,10 +31,15 @@ export interface ApplyCalibrationBody {
      * @minimum 1
      */
   lcf: number;
+  /**
+     * Preload (unmetered tick offset) to write — the measured preload rounded to an integer, 0 when none was measured
+     * @minimum 0
+     */
+  preload: number;
 }
 
 export interface ApplyCalibrationSettingResult {
-  /** eWater setting key written (LitresConversion) */
+  /** eWater setting key written (LitresConversion or Preload) */
   settingKey: string;
   success: boolean;
   error?: string | null;
