@@ -12,6 +12,8 @@ import {
   Line,
   BarChart,
   Bar,
+  Cell,
+  ComposedChart,
   ScatterChart,
   Scatter,
   XAxis,
@@ -22,7 +24,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge } from "lucide-react";
+import { Activity, Droplets, AlertCircle, TrendingUp, TrendingDown, Minus, Gauge, BarChart3 } from "lucide-react";
 
 interface LeakageRate {
   date: string;
@@ -221,12 +223,13 @@ export function ESenseCharts({
 }: {
   assetId: string;
   isEsense?: boolean;
-  show?: { tankHeight?: boolean; usage?: boolean; flow?: boolean };
+  show?: { tankHeight?: boolean; usage?: boolean; flow?: boolean; dispense?: boolean };
   showTitle?: boolean;
 }) {
   const showTank = show ? (show.tankHeight ?? false) : true;
   const showUsage = show ? (show.usage ?? false) : true;
   const showFlow = show ? (show.flow ?? false) : true;
+  const showDispense = show ? (show.dispense ?? false) : true;
   const [days, setDays] = useState(3);
 
   const { data, isLoading } = useGetESenseCharts(
@@ -458,7 +461,199 @@ export function ESenseCharts({
         />
       ))}
 
+      {/* Dispense Volumes histogram */}
+      {showDispense && (isLoading ? (
+        <Skeleton className="h-52 w-full rounded-xl" />
+      ) : (
+        <DispenseVolumesChart
+          data={data?.dispenseVolumes ?? null}
+          tickColor={tickColor}
+          gridColor={gridColor}
+        />
+      ))}
+
     </div>
+  );
+}
+
+// ─── Dispense Volumes Histogram ───────────────────────────────────────────────
+
+interface DispenseVolumesData {
+  bins: { binStart: number; count: number }[];
+  kdeCurve?: { x: number; y: number }[];
+  sampleCount: number;
+  currentLcf: number | null;
+  kdePeak: number | null;
+  suggestedLcf: number | null;
+}
+
+function DispenseVolumesChart({
+  data,
+  tickColor,
+  gridColor,
+}: {
+  data: DispenseVolumesData | null;
+  tickColor: string;
+  gridColor: string;
+}) {
+  const title = "Dispense Volumes";
+  const icon = <BarChart3 className="w-3.5 h-3.5" />;
+
+  if (!data || data.currentLcf == null) {
+    return (
+      <ChartSection
+        title={title}
+        icon={icon}
+        isEmpty
+        emptyMessage="No LCF configured for this asset — cannot convert flow ticks to litres"
+      >
+        {null}
+      </ChartSection>
+    );
+  }
+
+  if (data.sampleCount < 10 || data.kdePeak == null) {
+    return (
+      <ChartSection
+        title={title}
+        icon={icon}
+        isEmpty
+        emptyMessage={
+          data.sampleCount === 0
+            ? "No dispenses between 10 L and 30 L in this period"
+            : `Only ${data.sampleCount} dispense${data.sampleCount === 1 ? "" : "s"} between 10 L and 30 L — not enough for analysis`
+        }
+      >
+        {null}
+      </ChartSection>
+    );
+  }
+
+  const peak = data.kdePeak;
+  const peakBinStart = Math.min(Math.floor(peak), 29);
+
+  // Merge KDE grid points and bin counts (at bin centres) into one series so
+  // the bars and the smooth curve share a numeric x-axis.
+  const curve = data.kdeCurve ?? [];
+  const merged: { x: number; count: number | null; kde: number | null }[] = curve.map(
+    (p) => ({ x: p.x, count: null, kde: p.y }),
+  );
+  const countByCentre = new Map(data.bins.map((b) => [b.binStart + 0.5, b.count]));
+  for (const pt of merged) {
+    const c = countByCentre.get(pt.x);
+    if (c != null) pt.count = c;
+  }
+
+  const nearTwenty = Math.abs(peak - 20) < 0.5;
+
+  return (
+    <ChartSection title={title} icon={icon}>
+      {/* Summary stats */}
+      <div className="flex gap-4 px-2 mb-2">
+        <div className="text-center">
+          <p className="text-[10px] text-muted-foreground">Dispenses (10–30 L)</p>
+          <p className="text-xs font-semibold">{data.sampleCount}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-[10px] text-muted-foreground">Typical dispense</p>
+          <p className="text-xs font-semibold text-blue-500">≈ {peak.toFixed(2)} L</p>
+        </div>
+        <div className="text-center">
+          <p className="text-[10px] text-muted-foreground">Current LCF</p>
+          <p className="text-xs font-semibold">{data.currentLcf}</p>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={190}>
+        <ComposedChart
+          data={merged}
+          margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+          <XAxis
+            dataKey="x"
+            type="number"
+            domain={[10, 30]}
+            ticks={[10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]}
+            tickFormatter={(v) => `${v}`}
+            unit=" L"
+            tick={{ fontSize: 9, fill: tickColor }}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: tickColor }}
+            width={40}
+            allowDecimals={false}
+            domain={[0, "auto"]}
+          />
+          <Tooltip
+            cursor={{ strokeDasharray: "3 3" }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]!.payload as (typeof merged)[number];
+              if (d.count == null) return null;
+              const binStart = Math.floor(d.x);
+              return (
+                <div
+                  style={{
+                    fontSize: 11,
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                  }}
+                >
+                  <p className="font-medium">{binStart}–{binStart + 1} L</p>
+                  <p>{d.count} dispense{d.count === 1 ? "" : "s"}</p>
+                </div>
+              );
+            }}
+          />
+          <ReferenceLine x={peak} stroke="#4D9DE0" strokeDasharray="4 3" strokeWidth={1.5} />
+          <Bar dataKey="count" name="Dispenses" barSize={11} radius={[2, 2, 0, 0]}>
+            {merged.map((pt) => (
+              <Cell
+                key={pt.x}
+                fill={
+                  pt.count != null && Math.floor(pt.x) === peakBinStart
+                    ? "#2563EB"
+                    : "#4D9DE0"
+                }
+                opacity={pt.count != null && Math.floor(pt.x) === peakBinStart ? 1 : 0.65}
+              />
+            ))}
+          </Bar>
+          <Line
+            type="monotone"
+            dataKey="kde"
+            stroke="#E15554"
+            strokeWidth={1.5}
+            dot={false}
+            name="KDE"
+            connectNulls
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      <div className="px-2 pt-1.5 space-y-0.5">
+        <p className="text-xs font-medium text-foreground">
+          Typical dispense ≈ {peak.toFixed(2)} L
+        </p>
+        {nearTwenty ? (
+          <p className="text-[10px] text-muted-foreground">
+            Typical fill is already ≈ 20 L — current LCF {data.currentLcf} looks well calibrated
+          </p>
+        ) : (
+          data.suggestedLcf != null && (
+            <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
+              Suggested LCF for 20 L fill: {data.suggestedLcf} (current {data.currentLcf})
+            </p>
+          )
+        )}
+        <p className="text-[10px] text-muted-foreground pt-0.5">
+          1 L bins, 10–30 L window · litres = FC ÷ LCF · KDE peak (Silverman bandwidth)
+        </p>
+      </div>
+    </ChartSection>
   );
 }
 

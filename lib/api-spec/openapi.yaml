@@ -897,6 +897,52 @@ components:
           items:
             $ref: "#/components/schemas/ESenseFlowRatePoint"
           description: Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s)
+        dispenseVolumes:
+          $ref: "#/components/schemas/ESenseDispenseVolumes"
+
+    ESenseDispenseVolumeBin:
+      type: object
+      required: [binStart, count]
+      properties:
+        binStart:
+          type: number
+          description: Lower edge of the 1 L bin (10..29)
+        count:
+          type: integer
+          description: Number of dispenses whose volume falls in [binStart, binStart+1); the last bin (29) is inclusive of 30 L exactly
+
+    ESenseDispenseVolumes:
+      type: object
+      required: [bins, sampleCount, currentLcf, kdePeak, suggestedLcf]
+      properties:
+        bins:
+          type: array
+          items:
+            $ref: "#/components/schemas/ESenseDispenseVolumeBin"
+          description: 1 L histogram bins from 10 to 30 L
+        kdeCurve:
+          type: array
+          items:
+            type: object
+            required: [x, y]
+            properties:
+              x:
+                type: number
+              y:
+                type: number
+          description: Gaussian KDE evaluated on a 0.05 L grid over 10-30 L (scaled to histogram counts)
+        sampleCount:
+          type: integer
+          description: Number of in-range (10-30 L) dispenses in the period
+        currentLcf:
+          type: ["number", "null"]
+          description: The asset's LCF (ticks per litre); null when not configured
+        kdePeak:
+          type: ["number", "null"]
+          description: Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10
+        suggestedLcf:
+          type: ["integer", "null"]
+          description: Suggested LCF assuming a true 20 L typical fill (currentLcf x kdePeak / 20, rounded); null when kdePeak or LCF unavailable
 
     ProxyInput:
       type: object

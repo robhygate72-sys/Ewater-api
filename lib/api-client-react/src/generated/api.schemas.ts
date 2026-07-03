@@ -347,6 +347,42 @@ export interface ESenseVoltageStatus {
   trend?: string | null;
 }
 
+export interface ESenseDispenseVolumeBin {
+  /** Lower edge of the 1 L bin (10..29) */
+  binStart: number;
+  /** Number of dispenses whose volume falls in [binStart, binStart+1); the last bin (29) is inclusive of 30 L exactly */
+  count: number;
+}
+
+export type ESenseDispenseVolumesKdeCurveItem = {
+  x: number;
+  y: number;
+};
+
+export interface ESenseDispenseVolumes {
+  /** 1 L histogram bins from 10 to 30 L */
+  bins: ESenseDispenseVolumeBin[];
+  /** Gaussian KDE evaluated on a 0.05 L grid over 10-30 L (scaled to histogram counts) */
+  kdeCurve?: ESenseDispenseVolumesKdeCurveItem[];
+  /** Number of in-range (10-30 L) dispenses in the period */
+  sampleCount: number;
+  /**
+     * The asset's LCF (ticks per litre); null when not configured
+     * @nullable
+     */
+  currentLcf: number | null;
+  /**
+     * Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10
+     * @nullable
+     */
+  kdePeak: number | null;
+  /**
+     * Suggested LCF assuming a true 20 L typical fill (currentLcf x kdePeak / 20, rounded); null when kdePeak or LCF unavailable
+     * @nullable
+     */
+  suggestedLcf: number | null;
+}
+
 export interface ESenseChartsData {
   tankHeight: ESenseTankPoint[];
   dailyInflow: ESenseInflowDay[];
@@ -354,6 +390,7 @@ export interface ESenseChartsData {
   voltageStatus?: ESenseVoltageStatus;
   /** Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s) */
   flowRateHistory: ESenseFlowRatePoint[];
+  dispenseVolumes?: ESenseDispenseVolumes;
 }
 
 export type ProxyInputBody = { [key: string]: unknown };

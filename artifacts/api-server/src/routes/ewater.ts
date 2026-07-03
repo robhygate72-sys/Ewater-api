@@ -1119,6 +1119,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
 
     const voltageHistory: { time: string; value: number }[] = [];
     const flowRateHistory: { time: string; flowRate: number; ticks: number; flowTimeSec: number }[] = [];
+    const dispenseVolumesRaw: number[] = [];
 
     // -------------------------------------------------------------------------
     // 39-byte DATALOG packet layout (EWC2.5 protocol):
@@ -1178,11 +1179,20 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
           const flowRate = Math.round((60 * fc / (lcf * ft)) * 1000) / 1000;
           flowRateHistory.push({ time, flowRate, ticks: fc, flowTimeSec: ft });
         }
+
+        // Dispense volume (litres = FC / LCF) for the histogram — keep only
+        // volumes in the 10–30 L analysis window.
+        if (lcf != null && lcf > 0 && fc > 0) {
+          const litres = fc / lcf;
+          if (litres >= 10 && litres <= 30) dispenseVolumesRaw.push(litres);
+        }
       } catch { /* skip malformed */ }
     }
 
     voltageHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     flowRateHistory.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+    const dispenseVolumes = computeDispenseVolumeStats(dispenseVolumesRaw, lcf);
 
     res.json({
       tankHeight,
@@ -1190,6 +1200,7 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
       voltageHistory,
       voltageStatus,
       flowRateHistory,
+      dispenseVolumes,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1263,6 +1274,92 @@ function formatLocation(lat: number | null, lon: number | null): string | null {
   if (lat == null || lon == null) return null;
   if (lat === 0 && lon === 0) return null;
   return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Dispense volume histogram + KDE (10–30 L window, 1 L bins)
+// Typical dispense = maximum of a Gaussian KDE with Silverman's-rule bandwidth
+// h = 0.9·min(sd, IQR/1.34)·n^(−1/5), evaluated on a 0.05 L grid over 10–30 L.
+// suggestedLcf assumes the true typical fill is 20 L:
+//   suggestedLcf = round(currentLcf × kdePeak / 20)
+// Requires ≥ 10 in-range samples for a meaningful KDE; below that, kdePeak and
+// suggestedLcf are null (client shows the "no data" empty state).
+// ---------------------------------------------------------------------------
+
+const DISPENSE_VOL_MIN = 10;
+const DISPENSE_VOL_MAX = 30;
+const DISPENSE_KDE_GRID_STEP = 0.05;
+const DISPENSE_MIN_SAMPLES = 10;
+
+function computeDispenseVolumeStats(volumes: number[], lcf: number | null) {
+  const bins: { binStart: number; count: number }[] = [];
+  for (let b = DISPENSE_VOL_MIN; b < DISPENSE_VOL_MAX; b++) {
+    bins.push({ binStart: b, count: 0 });
+  }
+  // Bins are [binStart, binStart+1); a volume of exactly 30 L is clamped into
+  // the last bin (29–30) so the inclusive 10–30 window loses no samples.
+  for (const v of volumes) {
+    const idx = Math.min(Math.floor(v) - DISPENSE_VOL_MIN, bins.length - 1);
+    if (idx >= 0 && idx < bins.length) bins[idx]!.count++;
+  }
+
+  const n = volumes.length;
+  const base = {
+    bins,
+    sampleCount: n,
+    currentLcf: lcf != null && lcf > 0 ? lcf : null,
+  };
+  if (n < DISPENSE_MIN_SAMPLES || lcf == null || lcf <= 0) {
+    return { ...base, kdeCurve: [], kdePeak: null, suggestedLcf: null };
+  }
+
+  // Silverman's rule of thumb bandwidth
+  const mean = volumes.reduce((s, v) => s + v, 0) / n;
+  const sd = Math.sqrt(volumes.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1));
+  const sorted = [...volumes].sort((a, b) => a - b);
+  const quantile = (p: number): number => {
+    const pos = (sorted.length - 1) * p;
+    const lo = Math.floor(pos);
+    const hi = Math.ceil(pos);
+    return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
+  };
+  const iqr = quantile(0.75) - quantile(0.25);
+  let h = 0.9 * Math.min(sd, iqr / 1.34) * Math.pow(n, -0.2);
+  if (!(h > 0)) h = 0.9 * (sd > 0 ? sd : 0.5) * Math.pow(n, -0.2);
+  if (!(h > 0)) h = 0.5;
+
+  // Evaluate the Gaussian KDE on a fine grid across the window
+  const invNH = 1 / (n * h * Math.sqrt(2 * Math.PI));
+  let peakX = DISPENSE_VOL_MIN;
+  let peakY = -Infinity;
+  const kdeCurve: { x: number; y: number }[] = [];
+  const steps = Math.round((DISPENSE_VOL_MAX - DISPENSE_VOL_MIN) / DISPENSE_KDE_GRID_STEP);
+  for (let i = 0; i <= steps; i++) {
+    const x = DISPENSE_VOL_MIN + i * DISPENSE_KDE_GRID_STEP;
+    let density = 0;
+    for (const v of volumes) {
+      const u = (x - v) / h;
+      density += Math.exp(-0.5 * u * u);
+    }
+    density *= invNH;
+    if (density > peakY) {
+      peakY = density;
+      peakX = x;
+    }
+    kdeCurve.push({ x: Math.round(x * 100) / 100, y: density });
+  }
+
+  // Scale KDE to histogram counts (density × n × binWidth, binWidth = 1 L) so
+  // the curve overlays the bars on the same y-axis.
+  const scaledCurve = kdeCurve.map((p) => ({
+    x: p.x,
+    y: Math.round(p.y * n * 1000) / 1000,
+  }));
+
+  const kdePeak = Math.round(peakX * 100) / 100;
+  const suggestedLcf = Math.round((lcf * kdePeak) / 20);
+
+  return { ...base, kdeCurve: scaledCurve, kdePeak, suggestedLcf };
 }
 
 function healthRatingIsFault(rating: string | null): boolean | null {

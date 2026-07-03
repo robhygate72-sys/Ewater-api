@@ -305,7 +305,21 @@ export const GetESenseChartsResponse = zod.object({
   "flowRate": zod.number().describe('Flow rate in litres per minute'),
   "ticks": zod.number().describe('Raw flow meter tick count for this dispense event'),
   "flowTimeSec": zod.number().describe('Flow duration in seconds for this dispense event')
-})).describe('Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s)')
+})).describe('Per-dispense flow rates decoded from 0x44 DATALOG packets (flow_time > 10 s)'),
+  "dispenseVolumes": zod.object({
+  "bins": zod.array(zod.object({
+  "binStart": zod.number().describe('Lower edge of the 1 L bin (10..29)'),
+  "count": zod.number().describe('Number of dispenses whose volume falls in [binStart, binStart+1); the last bin (29) is inclusive of 30 L exactly')
+})).describe('1 L histogram bins from 10 to 30 L'),
+  "kdeCurve": zod.array(zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+})).optional().describe('Gaussian KDE evaluated on a 0.05 L grid over 10-30 L (scaled to histogram counts)'),
+  "sampleCount": zod.number().describe('Number of in-range (10-30 L) dispenses in the period'),
+  "currentLcf": zod.number().nullable().describe('The asset\'s LCF (ticks per litre); null when not configured'),
+  "kdePeak": zod.number().nullable().describe('Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10'),
+  "suggestedLcf": zod.number().nullable().describe('Suggested LCF assuming a true 20 L typical fill (currentLcf x kdePeak \/ 20, rounded); null when kdePeak or LCF unavailable')
+}).optional()
 })
 
 

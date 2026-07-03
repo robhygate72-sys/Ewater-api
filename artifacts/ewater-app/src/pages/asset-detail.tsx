@@ -580,7 +580,7 @@ export default function AssetDetail() {
 
           {/* Water usage + flow rate charts (eSense + CommunityTap) */}
           {hasDatalogCharts && (
-            <ESenseCharts assetId={id} isEsense={isEsense} show={{ usage: true, flow: true }} showTitle={false} />
+            <ESenseCharts assetId={id} isEsense={isEsense} show={{ usage: true, flow: true, dispense: true }} showTitle={false} />
           )}
         </TabsContent>
 
