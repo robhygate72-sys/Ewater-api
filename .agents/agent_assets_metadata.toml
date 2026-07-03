@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4X1b-JulDurFB2SsYE_H_"
+uri = "file://attached_assets/ewater-calibration-report.pdf"
+type = "pdf"
+title = "eWater Calibration Methodology — Executive Report"

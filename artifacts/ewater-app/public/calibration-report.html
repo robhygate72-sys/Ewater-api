@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>eWater Calibration Methodology — Executive Report</title>
+<style>
+  :root {
+    --navy: #0f2b46;
+    --blue: #1a73b8;
+    --teal: #0f9b8e;
+    --amber: #d97706;
+    --grey: #5b6b78;
+    --line: #dbe3ea;
+    --bg: #f4f7f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    margin: 0;
+    color: #1c2b38;
+    line-height: 1.5;
+  }
+  .print-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--navy);
+    color: #fff;
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .print-bar span { font-size: 13px; opacity: .85; }
+  .print-bar button {
+    background: var(--teal);
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .print-bar button:hover { background: #0c8478; }
+  .page {
+    max-width: 850px;
+    margin: 24px auto;
+    background: #fff;
+    padding: 56px 64px;
+    box-shadow: 0 2px 14px rgba(15,43,70,.08);
+  }
+  .cover-title {
+    font-size: 30px;
+    font-weight: 800;
+    color: var(--navy);
+    margin: 0 0 6px;
+  }
+  .cover-sub {
+    font-size: 15px;
+    color: var(--grey);
+    margin: 0 0 28px;
+  }
+  .meta-row {
+    display: flex;
+    gap: 28px;
+    font-size: 12.5px;
+    color: var(--grey);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 0;
+    margin-bottom: 32px;
+  }
+  .meta-row b { color: #1c2b38; }
+  h2 {
+    font-size: 19px;
+    color: var(--navy);
+    border-left: 4px solid var(--teal);
+    padding-left: 10px;
+    margin: 34px 0 12px;
+  }
+  h3 {
+    font-size: 15px;
+    color: var(--blue);
+    margin: 20px 0 8px;
+  }
+  p { font-size: 13.5px; color: #2b3a47; margin: 8px 0; }
+  ul, ol { font-size: 13.5px; color: #2b3a47; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .callout {
+    background: #eef6fb;
+    border-left: 4px solid var(--blue);
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-size: 13.5px;
+    margin: 14px 0;
+  }
+  .formula-box {
+    background: var(--navy);
+    color: #eaf3fb;
+    font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+    font-size: 14px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin: 14px 0;
+    overflow-x: auto;
+  }
+  .formula-box .step { color: #8fd6ce; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 12px 0 18px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 7px 10px;
+    text-align: right;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    background: var(--bg);
+    color: var(--navy);
+    font-weight: 700;
+  }
+  tr.hl td { background: #fff6e9; font-weight: 700; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    color: #fff;
+  }
+  .badge-teal { background: var(--teal); }
+  .badge-amber { background: var(--amber); }
+  .badge-grey { background: var(--grey); }
+  .chart-wrap { margin: 16px 0 20px; }
+  .chart-wrap svg { width: 100%; height: auto; display: block; }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .card h4 {
+    margin: 0 0 6px;
+    font-size: 13.5px;
+    color: var(--navy);
+  }
+  .kpi { font-size: 22px; font-weight: 800; color: var(--navy); }
+  .kpi-sub { font-size: 11.5px; color: var(--grey); }
+  .footer-note {
+    font-size: 11px;
+    color: var(--grey);
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    margin-top: 36px;
+  }
+  .page-break { page-break-before: always; }
+  @media print {
+    body { background: #fff; }
+    .print-bar { display: none; }
+    .page { box-shadow: none; margin: 0; padding: 36px 42px; max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <span>eWater Monitor — Calibration Methodology Report</span>
+  <button onclick="window.print()">Download / Print PDF</button>
+</div>
+
+<div class="page">
+  <p class="cover-title">Dispense Calibration: Histogram Analysis &amp; Auto-Suggested Settings</p>
+  <p class="cover-sub">How we detect miscalibrated dispensers from field data alone, and how the app calculates a corrected Litres Conversion Factor (LCF) and Preload</p>
+  <div class="meta-row">
+    <div><b>Prepared for:</b> Executive Team</div>
+    <div><b>System:</b> eWater Monitor</div>
+    <div><b>Date:</b> July 3, 2026</div>
+  </div>
+
+  <h2>1. The problem in plain terms</h2>
+  <p>
+    Every dispenser is supposed to release exactly <b>20 litres</b> per authorized transaction. In practice, a meter's
+    calibration can drift — mechanically or after a component swap — so it might consistently deliver 16.7 L, or 25 L,
+    for the same "20 L" transaction. There is no direct way to ask the device "are you calibrated?" — we only see the
+    raw pulse counts it reports. This report explains how we infer miscalibration purely by analyzing the pattern of
+    every transaction a meter has logged, and how we translate that pattern into a corrected setting.
+  </p>
+
+  <h2>2. Step 1 — Build a histogram of "should-be-20L" transactions</h2>
+  <p>
+    Every dispense event reports a raw pulse count (the <b>Flow Count</b>, or FC) which the device converts to litres
+    using its currently configured Litres Conversion Factor (LCF): <code>litres = FC ÷ LCF</code>. We pull every
+    dispense event for a meter over a configurable window (14–30+ days is typical) and compute the litres value for
+    each one, then group them into a histogram restricted to the 10–30 L range — i.e. transactions that are plausibly
+    "one 20 L fill."
+  </p>
+  <div class="callout">
+    Restricting to 10–30 L filters out unrelated activity (leak drips, partial/aborted fills, multi-unit bulk
+    dispenses) so the histogram reflects the population of transactions that were <i>intended</i> to be a standard 20 L
+    fill.
+  </div>
+
+  <h2>3. Step 2 — Smooth the histogram to find the true peak (KDE)</h2>
+  <p>
+    A raw histogram is jagged — the exact "typical fill" value depends on arbitrary bin edges. To get a stable,
+    bin-independent estimate of where transactions actually cluster, we run a standard statistical smoothing technique
+    called <b>Kernel Density Estimation (KDE)</b>. Conceptually, instead of stacking transactions into rigid buckets,
+    KDE replaces each transaction with a small smooth "bump" centered on its value, then adds all the bumps together.
+    The result is a smooth curve whose highest point is the best estimate of the meter's <i>typical actual delivery</i>
+    for a nominal 20 L fill.
+  </p>
+  <h3>Why not just use the average?</h3>
+  <p>
+    A simple average is distorted by outliers (a handful of 25–29 L bulk fills pulls the average up even though most
+    transactions cluster tightly around one value). The KDE peak instead finds the single most common delivered
+    volume — the mode — which is what a technician would eyeball on a printed histogram, done rigorously and
+    automatically.
+  </p>
+  <h3>Technical detail — bandwidth selection</h3>
+  <p>
+    The "width" of each smooth bump (the bandwidth, h) controls how much smoothing is applied — too narrow and the
+    curve is as noisy as the raw histogram; too wide and distinct clusters blur together. We use <b>Silverman's rule of
+    thumb</b>, a well-established statistical formula that picks bandwidth automatically from the data's own spread:
+  </p>
+  <div class="formula-box">
+h&nbsp;=&nbsp;0.9&nbsp;×&nbsp;min(SD,&nbsp;IQR&nbsp;/&nbsp;1.34)&nbsp;×&nbsp;n<span style="vertical-align:super;font-size:10px">−1/5</span>
+    <div class="step" style="margin-top:8px;">
+      SD = standard deviation of the sample · IQR = interquartile range · n = number of transactions
+    </div>
+  </div>
+  <p>
+    A minimum of <b>10 transactions</b> is required before we compute a peak at all — below that, the sample is too
+    thin to trust, and the app reports "not enough data" rather than guessing.
+  </p>
+
+  <div class="chart-wrap">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+      <!-- axes -->
+      <line x1="60" y1="20" x2="60" y2="250" stroke="#c7d2da" stroke-width="1"/>
+      <line x1="60" y1="250" x2="720" y2="250" stroke="#c7d2da" stroke-width="1"/>
+      <!-- 20L target line -->
+      <line x1="450" y1="20" x2="450" y2="250" stroke="#d97706" stroke-width="1.5" stroke-dasharray="5,4"/>
+      <text x="454" y="32" font-size="11" fill="#d97706" font-family="Arial">20 L target</text>
+      <!-- histogram bars (asset 2240 real bin counts, scaled) -->
+      <g fill="#bcd8ea">
+        <rect x="60"  y="212" width="30" height="38"/>
+        <rect x="90"  y="208" width="30" height="42"/>
+        <rect x="120" y="212" width="30" height="38"/>
+        <rect x="150" y="195" width="30" height="55"/>
+        <rect x="180" y="198" width="30" height="52"/>
+        <rect x="210" y="105" width="30" height="145"/>
+        <rect x="240" y="20"  width="30" height="230"/>
+        <rect x="270" y="80"  width="30" height="170"/>
+        <rect x="300" y="216" width="30" height="34"/>
+        <rect x="330" y="222" width="30" height="28"/>
+        <rect x="360" y="232" width="30" height="18"/>
+        <rect x="390" y="212" width="30" height="38"/>
+        <rect x="420" y="225" width="30" height="25"/>
+        <rect x="450" y="216" width="30" height="34"/>
+        <rect x="480" y="202" width="30" height="48"/>
+        <rect x="510" y="212" width="30" height="38"/>
+        <rect x="540" y="198" width="30" height="52"/>
+        <rect x="570" y="220" width="30" height="30"/>
+        <rect x="600" y="195" width="30" height="55"/>
+        <rect x="630" y="195" width="30" height="55"/>
+      </g>
+      <!-- KDE curve peaking near 16.7L (bar index ~6-7) -->
+      <path d="M60,235 C120,230 180,210 210,120 C230,55 250,25 255,22 C265,30 285,90 300,190 C340,235 400,238 450,236 C520,232 600,210 630,200 C660,195 690,205 720,210"
+            fill="none" stroke="#0f9b8e" stroke-width="2.5"/>
+      <!-- peak marker -->
+      <line x1="256" y1="22" x2="256" y2="250" stroke="#0f9b8e" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <text x="200" y="12" font-size="11" fill="#0f9b8e" font-family="Arial" font-weight="700">KDE peak ≈ 16.7 L (actual typical fill)</text>
+      <!-- x labels -->
+      <text x="60" y="266" font-size="10" fill="#5b6b78" font-family="Arial">10L</text>
+      <text x="450" y="266" font-size="10" fill="#5b6b78" font-family="Arial">20L</text>
+      <text x="700" y="266" font-size="10" fill="#5b6b78" font-family="Arial">29L</text>
+      <text x="20" y="255" font-size="10" fill="#5b6b78" font-family="Arial">0</text>
+      <text x="10" y="25" font-size="10" fill="#5b6b78" font-family="Arial">count</text>
+    </svg>
+    <p class="kpi-sub" style="text-align:center;">Illustrative reconstruction of Asset 2240's actual 14-day histogram + KDE curve — n = 481 transactions, peak at 16.7 L against a 20 L target</p>
+  </div>
+
+  <h2>4. Step 3 — Measure the "preload" directly, from a second data source</h2>
+  <p>
+    Litres delivered aren't the whole story. Every dispense includes a small fixed amount of water that flows before
+    the flow meter starts counting pulses — the <b>preload</b> (mechanical/valve-open overrun). If we only corrected
+    the LCF, we'd be lumping this fixed offset in with the per-litre conversion, which would make the fix accurate at
+    20 L but wrong at every other fill size.
+  </p>
+  <p>
+    We avoid guessing at the preload. eWater dispensers occasionally log a distinct <b>"no-credit" event</b> (event
+    type <code>0x01</code>) — water that flowed without an authorized transaction, e.g. residual drips or a
+    valve-close overrun. These events report their own tick count independent of any billed transaction, which is a
+    direct physical measurement of the meter's unmetered offset. We average this value across every no-credit event
+    seen in the period:
+  </p>
+  <div class="formula-box">measuredPreload&nbsp;=&nbsp;average(unmetered&nbsp;ticks&nbsp;across&nbsp;all&nbsp;no-credit&nbsp;events&nbsp;in&nbsp;the&nbsp;period)</div>
+  <p>
+    No-credit events are sparse — some meters produce several a day, others none for days — so when a meter has zero
+    measured events in the window, the app clearly flags "no measurement — assumed 0" rather than silently treating an
+    absence of data as a confirmed zero.
+  </p>
+
+  <h2>5. Step 4 — Convert the measured peak into a corrected LCF</h2>
+  <p>
+    With a reliable "typical fill" (the KDE peak, in litres) and a directly measured preload (in raw ticks), we can
+    back-solve for the ticks-per-litre value that would have produced exactly 20 L for that same typical transaction:
+  </p>
+  <div class="formula-box">
+    <div class="step">// 1. total raw ticks currently recorded for the typical fill</div>
+    rawTicks&nbsp;=&nbsp;kdePeak&nbsp;×&nbsp;currentLcf
+    <br><br>
+    <div class="step">// 2. remove the fixed offset to isolate ticks caused by actual flow</div>
+    meteredTicks&nbsp;=&nbsp;rawTicks&nbsp;−&nbsp;measuredPreload
+    <br><br>
+    <div class="step">// 3. the LCF that turns those metered ticks into exactly 20 L</div>
+    suggestedLcf&nbsp;=&nbsp;round(meteredTicks&nbsp;/&nbsp;20)
+  </div>
+  <p>
+    If the result is zero or negative (i.e. the measured preload alone exceeds the raw tick count for a typical
+    fill — a sign of noisy/insufficient data), the app does not present a suggestion at all rather than propose a
+    nonsensical setting.
+  </p>
+  <div class="callout">
+    <b>Why this generalizes across meter types automatically:</b> the formula scales directly off each meter's own
+    current LCF, so it self-corrects for meters on very different hardware scales (e.g. older "v3" meters at LCF ≈ 71
+    vs. standard meters at LCF ≈ 350–400) without needing separate rules per meter family.
+  </div>
+
+  <h2 class="page-break">6. Worked examples from live field data</h2>
+  <p>The table below shows three real dispensers from the current fleet, each illustrating a different scenario.</p>
+  <table>
+    <tr>
+      <th>Asset</th>
+      <th>Transactions (14d)</th>
+      <th>Current LCF</th>
+      <th>KDE peak (L)</th>
+      <th>Measured preload</th>
+      <th>Suggested LCF</th>
+      <th>Interpretation</th>
+    </tr>
+    <tr class="hl">
+      <td>2240</td>
+      <td>481</td>
+      <td>373</td>
+      <td>16.7</td>
+      <td>215.2 ticks (44 events)</td>
+      <td>301</td>
+      <td>Over-delivering — meter counts too many ticks per litre; LCF should drop</td>
+    </tr>
+    <tr>
+      <td>2706 (v3 meter)</td>
+      <td>459</td>
+      <td>71</td>
+      <td>20.9</td>
+      <td>17 ticks (1 event)</td>
+      <td>73</td>
+      <td>Close to target; small correction. Same formula applies to older v3 hardware</td>
+    </tr>
+    <tr>
+      <td>662</td>
+      <td>15</td>
+      <td>365</td>
+      <td>25.0</td>
+      <td>none measured (assumed 0)</td>
+      <td>456</td>
+      <td>Sample is thin (15 tx) and no no-credit events observed — suggestion shown with lower confidence</td>
+    </tr>
+  </table>
+
+  <div class="two-col">
+    <div class="card">
+      <h4>Asset 2240 — before correction</h4>
+      <div class="kpi">16.7 L</div>
+      <div class="kpi-sub">typical delivered volume vs. 20 L target (16.5% short)</div>
+    </div>
+    <div class="card">
+      <h4>Asset 2240 — after applying LCF 301</h4>
+      <div class="kpi">≈ 20.0 L</div>
+      <div class="kpi-sub">projected typical delivered volume once corrected</div>
+    </div>
+  </div>
+
+  <h2>7. What "Apply" does in the app</h2>
+  <p>
+    Each dispenser's chart page shows this analysis live and, where a valid suggestion exists, an
+    <b>"Apply suggested settings"</b> button. This is a deliberate, human-confirmed action — the app never writes to a
+    device automatically. Clicking it opens a confirmation dialog showing the before/after values for both settings,
+    and only on explicit confirmation does it send the correction to the physical dispenser:
+  </p>
+  <ol>
+    <li><span class="badge badge-teal">LCF</span> Litres Conversion is updated to the <code>suggestedLcf</code> value calculated above.</li>
+    <li><span class="badge badge-teal">Preload</span> is set to the measured preload (rounded to the nearest tick), or 0 if none was measured in the window.</li>
+  </ol>
+  <p>
+    Both settings are written via eWater's managed setting-change API; the device applies them on its next check-in.
+    Because both numbers come from the meter's own logged transactions, no site visit, manual test-pour, or firmware
+    change is required to recalibrate a drifting meter.
+  </p>
+
+  <h2>8. Confidence &amp; limitations — talking points for Q&amp;A</h2>
+  <ul>
+    <li><b>Sample size matters.</b> We require at least 10 transactions before showing a peak at all; assets with thin history (like 662 above) get a suggestion but it should be treated as lower-confidence until more data accumulates.</li>
+    <li><b>Preload measurement is opportunistic.</b> No-credit events aren't guaranteed to occur in every window; when none are seen, we assume 0 and say so explicitly rather than hiding the gap.</li>
+    <li><b>The 20 L target is a business assumption, not a measurement.</b> The model assumes the fleet's standard transaction is intended to deliver 20 L; if a site's authorized fill size differs, the formula and target should be revisited.</li>
+    <li><b>No device is changed without a human clicking Apply</b> after reviewing the exact before/after numbers.</li>
+  </ul>
+
+  <p class="footer-note">
+    eWater Monitor · Calibration methodology report · Figures reflect live field data captured July 3, 2026, over a 14-day trailing window. Generated for internal review — not for external distribution.
+  </p>
+</div>
+
+</body>
+</html>
