@@ -377,7 +377,9 @@ router.get("/ewater/assets/:assetId/ewc", async (req, res): Promise<void> => {
     const fcf = getSetting("FlowConversion");
     let lcf = getSetting("LitresConversion");
     const fx  = getSetting("CurrencyConversion");
-    const preload = getSetting("Preload");
+    // "Tag preload value" on the EWC settings page — settingKey is
+    // "FlowPreloadCharge" (there is no settingKey literally named "Preload").
+    const preload = getSetting("FlowPreloadCharge");
     // LitresConversion is primary; fall back to GetTicksPerLitre when absent.
     if (lcf == null || lcf <= 0) {
       lcf = await fetchTicksPerLitre(id);
@@ -1120,7 +1122,9 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
 
     // Current Preload setting (tick offset added to the per-session flow count
     // at dispense start) — needed for the calibration suggestion math.
-    const preloadSetting = settingsList.find((x) => x["settingKey"] === "Preload");
+    // On the EWC settings page this is "Tag preload value", settingKey
+    // "FlowPreloadCharge" (there is no settingKey literally named "Preload").
+    const preloadSetting = settingsList.find((x) => x["settingKey"] === "FlowPreloadCharge");
     const preloadRaw = (preloadSetting?.["value"] as Record<string, unknown> | null)?.["lastKnownValue"];
     const currentPreload = preloadRaw != null && !isNaN(Number(preloadRaw)) ? Number(preloadRaw) : null;
 
