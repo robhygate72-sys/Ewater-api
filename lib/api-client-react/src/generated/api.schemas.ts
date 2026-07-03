@@ -410,12 +410,10 @@ export interface ESenseDispenseVolumes {
   /** Number of event-type 0x01 packets the measured preload average is based on */
   preloadSampleCount: number;
   /**
-     * Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) / 20), measuredPreload null -> 0; null when kdePeak unavailable, the result is not positive, or a v3 flow meter
+     * Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) / 20), measuredPreload null -> 0; null when kdePeak is unavailable or the result is not positive
      * @nullable
      */
   suggestedLcf: number | null;
-  /** True when the asset uses a v3 flow meter (LCF < 100, typically ~71) — calibration suggestion not applicable */
-  v3Meter: boolean;
 }
 
 export interface ESenseChartsData {

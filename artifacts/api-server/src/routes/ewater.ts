@@ -1311,8 +1311,8 @@ function formatLocation(lat: number | null, lon: number | null): string | null {
 //      divide by 20 to get true ticks per litre)
 // If the result is not positive (measured preload exceeds the typical raw
 // tick count) the suggestion is nonsensical → no suggestion.
-// v3 flow meters (LCF < 100, typically ~71) are excluded entirely — the
-// calibration model does not apply to them (v3Meter flag, no suggestion).
+// Applies to all meters — the formula scales with the current LCF, so v3
+// flow meters (LCF ≈ 71) are handled the same way.
 // Requires ≥ 10 in-range samples for a meaningful KDE; below that, kdePeak and
 // the suggestion fields are null (client shows the "no data" empty state).
 // ---------------------------------------------------------------------------
@@ -1321,7 +1321,6 @@ const DISPENSE_VOL_MIN = 10;
 const DISPENSE_VOL_MAX = 30;
 const DISPENSE_KDE_GRID_STEP = 0.05;
 const DISPENSE_MIN_SAMPLES = 10;
-const V3_METER_LCF_MAX = 100;
 
 function computeDispenseVolumeStats(
   volumes: number[],
@@ -1346,7 +1345,6 @@ function computeDispenseVolumeStats(
   }
 
   const n = volumes.length;
-  const v3Meter = lcf != null && lcf > 0 && lcf < V3_METER_LCF_MAX;
   const base = {
     bins,
     sampleCount: n,
@@ -1354,7 +1352,6 @@ function computeDispenseVolumeStats(
     currentPreload: preload,
     measuredPreload,
     preloadSampleCount,
-    v3Meter,
   };
   if (n < DISPENSE_MIN_SAMPLES || lcf == null || lcf <= 0) {
     return {
@@ -1409,16 +1406,6 @@ function computeDispenseVolumeStats(
   }));
 
   const kdePeak = Math.round(peakX * 100) / 100;
-
-  // v3 flow meters: calibration model not applicable — no suggestion.
-  if (v3Meter) {
-    return {
-      ...base,
-      kdeCurve: scaledCurve,
-      kdePeak,
-      suggestedLcf: null,
-    };
-  }
 
   // LCF that makes the typical dispense a true 20 L fill, using the measured
   // preload (avg unmetered ticks). See the calibration model comment above.

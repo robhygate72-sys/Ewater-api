@@ -984,7 +984,7 @@ components:
 
     ESenseDispenseVolumes:
       type: object
-      required: [bins, sampleCount, currentLcf, currentPreload, kdePeak, measuredPreload, preloadSampleCount, suggestedLcf, v3Meter]
+      required: [bins, sampleCount, currentLcf, currentPreload, kdePeak, measuredPreload, preloadSampleCount, suggestedLcf]
       properties:
         bins:
           type: array
@@ -1022,10 +1022,7 @@ components:
           description: Number of event-type 0x01 packets the measured preload average is based on
         suggestedLcf:
           type: ["integer", "null"]
-          description: "Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) / 20), measuredPreload null -> 0; null when kdePeak unavailable, the result is not positive, or a v3 flow meter"
-        v3Meter:
-          type: boolean
-          description: True when the asset uses a v3 flow meter (LCF < 100, typically ~71) — calibration suggestion not applicable
+          description: "Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) / 20), measuredPreload null -> 0; null when kdePeak is unavailable or the result is not positive"
 
     ProxyInput:
       type: object

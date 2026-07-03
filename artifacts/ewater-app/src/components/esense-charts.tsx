@@ -504,7 +504,6 @@ interface DispenseVolumesData {
   measuredPreload: number | null;
   preloadSampleCount: number;
   suggestedLcf: number | null;
-  v3Meter: boolean;
 }
 
 function DispenseVolumesChart({
@@ -682,11 +681,7 @@ function DispenseVolumesChart({
         <p className="text-xs font-medium text-foreground">
           Typical dispense ≈ {peak.toFixed(2)} L
         </p>
-        {data.v3Meter ? (
-          <p className="text-[10px] text-muted-foreground">
-            V3 flow meter (LCF {data.currentLcf}) — calibration suggestion not applicable
-          </p>
-        ) : nearTwenty ? (
+        {nearTwenty ? (
           <p className="text-[10px] text-muted-foreground">
             Typical fill is already ≈ 20 L — current LCF {data.currentLcf} looks well calibrated
           </p>
