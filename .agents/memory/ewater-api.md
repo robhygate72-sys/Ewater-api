@@ -158,10 +158,10 @@ Adding query params to an OpenAPI endpoint causes Orval to generate `GetXxxParam
 ## Dispense-volume calibration analysis (decided conventions)
 - Typical dispense = Gaussian KDE peak (Silverman h = 0.9·min(sd, IQR/1.34)·n^(−1/5), 0.05 L grid), NOT bin midpoint or median.
 - Fixed window 10–30 L, 1 L bins (30 L exactly counts in the last bin); require ≥10 in-range samples else report null.
-- Preload is MEASURED, not modeled: event-type 0x01 "no credit" DATALOG packets carry FC = unmetered ticks; measuredPreload = average FC of 0x01 packets over the chart period (null when none → treated as 0 in the formula).
+- Preload is MEASURED, not modeled: event-type 0x01 "no credit" DATALOG packets carry unmetered ticks (valve-close overrun) at bytes[18–19] MSB-first; measuredPreload = average over the chart period (null when none → treated as 0 in the formula). NOT the FC field — FC on 0x01 packets is the session's real flow (user-confirmed against their packet viewer: unmetered ≈ 241 while FC was 9927).
 - Suggestion is LCF-ONLY: suggestedLcf = round((kdePeak × currentLcf − measuredPreload) / 20); result ≤ 0 → no suggestion.
 - **Why:** user-directed. The unmetered offset is directly observable from no-credit events, so use the measured value and correct the ticks-per-litre conversion itself. Supersedes all earlier models (bent LCF, factory-360 pair, preload-only).
-- 0x01 packets are sparse and high-variance (live: one asset had 11 in 3 days, FC 1013–10057, avg ≈4098; other assets had none in 3 days) — the "no measurement → assume 0" path is common and must stay visible in the UI.
+- 0x01 packets are sparse (some assets emit none for days) but their unmetered-tick values are tight (~190–245 on the asset observed) — the "no measurement → assume 0" path is common and must stay visible in the UI.
 - v3 flow meters (LCF < 100, typically ≈71) are EXCLUDED from calibration suggestions entirely — `v3Meter` flag, muted "not applicable" note in UI. User-directed.
 - One-click apply writes ONLY the "LitresConversion" setting via command API `POST /api/Ewc/RequestSettingChange` {correlationId:null, secondaryUserId:null, assetId, settingKey, newValue} — managed desired-value path, device applies on next check-in. NEVER auto-fire; user-confirmed dialog only (writes to real dispensers).
 - Volumes come from dispense events 0x09/0x0B only (FC ÷ LCF), no FT filter for volumes (unlike flow-rate which needs FT > 10 s).

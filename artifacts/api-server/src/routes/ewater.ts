@@ -1138,7 +1138,8 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     //   bytes[12–15]= card UID  (4 bytes, MSB first)
     //   byte[16]    = AN  battery ADC (volts = ADC/256 × 15)
     //   byte[17]    = RS  reserved
-    //   bytes[18–19]= UC UC  usage counter
+    //   bytes[18–19]= UC UC  on 0x01 "no credit" events: unmetered ticks
+    //                 (valve-close overrun), MSB first — the preload measurement
     //   bytes[20–23]= SCR SCR SCR SCR  start credit (MSB first)
     //   bytes[24–27]= ECR ECR ECR ECR  end credit (MSB first)
     //   bytes[28–30]= FC FC FC  per-session flow count (MSB, MID, LSB). Litres ≈ FC / LCF
@@ -1158,8 +1159,9 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
     // Filter: FT > 10 s; FC > 0.
     // -------------------------------------------------------------------------
     const DISPENSE_EVENT_TYPES = new Set([0x09, 0x0b]);
-    // Event 0x01 "no credit": FC = unmetered ticks (no credited dispense) —
-    // averaged over the period to directly measure the preload offset.
+    // Event 0x01 "no credit": bytes[18–19] = unmetered ticks (valve-close
+    // overrun) — averaged over the period to directly measure the preload
+    // offset. NOT the FC field (FC on 0x01 packets is the session's real flow).
     const NO_CREDIT_EVENT_TYPE = 0x01;
     const noCreditTicks: number[] = [];
 
@@ -1182,7 +1184,8 @@ router.get("/ewater/assets/:assetId/esense-charts", async (req, res): Promise<vo
         const fc = bytes[28]! * 65536 + bytes[29]! * 256 + bytes[30]!;
 
         if (eventType === NO_CREDIT_EVENT_TYPE) {
-          noCreditTicks.push(fc);
+          // Unmetered ticks: 2-byte MSB-first at bytes[18–19]
+          noCreditTicks.push(bytes[18]! * 256 + bytes[19]!);
           continue;
         }
         if (!DISPENSE_EVENT_TYPES.has(eventType)) continue;
@@ -1298,9 +1301,9 @@ function formatLocation(lat: number | null, lon: number | null): string | null {
 // h = 0.9·min(sd, IQR/1.34)·n^(−1/5), evaluated on a 0.05 L grid over 10–30 L.
 // Calibration suggestion (assumes the true typical fill is 20 L):
 // The preload (unmetered tick offset per dispense) is directly MEASURED from
-// event-type 0x01 "no credit" DATALOG packets: their FC is ticks counted with
-// no credited dispense. measuredPreload = average FC over those packets in
-// the requested period (null when none received → treated as 0).
+// event-type 0x01 "no credit" DATALOG packets: bytes[18–19] carry the
+// unmetered ticks (valve-close overrun). measuredPreload = average over those
+// packets in the requested period (null when none received → treated as 0).
 // The correction lever is the LCF (LitresConversion):
 //   suggestedLcf = round((kdePeak × currentLcf − measuredPreload) / 20)
 //     (typical raw ticks = kdePeak × currentLcf; subtract the measured

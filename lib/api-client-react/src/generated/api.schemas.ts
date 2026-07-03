@@ -403,7 +403,7 @@ export interface ESenseDispenseVolumes {
      */
   kdePeak: number | null;
   /**
-     * Average unmetered ticks (FC) from event-type 0x01 "no credit" DATALOG packets in the period; null when no such packets were received
+     * Average unmetered ticks (bytes 18-19, valve-close overrun) from event-type 0x01 "no credit" DATALOG packets in the period; null when no such packets were received
      * @nullable
      */
   measuredPreload: number | null;

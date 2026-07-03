@@ -319,7 +319,7 @@ export const GetESenseChartsResponse = zod.object({
   "currentLcf": zod.number().nullable().describe('The asset\'s LCF (ticks per litre); null when not configured'),
   "currentPreload": zod.number().nullable().describe('The asset\'s current Preload setting (tick offset); null when not configured (treated as 0 in the correction math)'),
   "kdePeak": zod.number().nullable().describe('Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10'),
-  "measuredPreload": zod.number().nullable().describe('Average unmetered ticks (FC) from event-type 0x01 \"no credit\" DATALOG packets in the period; null when no such packets were received'),
+  "measuredPreload": zod.number().nullable().describe('Average unmetered ticks (bytes 18-19, valve-close overrun) from event-type 0x01 \"no credit\" DATALOG packets in the period; null when no such packets were received'),
   "preloadSampleCount": zod.number().describe('Number of event-type 0x01 packets the measured preload average is based on'),
   "suggestedLcf": zod.number().nullable().describe('Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) \/ 20), measuredPreload null -> 0; null when kdePeak unavailable, the result is not positive, or a v3 flow meter'),
   "v3Meter": zod.boolean().describe('True when the asset uses a v3 flow meter (LCF < 100, typically ~71) — calibration suggestion not applicable')

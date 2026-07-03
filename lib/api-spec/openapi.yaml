@@ -1016,7 +1016,7 @@ components:
           description: Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10
         measuredPreload:
           type: ["number", "null"]
-          description: Average unmetered ticks (FC) from event-type 0x01 "no credit" DATALOG packets in the period; null when no such packets were received
+          description: Average unmetered ticks (bytes 18-19, valve-close overrun) from event-type 0x01 "no credit" DATALOG packets in the period; null when no such packets were received
         preloadSampleCount:
           type: integer
           description: Number of event-type 0x01 packets the measured preload average is based on
