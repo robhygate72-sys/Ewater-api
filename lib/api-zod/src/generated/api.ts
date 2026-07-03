@@ -319,9 +319,9 @@ export const GetESenseChartsResponse = zod.object({
   "currentLcf": zod.number().nullable().describe('The asset\'s LCF (ticks per litre); null when not configured'),
   "currentPreload": zod.number().nullable().describe('The asset\'s current Preload setting (tick offset); null when not configured (treated as 0 in the correction math)'),
   "kdePeak": zod.number().nullable().describe('Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10'),
-  "suggestedLcf": zod.number().nullable().describe('Suggested LCF — always the factory value 360 when a preload correction is available; null when kdePeak unavailable or the correction is not possible'),
-  "suggestedPreload": zod.number().nullable().describe('Preload required (with LCF = 360) to shift the KDE peak to 20 L: round(20 x 360 - (kdePeak x currentLcf - currentPreload)); null when unavailable or negative'),
-  "preloadUncorrectable": zod.boolean().describe('True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a genuine LCF\/hardware fault)')
+  "suggestedPreload": zod.number().nullable().describe('Preload required (keeping the current LCF) to shift the KDE peak to 20 L: round(currentLcf x (20 - kdePeak) + currentPreload); null when unavailable, negative, or a v3 flow meter'),
+  "preloadUncorrectable": zod.boolean().describe('True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a hardware fault)'),
+  "v3Meter": zod.boolean().describe('True when the asset uses a v3 flow meter (LCF < 100, typically ~71) — calibration suggestion not applicable')
 }).optional()
 })
 
@@ -361,26 +361,24 @@ export const ResetAssetMeterResponse = zod.object({
 
 
 /**
- * @summary Write the suggested calibration pair (LCF + Preload) to the device via the eWater RequestSettingChange API
+ * @summary Write the suggested Preload setting to the device via the eWater RequestSettingChange API (LCF is never changed)
  */
 export const ApplyAssetCalibrationParams = zod.object({
   "assetId": zod.coerce.string()
 })
-
 
 export const applyAssetCalibrationBodyPreloadMin = 0;
 
 
 
 export const ApplyAssetCalibrationBody = zod.object({
-  "lcf": zod.number().min(1).describe('LCF (LitresConversion, ticks per litre) to write — normally the factory value 360'),
-  "preload": zod.number().min(applyAssetCalibrationBodyPreloadMin).describe('Preload tick offset to write')
+  "preload": zod.number().min(applyAssetCalibrationBodyPreloadMin).describe('Preload tick offset to write (LCF is never changed)')
 })
 
 export const ApplyAssetCalibrationResponse = zod.object({
   "success": zod.boolean().describe('True only if every setting change was accepted'),
   "results": zod.array(zod.object({
-  "settingKey": zod.string().describe('eWater setting key written (LitresConversion or Preload)'),
+  "settingKey": zod.string().describe('eWater setting key written (Preload)'),
   "success": zod.boolean(),
   "error": zod.string().nullish()
 }))

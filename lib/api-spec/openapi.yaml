@@ -358,7 +358,7 @@ paths:
     post:
       operationId: applyAssetCalibration
       tags: [ewater]
-      summary: Write the suggested calibration pair (LCF + Preload) to the device via the eWater RequestSettingChange API
+      summary: Write the suggested Preload setting to the device via the eWater RequestSettingChange API (LCF is never changed)
       parameters:
         - name: assetId
           in: path
@@ -486,16 +486,12 @@ components:
 
     ApplyCalibrationBody:
       type: object
-      required: [lcf, preload]
+      required: [preload]
       properties:
-        lcf:
-          type: integer
-          minimum: 1
-          description: LCF (LitresConversion, ticks per litre) to write — normally the factory value 360
         preload:
           type: integer
           minimum: 0
-          description: Preload tick offset to write
+          description: Preload tick offset to write (LCF is never changed)
 
     ApplyCalibrationSettingResult:
       type: object
@@ -503,7 +499,7 @@ components:
       properties:
         settingKey:
           type: string
-          description: eWater setting key written (LitresConversion or Preload)
+          description: eWater setting key written (Preload)
         success:
           type: boolean
         error:
@@ -988,7 +984,7 @@ components:
 
     ESenseDispenseVolumes:
       type: object
-      required: [bins, sampleCount, currentLcf, currentPreload, kdePeak, suggestedLcf, suggestedPreload, preloadUncorrectable]
+      required: [bins, sampleCount, currentLcf, currentPreload, kdePeak, suggestedPreload, preloadUncorrectable, v3Meter]
       properties:
         bins:
           type: array
@@ -1018,15 +1014,15 @@ components:
         kdePeak:
           type: ["number", "null"]
           description: Exact typical dispense volume in litres (KDE density maximum); null when sampleCount < 10
-        suggestedLcf:
-          type: ["integer", "null"]
-          description: Suggested LCF — always the factory value 360 when a preload correction is available; null when kdePeak unavailable or the correction is not possible
         suggestedPreload:
           type: ["integer", "null"]
-          description: "Preload required (with LCF = 360) to shift the KDE peak to 20 L: round(20 x 360 - (kdePeak x currentLcf - currentPreload)); null when unavailable or negative"
+          description: "Preload required (keeping the current LCF) to shift the KDE peak to 20 L: round(currentLcf x (20 - kdePeak) + currentPreload); null when unavailable, negative, or a v3 flow meter"
         preloadUncorrectable:
           type: boolean
-          description: True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a genuine LCF/hardware fault)
+          description: True when the computed preload correction is negative (meter over-counting beyond what preload can correct — likely a hardware fault)
+        v3Meter:
+          type: boolean
+          description: True when the asset uses a v3 flow meter (LCF < 100, typically ~71) — calibration suggestion not applicable
 
     ProxyInput:
       type: object

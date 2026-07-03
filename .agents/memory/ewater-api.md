@@ -158,11 +158,12 @@ Adding query params to an OpenAPI endpoint causes Orval to generate `GetXxxParam
 ## Dispense-volume calibration analysis (decided conventions)
 - Typical dispense = Gaussian KDE peak (Silverman h = 0.9·min(sd, IQR/1.34)·n^(−1/5), 0.05 L grid), NOT bin midpoint or median.
 - Fixed window 10–30 L, 1 L bins (30 L exactly counts in the last bin); require ≥10 in-range samples else report null.
-- Suggestion is a settings PAIR, not a bent LCF: LCF fixed at factory 360 + suggestedPreload = round(20×360 − (kdePeak×currentLcf − currentPreload)), currentPreload null→0.
-- **Why:** the physical error is a near-constant tick offset per dispense (preload + valve-close overrun), so the correction lever is Preload; bending LCF away from factory 360 was the earlier (superseded) model. Negative suggestedPreload → no suggestion, `preloadUncorrectable` warning (meter over-counting; live example asset 662, peak 25.5 L @ LCF 365).
-- One-click apply writes via command API `POST /api/Ewc/RequestSettingChange` {correlationId:null, secondaryUserId:null, assetId, settingKey, newValue} — managed desired-value path, device applies on next check-in. Setting keys: "LitresConversion", "Preload". NEVER auto-fire; user-confirmed dialog only (writes to real dispensers).
+- Suggestion is PRELOAD-ONLY, LCF is NEVER changed: suggestedPreload = round(currentLcf×(20 − kdePeak) + currentPreload), currentPreload null→0.
+- **Why:** user-directed (2026-07-03). The physical error is a near-constant tick offset per dispense, so the correction lever is Preload alone; earlier models (bent LCF, then factory-360 pair) are superseded. Negative suggestedPreload → no suggestion, `preloadUncorrectable` warning (live example asset 662, peak 25.5 L @ LCF 365).
+- v3 flow meters (LCF < 100, typically ≈71, e.g. asset 2706) are EXCLUDED from calibration suggestions entirely — `v3Meter` flag, muted "not applicable" note in UI. User-directed.
+- One-click apply writes ONLY the "Preload" setting via command API `POST /api/Ewc/RequestSettingChange` {correlationId:null, secondaryUserId:null, assetId, settingKey, newValue} — managed desired-value path, device applies on next check-in. NEVER auto-fire; user-confirmed dialog only (writes to real dispensers).
 - Volumes come from dispense events 0x09/0x0B only (FC ÷ LCF), no FT filter for volumes (unlike flow-rate which needs FT > 10 s).
-- Assumption (undocumented in packet spec): per-session FC includes the configured preload offset, hence the −currentPreload term; both test assets had preload null so term was 0 in validation.
+- Assumption (undocumented in packet spec): per-session FC includes the configured preload offset, hence the +currentPreload term in the formula; all test assets had preload null so the term was 0 in validation.
 
 ## Live-tail logs — must poll (no upstream push)
 eWater provides **no push/websocket**; near-real-time log tailing is poll-only end-to-end.

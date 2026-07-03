@@ -501,9 +501,9 @@ interface DispenseVolumesData {
   currentLcf: number | null;
   currentPreload: number | null;
   kdePeak: number | null;
-  suggestedLcf: number | null;
   suggestedPreload: number | null;
   preloadUncorrectable: boolean;
+  v3Meter: boolean;
 }
 
 function DispenseVolumesChart({
@@ -681,12 +681,16 @@ function DispenseVolumesChart({
         <p className="text-xs font-medium text-foreground">
           Typical dispense ≈ {peak.toFixed(2)} L
         </p>
-        {data.preloadUncorrectable ? (
+        {data.v3Meter ? (
+          <p className="text-[10px] text-muted-foreground">
+            V3 flow meter (LCF {data.currentLcf}) — calibration suggestion not applicable
+          </p>
+        ) : data.preloadUncorrectable ? (
           <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-500 font-medium">
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             <p>
               Cannot correct via preload — the meter is over-counting more than a preload
-              offset can fix. Check the LCF setting or the meter hardware.
+              offset can fix. Check the meter hardware.
             </p>
           </div>
         ) : nearTwenty ? (
@@ -694,10 +698,10 @@ function DispenseVolumesChart({
             Typical fill is already ≈ 20 L — current settings (LCF {data.currentLcf}, preload {data.currentPreload ?? 0}) look well calibrated
           </p>
         ) : (
-          data.suggestedLcf != null && data.suggestedPreload != null && (
+          data.suggestedPreload != null && (
             <div className="space-y-1.5">
               <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
-                Suggested settings for a 20 L fill: LCF {data.suggestedLcf} (factory) + preload {data.suggestedPreload}
+                Suggested preload for a 20 L fill: {data.suggestedPreload} (LCF unchanged)
               </p>
               <p className="text-[10px] text-muted-foreground">
                 Current: LCF {data.currentLcf} · preload {data.currentPreload ?? "not set"}
@@ -725,17 +729,15 @@ function DispenseVolumesChart({
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Apply calibration to device?</AlertDialogTitle>
+                      <AlertDialogTitle>Apply preload to device?</AlertDialogTitle>
                       <AlertDialogDescription asChild>
                         <div className="space-y-2 text-sm">
-                          <p>This writes new settings to the physical dispenser (applied on its next check-in):</p>
+                          <p>This writes a new Preload setting to the physical dispenser (applied on its next check-in). The LCF is not changed.</p>
                           <div className="rounded-md border p-2 space-y-1 font-mono text-xs">
-                            <p>
-                              LCF: {data.currentLcf} → {data.suggestedLcf}
-                            </p>
                             <p>
                               Preload: {data.currentPreload ?? "not set"} → {data.suggestedPreload}
                             </p>
+                            <p>LCF: {data.currentLcf} (unchanged)</p>
                           </div>
                           <p>
                             This shifts the typical recorded dispense from ≈ {peak.toFixed(2)} L to ≈ 20 L.
@@ -749,7 +751,7 @@ function DispenseVolumesChart({
                         onClick={() =>
                           applyCalibration({
                             assetId,
-                            data: { lcf: data.suggestedLcf!, preload: data.suggestedPreload! },
+                            data: { preload: data.suggestedPreload! },
                           })
                         }
                       >
