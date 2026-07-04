@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { handleMcpRequest } from "./lib/mcp-server";
 
 const app: Express = express();
 
@@ -28,6 +29,10 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.post("/api/mcp", handleMcpRequest);
+app.get("/api/mcp", handleMcpRequest);
+app.delete("/api/mcp", handleMcpRequest);
 
 app.use("/api", router);
 
