@@ -1,6 +1,7 @@
 import { useSaveCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { markAuthenticated } from "@/App";
+import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -103,6 +104,13 @@ export default function Login() {
             </Button>
           </form>
         </Form>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Building an integration?{" "}
+          <Link href="/mcp-docs" className="text-primary underline underline-offset-2">
+            View MCP server docs
+          </Link>
+        </p>
       </div>
     </div>
   );
