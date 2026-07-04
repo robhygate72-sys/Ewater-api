@@ -11,6 +11,7 @@ import Watchlist from "@/pages/watchlist";
 import NotificationsPage from "@/pages/notifications";
 import ExportPage from "@/pages/export";
 import Login from "@/pages/login";
+import McpDocsPage from "@/pages/mcp-docs";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
@@ -124,9 +125,14 @@ function App() {
         <LifecycleFilterContext.Provider value={{ lifecycleFilter, setLifecycleFilter }}>
           <FavouritesProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <AuthGate>
-                <Router />
-              </AuthGate>
+              <Switch>
+                <Route path="/mcp-docs" component={McpDocsPage} />
+                <Route>
+                  <AuthGate>
+                    <Router />
+                  </AuthGate>
+                </Route>
+              </Switch>
             </WouterRouter>
           </FavouritesProvider>
         </LifecycleFilterContext.Provider>
