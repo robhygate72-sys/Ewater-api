@@ -16,11 +16,15 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import { getCredentials } from "./ewater-client";
 import {
-  listAssets,
+  listAssetsPaged,
+  listCountries,
+  listOrganisations,
+  listWaterSystems,
   getAssetEwcSettings,
   getAssetFlowRate,
-  getAssetEsenseCharts,
+  getAssetHistoryPaged,
   getCalibrationAnalysis,
+  singleItemPage,
 } from "./ewater-insights";
 import { logger } from "./logger";
 
@@ -52,19 +56,141 @@ function createEwaterMcpServer(): McpServer {
   });
 
   server.registerTool(
-    "list_assets",
+    "list_countries",
     {
-      title: "List eWater assets",
+      title: "List countries",
       description:
-        "Lists all eWater assets (dispensers/taps) visible to the configured account, including id, name, type, status, location, and water system/country grouping.",
+        "Lists all countries in the eWater entity hierarchy (Country -> Organisation -> Water System -> Asset), with the number of organisations, water systems, and assets under each. Use this as the top of the drill-down chain: list_countries -> list_organisations -> list_water_systems -> list_assets. Response uses the standard pagination envelope (totalCount/returnedCount/hasMore); this list is small enough that it is always returned in full (hasMore always false).",
       inputSchema: {},
     },
     async () => {
       const credErr = requireEwaterCredentials();
       if (credErr) return errorToolResult(credErr.error);
       try {
-        const assets = await listAssets();
-        return jsonToolResult({ assets, count: assets.length });
+        const countries = await listCountries();
+        return jsonToolResult({
+          countries,
+          totalCount: countries.length,
+          returnedCount: countries.length,
+          offset: 0,
+          limit: countries.length,
+          hasMore: false,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err }, "MCP list_countries failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_organisations",
+    {
+      title: "List organisations",
+      description:
+        "Lists organisations in the eWater entity hierarchy, optionally filtered by country (countryId from list_countries, or countryName). Each entry includes the number of water systems and assets under it. Use list_water_systems next to drill further down. Response uses the standard pagination envelope; this list is always returned in full (hasMore always false).",
+      inputSchema: {
+        countryId: z.number().optional().describe("Filter by country id (from list_countries)"),
+        countryName: z.string().optional().describe("Filter by exact country name"),
+      },
+    },
+    async ({ countryId, countryName }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const organisations = await listOrganisations({ countryId, countryName });
+        return jsonToolResult({
+          organisations,
+          totalCount: organisations.length,
+          returnedCount: organisations.length,
+          offset: 0,
+          limit: organisations.length,
+          hasMore: false,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err }, "MCP list_organisations failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_water_systems",
+    {
+      title: "List water systems",
+      description:
+        "Lists water systems in the eWater entity hierarchy, optionally filtered by organisation (organisationId from list_organisations, or organisationName) and/or country (countryId from list_countries, or countryName). Each entry includes its parent organisation/country and the number of assets under it. Pass a water system's id or name into list_assets (waterSystemId/waterSystemName) to list only its assets — e.g. to answer 'list all the assets in <water system>'. Response uses the standard pagination envelope; this list is always returned in full (hasMore always false).",
+      inputSchema: {
+        organisationId: z.number().optional().describe("Filter by organisation id (from list_organisations)"),
+        organisationName: z.string().optional().describe("Filter by exact organisation name"),
+        countryId: z.number().optional().describe("Filter by country id (from list_countries)"),
+        countryName: z.string().optional().describe("Filter by exact country name"),
+      },
+    },
+    async ({ organisationId, organisationName, countryId, countryName }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const waterSystems = await listWaterSystems({ organisationId, organisationName, countryId, countryName });
+        return jsonToolResult({
+          waterSystems,
+          totalCount: waterSystems.length,
+          returnedCount: waterSystems.length,
+          offset: 0,
+          limit: waterSystems.length,
+          hasMore: false,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err }, "MCP list_water_systems failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_assets",
+    {
+      title: "List eWater assets",
+      description:
+        "Lists eWater assets (dispensers/taps), paginated (max 100 per call, default 50) and optionally filtered by status, water system, organisation, or country. The response's totalCount is the true total matching the filters across every page — use it directly to answer 'how many' questions without fetching every page. Use limit/offset to page through results. To scope to a specific location, first call list_water_systems (optionally via list_countries/list_organisations) to resolve names/ids, then pass waterSystemName/waterSystemId (or organisation/country equivalents) here instead of paging through everything.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(100).default(50).describe("Max assets to return per call (1-100, default 50)"),
+        offset: z.number().int().min(0).default(0).describe("Number of matching assets to skip before returning results, for paging. Omit or 0 for the first page."),
+        status: z.string().optional().describe("Filter by asset lifecycle status (e.g. Active, Staged, PreInstallation, Suspended)"),
+        waterSystemId: z.number().optional().describe("Filter by water system id (from list_water_systems)"),
+        waterSystemName: z.string().optional().describe("Filter by exact water system name"),
+        organisationId: z.number().optional().describe("Filter by organisation id (from list_organisations)"),
+        organisationName: z.string().optional().describe("Filter by exact organisation name"),
+        countryId: z.number().optional().describe("Filter by country id (from list_countries)"),
+        countryName: z.string().optional().describe("Filter by exact country name"),
+      },
+    },
+    async ({ limit, offset, status, waterSystemId, waterSystemName, organisationId, organisationName, countryId, countryName }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const page = await listAssetsPaged({
+          limit,
+          offset,
+          status,
+          waterSystemId,
+          waterSystemName,
+          organisationId,
+          organisationName,
+          countryId,
+          countryName,
+        });
+        return jsonToolResult({
+          assets: page.items,
+          totalCount: page.totalCount,
+          returnedCount: page.returnedCount,
+          offset: page.offset,
+          limit: page.limit,
+          hasMore: page.hasMore,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err }, "MCP list_assets failed");
@@ -78,19 +204,30 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get asset history",
       description:
-        "Returns time-series history for one eWater asset over the last N days: tank height (water/chlorine), daily water inflow, battery voltage history + status, and dispense flow-rate history.",
+        "Returns time-series history for one eWater asset over the last N days: tank height (water/chlorine), daily water inflow, battery voltage history + status, and dispense flow-rate history. Each time-series (tankHeight, dailyInflow, voltageHistory, flowRateHistory) is independently paginated with the standard envelope (totalCount/returnedCount/hasMore) using the same limit/offset — use a larger `days` range plus limit/offset paging rather than assuming one call returns everything for long ranges.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
         days: z.number().int().min(1).max(180).default(7).describe("Number of days of history to return (1-180, default 7)"),
+        limit: z.number().int().min(1).max(2000).default(500).describe("Max entries to return per time-series (1-2000, default 500)"),
+        offset: z.number().int().min(0).default(0).describe("Number of entries to skip in each time-series before returning results, for paging"),
       },
     },
-    async ({ assetId, days }) => {
+    async ({ assetId, days, limit, offset }) => {
       const credErr = requireEwaterCredentials();
       if (credErr) return errorToolResult(credErr.error);
       try {
-        const charts = await getAssetEsenseCharts(assetId, days ?? 7);
-        const { dispenseVolumes: _dispenseVolumes, ...history } = charts;
-        return jsonToolResult({ assetId, days: days ?? 7, ...history });
+        const { tankHeight, dailyInflow, voltageHistory, voltageStatus, flowRateHistory, dispenseVolumes } =
+          await getAssetHistoryPaged(assetId, days ?? 7, { limit, offset });
+        return jsonToolResult({
+          assetId,
+          days: days ?? 7,
+          tankHeight,
+          dailyInflow,
+          voltageHistory,
+          voltageStatus,
+          flowRateHistory,
+          dispenseVolumes,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, assetId }, "MCP get_asset_history failed");
@@ -104,7 +241,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get asset EWC settings",
       description:
-        "Returns the electronic water controller (EWC) device settings for one asset: flow conversion factor (FCF), litres conversion factor (LCF), currency conversion (FX), preload charge, price of water, and other device configuration values.",
+        "Returns the electronic water controller (EWC) device settings for one asset: flow conversion factor (FCF), litres conversion factor (LCF), currency conversion (FX), preload charge, price of water, and other device configuration values. Response uses the standard pagination envelope (single-item: totalCount/returnedCount are 1, hasMore is false) with the settings under `data`.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
       },
@@ -114,7 +251,7 @@ function createEwaterMcpServer(): McpServer {
       if (credErr) return errorToolResult(credErr.error);
       try {
         const settings = await getAssetEwcSettings(assetId);
-        return jsonToolResult({ assetId, ...settings });
+        return jsonToolResult(singleItemPage({ assetId, ...settings }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, assetId }, "MCP get_asset_ewc_settings failed");
@@ -128,7 +265,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get asset flow rate",
       description:
-        "Returns the most recent dispense flow rate (litres/minute) for one asset, derived from the last 24 hours of device logs.",
+        "Returns the most recent dispense flow rate (litres/minute) for one asset, derived from the last 24 hours of device logs. Response uses the standard pagination envelope (single-item: totalCount/returnedCount are 1, hasMore is false) with the result under `data`.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
       },
@@ -138,7 +275,7 @@ function createEwaterMcpServer(): McpServer {
       if (credErr) return errorToolResult(credErr.error);
       try {
         const result = await getAssetFlowRate(assetId);
-        return jsonToolResult({ assetId, ...result });
+        return jsonToolResult(singleItemPage({ assetId, ...result }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, assetId }, "MCP get_asset_flow_rate failed");
@@ -152,7 +289,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get calibration / NRW gap analysis",
       description:
-        "Runs a calibration and non-revenue-water (NRW) gap analysis for one asset over the last N days. Compares the configured litres-conversion factor (LCF) against the typical dispense volume derived from a KDE of dispense events (assumed to cluster around a true 20L fill), and compares the configured preload against the measured preload from 'no credit' events. Returns the LCF gap %, preload gap, and a plain-language interpretation of likely meter drift / under- or over-reading.",
+        "Runs a calibration and non-revenue-water (NRW) gap analysis for one asset over the last N days. Compares the configured litres-conversion factor (LCF) against the typical dispense volume derived from a KDE of dispense events (assumed to cluster around a true 20L fill), and compares the configured preload against the measured preload from 'no credit' events. Returns the LCF gap %, preload gap, and a plain-language interpretation of likely meter drift / under- or over-reading. Response uses the standard pagination envelope (single-item: totalCount/returnedCount are 1, hasMore is false) with the analysis under `data`.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
         days: z.number().int().min(1).max(180).default(30).describe("Number of days of dispense history to analyze (1-180, default 30)"),
@@ -163,7 +300,7 @@ function createEwaterMcpServer(): McpServer {
       if (credErr) return errorToolResult(credErr.error);
       try {
         const analysis = await getCalibrationAnalysis(assetId, days ?? 30);
-        return jsonToolResult(analysis);
+        return jsonToolResult(singleItemPage(analysis));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, assetId }, "MCP get_calibration_analysis failed");

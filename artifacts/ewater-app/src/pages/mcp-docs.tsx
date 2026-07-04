@@ -9,18 +9,56 @@ interface ToolDoc {
 
 const TOOLS: ToolDoc[] = [
   {
+    name: "list_countries",
+    summary:
+      "Lists all countries in the eWater entity hierarchy (Country \u2192 Organisation \u2192 Water System \u2192 Asset), with organisation/water-system/asset counts under each. Top of the drill-down chain.",
+    inputs: [],
+  },
+  {
+    name: "list_organisations",
+    summary:
+      "Lists organisations in the hierarchy, optionally filtered by country. Each entry includes its water-system/asset counts.",
+    inputs: [
+      { name: "countryId", type: "number", note: "optional" },
+      { name: "countryName", type: "string", note: "optional" },
+    ],
+  },
+  {
+    name: "list_water_systems",
+    summary:
+      "Lists water systems in the hierarchy, optionally filtered by organisation and/or country. Each entry includes its parent org/country and asset count.",
+    inputs: [
+      { name: "organisationId", type: "number", note: "optional" },
+      { name: "organisationName", type: "string", note: "optional" },
+      { name: "countryId", type: "number", note: "optional" },
+      { name: "countryName", type: "string", note: "optional" },
+    ],
+  },
+  {
     name: "list_assets",
     summary:
-      "Lists all eWater assets (dispensers/taps) visible to the configured account, including id, name, type, status, location, and water system/country grouping.",
-    inputs: [],
+      "Lists eWater assets (dispensers/taps) visible to the configured account, including id, name, type, status, location, and water system/country grouping. Paginated and filterable by status, water system, organisation, or country.",
+    inputs: [
+      { name: "limit", type: "number", note: "1-100, default 50" },
+      { name: "offset", type: "number", note: "default 0" },
+      { name: "status", type: "string", note: "optional" },
+      { name: "waterSystemId", type: "number", note: "optional" },
+      { name: "waterSystemName", type: "string", note: "optional" },
+      { name: "organisationId", type: "number", note: "optional" },
+      { name: "organisationName", type: "string", note: "optional" },
+      { name: "countryId", type: "number", note: "optional" },
+      { name: "countryName", type: "string", note: "optional" },
+    ],
   },
   {
     name: "get_asset_history",
     summary:
-      "Time-series history for one asset over the last N days: tank height (water/chlorine), daily water inflow, battery voltage + status, and dispense flow-rate history.",
+      "Time-series history for one asset over the last N days: tank height (water/chlorine), daily water inflow, battery voltage + status, and dispense flow-rate history. Each series is paginated independently.",
     inputs: [
       { name: "assetId", type: "string", note: "required" },
       { name: "days", type: "number", note: "1-180, default 7" },
+      { name: "limit", type: "number", note: "1-2000, default 500" },
+      { name: "offset", type: "number", note: "default 0" },
     ],
   },
   {
@@ -214,6 +252,20 @@ export default function McpDocsPage() {
           <ul className="list-disc pl-5 space-y-1.5 text-[14px]">
             <li>All tools are read-only — there is no way to change device settings or issue commands through this endpoint.</li>
             <li>Responses are structured JSON, returned both as a text content block and as <code className="text-xs bg-muted px-1 py-0.5 rounded">structuredContent</code> for clients that support it.</li>
+            <li>
+              Every tool response uses the same pagination envelope: <code className="text-xs bg-muted px-1 py-0.5 rounded">totalCount</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">returnedCount</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">offset</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">limit</code>, and{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">hasMore</code>. List tools return their items under a named array field (e.g.{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">assets</code>); single-object tools (<code className="text-xs bg-muted px-1 py-0.5 rounded">get_asset_ewc_settings</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">get_asset_flow_rate</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">get_calibration_analysis</code>) return the result under{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">data</code> with <code className="text-xs bg-muted px-1 py-0.5 rounded">totalCount</code>/<code className="text-xs bg-muted px-1 py-0.5 rounded">returnedCount</code> fixed at 1 and{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">hasMore</code> fixed at false.
+            </li>
+            <li><code className="text-xs bg-muted px-1 py-0.5 rounded">get_asset_history</code> paginates each time-series (tankHeight, dailyInflow, voltageHistory, flowRateHistory) independently using the same envelope.</li>
+            <li>Use <code className="text-xs bg-muted px-1 py-0.5 rounded">totalCount</code> from <code className="text-xs bg-muted px-1 py-0.5 rounded">list_assets</code> to answer "how many" questions directly, without paging through every result.</li>
             <li>If the server has no eWater account credentials configured, tool calls will return an explicit error rather than fabricated data.</li>
             <li>The server is stateless — do not rely on session IDs or server-initiated notifications between calls.</li>
           </ul>

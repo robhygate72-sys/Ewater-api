@@ -70,56 +70,336 @@ export function normaliseAssetDto(
 }
 
 // ---------------------------------------------------------------------------
+// Shared pagination envelope — used consistently by every MCP tool response.
+// Array-returning tools (list_assets, list_countries, etc., and each series
+// within get_asset_history) get real limit/offset paging via paginateArray.
+// Single-object tools (get_asset_ewc_settings, get_asset_flow_rate,
+// get_calibration_analysis) get the same envelope shape via singleItemPage,
+// with trivial totalCount:1/returnedCount:1/hasMore:false values, so the
+// response contract never diverges per tool.
+// ---------------------------------------------------------------------------
+
+export const MAX_PAGE_LIMIT = 100;
+export const DEFAULT_PAGE_LIMIT = 50;
+
+export interface Page<T> {
+  items: T[];
+  totalCount: number;
+  returnedCount: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export function paginateArray<T>(
+  all: T[],
+  limitInput?: number,
+  offsetInput?: number,
+  maxLimit: number = MAX_PAGE_LIMIT,
+): Page<T> {
+  const limit = Math.min(Math.max(Math.trunc(limitInput ?? DEFAULT_PAGE_LIMIT), 1), maxLimit);
+  const offset = Math.max(Math.trunc(offsetInput ?? 0), 0);
+  const totalCount = all.length;
+  const items = all.slice(offset, offset + limit);
+  return {
+    items,
+    totalCount,
+    returnedCount: items.length,
+    offset,
+    limit,
+    hasMore: offset + items.length < totalCount,
+  };
+}
+
+export interface SingleItemPage<T> {
+  data: T;
+  totalCount: 1;
+  returnedCount: 1;
+  offset: 0;
+  limit: 1;
+  hasMore: false;
+}
+
+export function singleItemPage<T>(item: T): SingleItemPage<T> {
+  return { data: item, totalCount: 1, returnedCount: 1, offset: 0, limit: 1, hasMore: false };
+}
+
+// ---------------------------------------------------------------------------
+// Entity hierarchy — Country -> Organisation -> Water System -> Asset.
+// Parsed once from GET /api/Entity/List and reused both to enrich assets
+// (waterSystemName/countryName) and to power the list_countries /
+// list_organisations / list_water_systems MCP tools.
+// ---------------------------------------------------------------------------
+
+export interface CountrySummary {
+  id: number;
+  name: string;
+  organisationCount: number;
+  waterSystemCount: number;
+  assetCount: number;
+}
+
+export interface OrganisationSummary {
+  id: number;
+  name: string;
+  countryId: number;
+  countryName: string;
+  waterSystemCount: number;
+  assetCount: number;
+}
+
+export interface WaterSystemSummary {
+  id: number;
+  name: string;
+  organisationId: number | null;
+  organisationName: string | null;
+  countryId: number;
+  countryName: string;
+  assetCount: number;
+}
+
+export interface EntityHierarchy {
+  countries: CountrySummary[];
+  organisations: OrganisationSummary[];
+  waterSystems: WaterSystemSummary[];
+  wsMap: Map<number, { name: string; countryName: string }>;
+  rawAssets: Record<string, unknown>[];
+}
+
+export async function fetchEntityHierarchy(): Promise<EntityHierarchy> {
+  const result = await ewaterFetch("state", "/api/Entity/List");
+  if (result.status !== 200) {
+    return { countries: [], organisations: [], waterSystems: [], wsMap: new Map(), rawAssets: [] };
+  }
+
+  const ed = result.data as Record<string, unknown>;
+  const countriesRaw = Array.isArray(ed["countries"]) ? (ed["countries"] as Record<string, unknown>[]) : [];
+  const orgsRaw = Array.isArray(ed["organisations"]) ? (ed["organisations"] as Record<string, unknown>[]) : [];
+  const wsRaw = Array.isArray(ed["waterSystems"]) ? (ed["waterSystems"] as Record<string, unknown>[]) : [];
+  const rawAssets = Array.isArray(ed["assets"]) ? (ed["assets"] as Record<string, unknown>[]) : [];
+
+  const countryNameById = new Map(countriesRaw.map((c) => [Number(c["id"]), strOrNull(c["name"]) ?? ""]));
+  const orgById = new Map(
+    orgsRaw.map((o) => [Number(o["id"]), { name: strOrNull(o["name"]) ?? "", parentId: Number(o["parentId"]) }]),
+  );
+
+  const assetCountByWs = new Map<number, number>();
+  for (const a of rawAssets) {
+    const wsId = Number(a["parentId"]);
+    assetCountByWs.set(wsId, (assetCountByWs.get(wsId) ?? 0) + 1);
+  }
+
+  const waterSystems: WaterSystemSummary[] = wsRaw.map((ws) => {
+    const wsId = Number(ws["id"]);
+    const parentId = Number(ws["parentId"]);
+    const org = orgById.get(parentId);
+    const organisationId = org ? parentId : null;
+    const organisationName = org ? org.name : null;
+    const countryId = org ? org.parentId : parentId;
+    const countryName = countryNameById.get(countryId) ?? "";
+    return {
+      id: wsId,
+      name: strOrNull(ws["name"]) ?? "",
+      organisationId,
+      organisationName,
+      countryId,
+      countryName,
+      assetCount: assetCountByWs.get(wsId) ?? 0,
+    };
+  });
+
+  const wsCountByOrg = new Map<number, number>();
+  const assetCountByOrg = new Map<number, number>();
+  for (const ws of waterSystems) {
+    if (ws.organisationId != null) {
+      wsCountByOrg.set(ws.organisationId, (wsCountByOrg.get(ws.organisationId) ?? 0) + 1);
+      assetCountByOrg.set(ws.organisationId, (assetCountByOrg.get(ws.organisationId) ?? 0) + ws.assetCount);
+    }
+  }
+
+  const organisations: OrganisationSummary[] = orgsRaw.map((o) => {
+    const id = Number(o["id"]);
+    const countryId = Number(o["parentId"]);
+    return {
+      id,
+      name: strOrNull(o["name"]) ?? "",
+      countryId,
+      countryName: countryNameById.get(countryId) ?? "",
+      waterSystemCount: wsCountByOrg.get(id) ?? 0,
+      assetCount: assetCountByOrg.get(id) ?? 0,
+    };
+  });
+
+  const orgCountByCountry = new Map<number, number>();
+  const wsCountByCountry = new Map<number, number>();
+  const assetCountByCountry = new Map<number, number>();
+  for (const o of organisations) {
+    orgCountByCountry.set(o.countryId, (orgCountByCountry.get(o.countryId) ?? 0) + 1);
+  }
+  for (const ws of waterSystems) {
+    wsCountByCountry.set(ws.countryId, (wsCountByCountry.get(ws.countryId) ?? 0) + 1);
+    assetCountByCountry.set(ws.countryId, (assetCountByCountry.get(ws.countryId) ?? 0) + ws.assetCount);
+  }
+
+  const countries: CountrySummary[] = countriesRaw.map((c) => {
+    const id = Number(c["id"]);
+    return {
+      id,
+      name: strOrNull(c["name"]) ?? "",
+      organisationCount: orgCountByCountry.get(id) ?? 0,
+      waterSystemCount: wsCountByCountry.get(id) ?? 0,
+      assetCount: assetCountByCountry.get(id) ?? 0,
+    };
+  });
+
+  const wsMap = new Map<number, { name: string; countryName: string }>();
+  for (const ws of waterSystems) {
+    wsMap.set(ws.id, { name: ws.name, countryName: ws.countryName });
+  }
+
+  return { countries, organisations, waterSystems, wsMap, rawAssets };
+}
+
+export async function listCountries(): Promise<CountrySummary[]> {
+  const h = await fetchEntityHierarchy();
+  return [...h.countries].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export interface ListOrganisationsFilter {
+  countryId?: number;
+  countryName?: string;
+}
+
+export async function listOrganisations(filter: ListOrganisationsFilter = {}): Promise<OrganisationSummary[]> {
+  const h = await fetchEntityHierarchy();
+  let orgs = h.organisations;
+  if (filter.countryId != null) {
+    orgs = orgs.filter((o) => o.countryId === filter.countryId);
+  }
+  if (filter.countryName) {
+    const needle = filter.countryName.toLowerCase();
+    orgs = orgs.filter((o) => o.countryName.toLowerCase() === needle);
+  }
+  return [...orgs].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export interface ListWaterSystemsFilter {
+  organisationId?: number;
+  organisationName?: string;
+  countryId?: number;
+  countryName?: string;
+}
+
+export async function listWaterSystems(filter: ListWaterSystemsFilter = {}): Promise<WaterSystemSummary[]> {
+  const h = await fetchEntityHierarchy();
+  let systems = h.waterSystems;
+  if (filter.organisationId != null) {
+    systems = systems.filter((w) => w.organisationId === filter.organisationId);
+  }
+  if (filter.organisationName) {
+    const needle = filter.organisationName.toLowerCase();
+    systems = systems.filter((w) => (w.organisationName ?? "").toLowerCase() === needle);
+  }
+  if (filter.countryId != null) {
+    systems = systems.filter((w) => w.countryId === filter.countryId);
+  }
+  if (filter.countryName) {
+    const needle = filter.countryName.toLowerCase();
+    systems = systems.filter((w) => w.countryName.toLowerCase() === needle);
+  }
+  return [...systems].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---------------------------------------------------------------------------
 // List assets — POST /api/Entity/Assets + GET /api/Entity/List (hierarchy)
 // ---------------------------------------------------------------------------
 
 export type AssetSummary = ReturnType<typeof normaliseAssetDto>;
 
-export async function listAssets(): Promise<AssetSummary[]> {
-  const [assetsResult, entityResult] = await Promise.allSettled([
-    ewaterFetch("state", "/api/Entity/Assets", {
+async function fetchRawAssetsList(): Promise<Record<string, unknown>[] | null> {
+  try {
+    const result = await ewaterFetch("state", "/api/Entity/Assets", {
       method: "POST",
       body: JSON.stringify({
         assetLifecycleStates: ["PreInstallation", "Active", "Staged", "Demo", "Test", "Suspended"],
       }),
-    }),
-    ewaterFetch("state", "/api/Entity/List"),
-  ]);
-
-  const wsMap = new Map<number, { name: string; countryName: string }>();
-  if (entityResult.status === "fulfilled" && entityResult.value.status === 200) {
-    const ed = entityResult.value.data as Record<string, unknown>;
-    const countries = Array.isArray(ed["countries"]) ? (ed["countries"] as Record<string, unknown>[]) : [];
-    const orgs = Array.isArray(ed["organisations"]) ? (ed["organisations"] as Record<string, unknown>[]) : [];
-    const waterSystems = Array.isArray(ed["waterSystems"]) ? (ed["waterSystems"] as Record<string, unknown>[]) : [];
-
-    const countryById = new Map(countries.map((c) => [Number(c["id"]), strOrNull(c["name"]) ?? ""]));
-    const orgById = new Map(orgs.map((o) => [Number(o["id"]), { name: strOrNull(o["name"]) ?? "", parentId: Number(o["parentId"]) }]));
-
-    for (const ws of waterSystems) {
-      const wsId = Number(ws["id"]);
-      const wsName = strOrNull(ws["name"]) ?? "";
-      const parentId = Number(ws["parentId"]);
-      const org = orgById.get(parentId);
-      const countryId = org ? org.parentId : parentId;
-      const countryName = countryById.get(countryId) ?? "";
-      wsMap.set(wsId, { name: wsName, countryName });
+    });
+    if (result.status === 200) {
+      const body = result.data as Record<string, unknown>;
+      return Array.isArray(body["assets"]) ? (body["assets"] as Record<string, unknown>[]) : [];
     }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function listAssets(): Promise<AssetSummary[]> {
+  const [rawAssets, hierarchy] = await Promise.all([fetchRawAssetsList(), fetchEntityHierarchy()]);
+  const raw = rawAssets ?? hierarchy.rawAssets;
+  return raw.map((a) => normaliseAssetDto(a, hierarchy.wsMap));
+}
+
+export interface ListAssetsFilter {
+  status?: string;
+  waterSystemId?: number;
+  waterSystemName?: string;
+  organisationId?: number;
+  organisationName?: string;
+  countryId?: number;
+  countryName?: string;
+}
+
+export interface ListAssetsPagedOptions extends ListAssetsFilter {
+  limit?: number;
+  offset?: number;
+}
+
+// Paginated + filterable asset listing for the MCP `list_assets` tool. Kept
+// separate from `listAssets()` (used unpaged by the REST route / dashboard)
+// so the REST contract never changes while the MCP tool gets real paging.
+export async function listAssetsPaged(options: ListAssetsPagedOptions = {}): Promise<Page<AssetSummary>> {
+  const [rawAssets, hierarchy] = await Promise.all([fetchRawAssetsList(), fetchEntityHierarchy()]);
+  const raw = rawAssets ?? hierarchy.rawAssets;
+  const assets = raw.map((a) => normaliseAssetDto(a, hierarchy.wsMap));
+  const wsById = new Map(hierarchy.waterSystems.map((w) => [w.id, w]));
+
+  let filtered = assets;
+
+  if (options.status) {
+    const needle = options.status.toLowerCase();
+    filtered = filtered.filter((a) => (a.status ?? "").toLowerCase() === needle);
+  }
+  if (options.waterSystemId != null) {
+    filtered = filtered.filter((a) => a.parentId === options.waterSystemId);
+  }
+  if (options.waterSystemName) {
+    const needle = options.waterSystemName.toLowerCase();
+    filtered = filtered.filter((a) => (a.waterSystemName ?? "").toLowerCase() === needle);
+  }
+  if (options.organisationId != null || options.organisationName) {
+    const needle = options.organisationName?.toLowerCase();
+    filtered = filtered.filter((a) => {
+      const ws = a.parentId != null ? wsById.get(a.parentId) : undefined;
+      if (!ws) return false;
+      if (options.organisationId != null && ws.organisationId !== options.organisationId) return false;
+      if (needle && (ws.organisationName ?? "").toLowerCase() !== needle) return false;
+      return true;
+    });
+  }
+  if (options.countryId != null || options.countryName) {
+    const needle = options.countryName?.toLowerCase();
+    filtered = filtered.filter((a) => {
+      const ws = a.parentId != null ? wsById.get(a.parentId) : undefined;
+      const countryId = ws?.countryId;
+      const countryName = a.countryName ?? ws?.countryName;
+      if (options.countryId != null && countryId !== options.countryId) return false;
+      if (needle && (countryName ?? "").toLowerCase() !== needle) return false;
+      return true;
+    });
   }
 
-  if (assetsResult.status === "fulfilled" && assetsResult.value.status === 200) {
-    const body = assetsResult.value.data as Record<string, unknown>;
-    const raw = Array.isArray(body["assets"]) ? (body["assets"] as Record<string, unknown>[]) : [];
-    return raw.map((a) => normaliseAssetDto(a, wsMap));
-  }
-
-  if (entityResult.status === "fulfilled" && entityResult.value.status === 200) {
-    const d = entityResult.value.data as Record<string, unknown>;
-    const raw = Array.isArray(d["assets"]) ? (d["assets"] as Record<string, unknown>[]) : [];
-    return raw.map((a) => normaliseAssetDto(a, wsMap));
-  }
-
-  return [];
+  return paginateArray(filtered, options.limit, options.offset);
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +986,52 @@ export async function getAssetEsenseCharts(assetIdInput: string | number, daysIn
     voltageStatus,
     flowRateHistory,
     dispenseVolumes,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Paginated asset history for the MCP `get_asset_history` tool. Each
+// time-series array is paged independently with the shared `paginateArray`
+// envelope (they have different natural lengths — e.g. one entry/day for
+// dailyInflow vs. one entry/dispense-event for flowRateHistory) rather than
+// forcing a single limit/offset across all of them. `dispenseVolumes` and
+// `voltageStatus` are aggregate/point values, not lists, so they are passed
+// through unpaginated. Used only by the MCP tool — the REST route continues
+// to call `getAssetEsenseCharts` directly for the dashboard's full charts.
+// ---------------------------------------------------------------------------
+
+export interface AssetHistoryPageOptions {
+  limit?: number;
+  offset?: number;
+}
+
+const HISTORY_MAX_PAGE_LIMIT = 2000;
+const HISTORY_DEFAULT_PAGE_LIMIT = 500;
+
+export interface AssetHistoryPaged {
+  tankHeight: Page<EsenseChartsResult["tankHeight"][number]>;
+  dailyInflow: Page<EsenseChartsResult["dailyInflow"][number]>;
+  voltageHistory: Page<EsenseChartsResult["voltageHistory"][number]>;
+  voltageStatus: EsenseChartsResult["voltageStatus"];
+  flowRateHistory: Page<EsenseChartsResult["flowRateHistory"][number]>;
+  dispenseVolumes: DispenseVolumeStats;
+}
+
+export async function getAssetHistoryPaged(
+  assetIdInput: string | number,
+  daysInput: number,
+  options: AssetHistoryPageOptions = {},
+): Promise<AssetHistoryPaged> {
+  const charts = await getAssetEsenseCharts(assetIdInput, daysInput);
+  const limit = options.limit ?? HISTORY_DEFAULT_PAGE_LIMIT;
+  const offset = options.offset ?? 0;
+  return {
+    tankHeight: paginateArray(charts.tankHeight, limit, offset, HISTORY_MAX_PAGE_LIMIT),
+    dailyInflow: paginateArray(charts.dailyInflow, limit, offset, HISTORY_MAX_PAGE_LIMIT),
+    voltageHistory: paginateArray(charts.voltageHistory, limit, offset, HISTORY_MAX_PAGE_LIMIT),
+    voltageStatus: charts.voltageStatus,
+    flowRateHistory: paginateArray(charts.flowRateHistory, limit, offset, HISTORY_MAX_PAGE_LIMIT),
+    dispenseVolumes: charts.dispenseVolumes,
   };
 }
 
