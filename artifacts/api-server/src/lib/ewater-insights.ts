@@ -1135,6 +1135,58 @@ function parseDescriptionFields(text: string) {
     return isNaN(n) ? null : n;
   };
 
+  // --- Harlequin protocol (NB-IoT sync messages from Beam/Harlequin devices) ---
+  if (text.includes("Harlequin Synchronisation Message")) {
+    let signalPower: string | null = null;
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]!.includes("ApproxSignal - dBm")) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const v = lines[j]!.trim();
+          if (v) { signalPower = v + " dBm"; break; }
+        }
+        break;
+      }
+    }
+    const isValidStr = firstMatch(text, "IsValid");
+    return {
+      valid:           isValidStr?.toLowerCase() === "true" ? true
+                     : isValidStr?.toLowerCase() === "false" ? false
+                     : null,
+      messageType:     "Harlequin",
+      messageFunction: "Synchronisation Message",
+      meterReading:    null,
+      prepayLitres:    null,
+      supplyVoltage:   null,
+      batteryState:    null,
+      valveStatus:     null,
+      signalPower,
+      signalSnr:       null,
+      errorCode:       null,
+      magneticAttack:  null,
+    };
+  }
+
+  // --- EWC frame protocols (AutomatedDatalog<X>, EwcToServerReply<X>, etc.) ---
+  const foundMatch = text.match(/Found\s+(\w+)<(\w+)>/);
+  if (foundMatch) {
+    return {
+      valid:           text.includes("checksum valid") ? true : null,
+      messageType:     foundMatch[1]!,
+      messageFunction: foundMatch[2]!,
+      meterReading:    null,
+      prepayLitres:    null,
+      supplyVoltage:   numField("BatteryVoltage"),
+      batteryState:    null,
+      valveStatus:     null,
+      signalPower:     null,
+      signalSnr:       null,
+      errorCode:       null,
+      magneticAttack:  null,
+    };
+  }
+
+  // --- Shengda NB-IoT DeviceReport (original format) ---
   return {
     valid: firstMatch(text, "Valid")?.toLowerCase() === "true" ? true
          : firstMatch(text, "Valid")?.toLowerCase() === "false" ? false
