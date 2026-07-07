@@ -431,6 +431,45 @@ export interface ESenseChartsData {
   dispenseVolumes?: ESenseDispenseVolumes;
 }
 
+export interface RawPacketLog {
+  id: string;
+  timeReceived: string;
+  pipeline: string;
+  protocol: string;
+  /** @nullable */
+  assetId?: string | null;
+  /** @nullable */
+  imei?: string | null;
+  /** @nullable */
+  serial?: string | null;
+  /** @nullable */
+  valid?: boolean | null;
+  /** @nullable */
+  messageType?: string | null;
+  /** @nullable */
+  messageFunction?: string | null;
+  /** @nullable */
+  meterReading?: number | null;
+  /** @nullable */
+  prepayLitres?: number | null;
+  /** @nullable */
+  supplyVoltage?: number | null;
+  /** @nullable */
+  batteryState?: string | null;
+  /** @nullable */
+  valveStatus?: string | null;
+  /** @nullable */
+  signalPower?: string | null;
+  /** @nullable */
+  signalSnr?: string | null;
+  /** @nullable */
+  errorCode?: number | null;
+  /** @nullable */
+  magneticAttack?: boolean | null;
+  /** @nullable */
+  description?: string | null;
+}
+
 export type ProxyInputBody = { [key: string]: unknown };
 
 export interface ProxyInput {
@@ -465,5 +504,20 @@ export const GetDashboardLifecycleState = {
 
 export type GetESenseChartsParams = {
 days?: number;
+};
+
+export type GetAssetPacketsParams = {
+/**
+ * How many hours back to look (1-72, default 24)
+ * @minimum 1
+ * @maximum 72
+ */
+hours?: number;
+/**
+ * Max packets to return (1-100, default 50)
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
 };
 

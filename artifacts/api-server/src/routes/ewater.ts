@@ -25,6 +25,7 @@ import {
   fetchTicksPerLitre,
   fetchAssetImei,
   fetchAssetLcf,
+  getRawPacketLogs,
   strOrNull,
   numOrNull,
   numOrZero,
@@ -239,6 +240,47 @@ router.get("/ewater/assets/:assetId/telemetry", async (req, res): Promise<void> 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch telemetry");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Raw packet logs (NB-IoT meter protocol inspection)
+// GET /api/ewater/assets/:assetId/packets?hours=24&limit=50
+// Uses State: POST /api/Logs/GetLogsInDateRangeByImei
+//             GET  /api/Logs/DescribeRawData?data=<b64>
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/packets", async (req, res): Promise<void> => {
+  const params = GetAssetParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!getCredentials()) {
+    res.status(401).json({ error: "No credentials configured" });
+    return;
+  }
+
+  const assetId = params.data.assetId;
+  const hours = Math.min(Math.max(Number(req.query["hours"] ?? 24), 1), 72);
+  const maxEntries = Math.min(Math.max(Number(req.query["limit"] ?? 50), 1), 100);
+
+  try {
+    const imei = await fetchAssetImei(assetId);
+    if (!imei) {
+      res.json([]);
+      return;
+    }
+
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - hours * 3600 * 1000);
+
+    const packets = await getRawPacketLogs(imei, startDate, endDate, maxEntries);
+    res.json(packets);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch raw packet logs");
     res.status(502).json({ error: `eWater API error: ${msg}` });
   }
 });

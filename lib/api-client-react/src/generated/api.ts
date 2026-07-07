@@ -32,12 +32,14 @@ import type {
   EntityHierarchy,
   ErrorResponse,
   FlowRateResult,
+  GetAssetPacketsParams,
   GetDashboardParams,
   GetESenseChartsParams,
   HealthStatus,
   MeterReadingResult,
   ProxyInput,
   ProxyResponse,
+  RawPacketLog,
   ResetMeterBody,
   ResetMeterResult,
   TelemetryEntry
@@ -1051,6 +1053,95 @@ export function useGetAssetMeterReading<TData = Awaited<ReturnType<typeof getAss
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAssetMeterReadingQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssetPacketsUrl = (assetId: string,
+    params?: GetAssetPacketsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ewater/assets/${assetId}/packets?${stringifiedParams}` : `/api/ewater/assets/${assetId}/packets`
+}
+
+/**
+ * @summary Get decoded raw NB-IoT packet logs for an asset
+ */
+export const getAssetPackets = async (assetId: string,
+    params?: GetAssetPacketsParams, options?: RequestInit): Promise<RawPacketLog[]> => {
+
+  return customFetch<RawPacketLog[]>(getGetAssetPacketsUrl(assetId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssetPacketsQueryKey = (assetId: string,
+    params?: GetAssetPacketsParams,) => {
+    return [
+    `/api/ewater/assets/${assetId}/packets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAssetPacketsQueryOptions = <TData = Awaited<ReturnType<typeof getAssetPackets>>, TError = ErrorType<ErrorResponse>>(assetId: string,
+    params?: GetAssetPacketsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetPackets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssetPacketsQueryKey(assetId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssetPackets>>> = ({ signal }) => getAssetPackets(assetId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssetPackets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssetPacketsQueryResult = NonNullable<Awaited<ReturnType<typeof getAssetPackets>>>
+export type GetAssetPacketsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get decoded raw NB-IoT packet logs for an asset
+ */
+
+export function useGetAssetPackets<TData = Awaited<ReturnType<typeof getAssetPackets>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string,
+    params?: GetAssetPacketsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetPackets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssetPacketsQueryOptions(assetId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

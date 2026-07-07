@@ -343,6 +343,51 @@ export const GetAssetMeterReadingResponse = zod.object({
 
 
 /**
+ * @summary Get decoded raw NB-IoT packet logs for an asset
+ */
+export const GetAssetPacketsParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const getAssetPacketsQueryHoursDefault = 24;
+export const getAssetPacketsQueryHoursMax = 72;
+
+export const getAssetPacketsQueryLimitDefault = 50;
+export const getAssetPacketsQueryLimitMax = 100;
+
+
+
+export const GetAssetPacketsQueryParams = zod.object({
+  "hours": zod.coerce.number().min(1).max(getAssetPacketsQueryHoursMax).default(getAssetPacketsQueryHoursDefault).describe('How many hours back to look (1-72, default 24)'),
+  "limit": zod.coerce.number().min(1).max(getAssetPacketsQueryLimitMax).default(getAssetPacketsQueryLimitDefault).describe('Max packets to return (1-100, default 50)')
+})
+
+export const GetAssetPacketsResponseItem = zod.object({
+  "id": zod.string(),
+  "timeReceived": zod.string(),
+  "pipeline": zod.string(),
+  "protocol": zod.string(),
+  "assetId": zod.string().nullish(),
+  "imei": zod.string().nullish(),
+  "serial": zod.string().nullish(),
+  "valid": zod.boolean().nullish(),
+  "messageType": zod.string().nullish(),
+  "messageFunction": zod.string().nullish(),
+  "meterReading": zod.number().nullish(),
+  "prepayLitres": zod.number().nullish(),
+  "supplyVoltage": zod.number().nullish(),
+  "batteryState": zod.string().nullish(),
+  "valveStatus": zod.string().nullish(),
+  "signalPower": zod.string().nullish(),
+  "signalSnr": zod.string().nullish(),
+  "errorCode": zod.number().nullish(),
+  "magneticAttack": zod.boolean().nullish(),
+  "description": zod.string().nullish()
+})
+export const GetAssetPacketsResponse = zod.array(GetAssetPacketsResponseItem)
+
+
+/**
  * @summary Reset the tick accumulator to a given litre value via eWater command API
  */
 export const ResetAssetMeterParams = zod.object({

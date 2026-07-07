@@ -317,6 +317,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/packets:
+    get:
+      operationId: getAssetPackets
+      tags: [ewater]
+      summary: Get decoded raw NB-IoT packet logs for an asset
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 24
+            minimum: 1
+            maximum: 72
+          description: How many hours back to look (1-72, default 24)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Max packets to return (1-100, default 50)
+      responses:
+        "200":
+          description: Decoded packet log entries, newest first. Empty array if asset has no IMEI.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RawPacketLog"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/assets/{assetId}/reset-meter:
     post:
       operationId: resetAssetMeter
@@ -1027,6 +1072,51 @@ components:
         suggestedLcf:
           type: ["integer", "null"]
           description: "Suggested LCF for a true 20 L typical fill: round((kdePeak x currentLcf - measuredPreload) / 20), measuredPreload null -> 0; null when kdePeak is unavailable or the result is not positive"
+
+    RawPacketLog:
+      type: object
+      required: [id, timeReceived, pipeline, protocol]
+      properties:
+        id:
+          type: string
+        timeReceived:
+          type: string
+        pipeline:
+          type: string
+        protocol:
+          type: string
+        assetId:
+          type: ["string", "null"]
+        imei:
+          type: ["string", "null"]
+        serial:
+          type: ["string", "null"]
+        valid:
+          type: ["boolean", "null"]
+        messageType:
+          type: ["string", "null"]
+        messageFunction:
+          type: ["string", "null"]
+        meterReading:
+          type: ["number", "null"]
+        prepayLitres:
+          type: ["number", "null"]
+        supplyVoltage:
+          type: ["number", "null"]
+        batteryState:
+          type: ["string", "null"]
+        valveStatus:
+          type: ["string", "null"]
+        signalPower:
+          type: ["string", "null"]
+        signalSnr:
+          type: ["string", "null"]
+        errorCode:
+          type: ["number", "null"]
+        magneticAttack:
+          type: ["boolean", "null"]
+        description:
+          type: ["string", "null"]
 
     ProxyInput:
       type: object

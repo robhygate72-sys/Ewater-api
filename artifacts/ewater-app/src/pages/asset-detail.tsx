@@ -26,6 +26,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { EwcSettingsPanel } from "@/components/ewc-settings-panel";
 import { MeterReadingPanel } from "@/components/water-meter";
+import { RawPacketsPanel } from "@/components/raw-packets-panel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -369,6 +370,7 @@ export default function AssetDetail() {
   const isEsense = tech.purpose?.toLowerCase() === "esense";
   const isCommunityTap = tech.purpose?.toLowerCase() === "communitytap";
   const hasDatalogCharts = isEsense || isCommunityTap;
+  const hasImei = !!tech.imei;
   const tamper = hasFlag(tech.healthFlags, "tamper") || (tech.tamperSwitchState != null && tech.tamperSwitchState !== "None" && tech.tamperSwitchState !== "");
   const lowBattery = hasFlag(tech.healthFlags, "lowbattery") || hasFlag(tech.healthFlags, "low battery");
   const hasAlerts = lowBattery;
@@ -396,13 +398,21 @@ export default function AssetDetail() {
         </SheetContent>
       </Sheet>
       <Tabs defaultValue="status" className="w-full">
-        <TabsList className={cn("grid w-full h-auto gap-1 p-1", isEsense ? "grid-cols-6" : "grid-cols-5")}>
+        <TabsList className={cn(
+          "grid w-full h-auto gap-1 p-1",
+          isEsense && hasImei ? "grid-cols-7"
+          : isEsense || hasImei ? "grid-cols-6"
+          : "grid-cols-5",
+        )}>
           <TabsTrigger value="status" className="text-xs px-1 py-1.5">Status</TabsTrigger>
           <TabsTrigger value="battery" className="text-xs px-1 py-1.5">Battery</TabsTrigger>
           <TabsTrigger value="water" className="text-xs px-1 py-1.5">Water</TabsTrigger>
           <TabsTrigger value="ewc" className="text-xs px-1 py-1.5">EWC</TabsTrigger>
           {isEsense && (
             <TabsTrigger value="sense" className="text-xs px-1 py-1.5">Sense</TabsTrigger>
+          )}
+          {hasImei && (
+            <TabsTrigger value="packets" className="text-xs px-1 py-1.5">Packets</TabsTrigger>
           )}
           <TabsTrigger value="logs" className="text-xs px-1 py-1.5">Logs</TabsTrigger>
         </TabsList>
@@ -596,6 +606,13 @@ export default function AssetDetail() {
             <ESenseCharts assetId={id} isEsense={isEsense} show={{ tankHeight: true }} />
             {/* VSEN sensor settings */}
             <EwcSettingsPanel assetId={id} isEsense={isEsense} variant="sensor-only" />
+          </TabsContent>
+        )}
+
+        {/* ─── Packets (NB-IoT meter, IMEI assets only) ─── */}
+        {hasImei && (
+          <TabsContent value="packets" className="space-y-3 mt-3">
+            <RawPacketsPanel assetId={id} />
           </TabsContent>
         )}
 

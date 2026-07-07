@@ -1096,3 +1096,157 @@ export async function getCalibrationAnalysis(assetIdInput: string | number, days
     interpretation,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Raw packet logs  (NB-IoT meter protocol inspection)
+// Uses State API:
+//   POST /api/Logs/GetLogsInDateRangeByImei  — list raw UDP packets by IMEI
+//   GET  /api/Logs/DescribeRawData?data=<b64> — decode one packet payload
+// ---------------------------------------------------------------------------
+
+function parsePacketSource(source: string): {
+  assetId: string | null;
+  imei: string | null;
+  serial: string | null;
+} {
+  try {
+    const obj = JSON.parse(source) as Record<string, unknown>;
+    return {
+      assetId: strOrNull(obj["Asset"]),
+      imei: strOrNull(obj["IMEI"]),
+      serial: strOrNull(obj["Serial"]),
+    };
+  } catch {
+    return { assetId: null, imei: null, serial: null };
+  }
+}
+
+function firstMatch(text: string, key: string): string | null {
+  const regex = new RegExp(`^\\s*${key}:\\s*(.+)$`, "im");
+  const m = text.match(regex);
+  return m ? m[1]!.trim() : null;
+}
+
+function parseDescriptionFields(text: string) {
+  const numField = (key: string): number | null => {
+    const raw = firstMatch(text, key);
+    if (!raw) return null;
+    const n = parseFloat(raw.replace(/[^\d.-]/g, ""));
+    return isNaN(n) ? null : n;
+  };
+
+  return {
+    valid: firstMatch(text, "Valid")?.toLowerCase() === "true" ? true
+         : firstMatch(text, "Valid")?.toLowerCase() === "false" ? false
+         : null,
+    messageType:     firstMatch(text, "MessageType"),
+    messageFunction: firstMatch(text, "MessageFunction"),
+    meterReading:    numField("MeterReading"),
+    prepayLitres:    numField("PrepayLitres"),
+    supplyVoltage:   numField("SupplyVoltage"),
+    batteryState:    firstMatch(text, "BatteryState"),
+    valveStatus:     firstMatch(text, "ValveCurrentStatus"),
+    signalPower:     firstMatch(text, "SignalPower"),
+    signalSnr:       firstMatch(text, "SignalToNoiseRatio"),
+    errorCode:       numField("ErrorCode"),
+    magneticAttack:
+      firstMatch(text, "MagneticAttackOngoing")?.toLowerCase() === "true"
+        ? true
+        : firstMatch(text, "MagneticAttackOngoing")?.toLowerCase() === "false"
+          ? false
+          : null,
+  };
+}
+
+export interface RawPacketLog {
+  id: string;
+  timeReceived: string;
+  pipeline: string;
+  protocol: string;
+  assetId: string | null;
+  imei: string | null;
+  serial: string | null;
+  valid: boolean | null;
+  messageType: string | null;
+  messageFunction: string | null;
+  meterReading: number | null;
+  prepayLitres: number | null;
+  supplyVoltage: number | null;
+  batteryState: string | null;
+  valveStatus: string | null;
+  signalPower: string | null;
+  signalSnr: string | null;
+  errorCode: number | null;
+  magneticAttack: boolean | null;
+  description: string | null;
+}
+
+export async function getRawPacketLogs(
+  imei: string,
+  startDate: Date,
+  endDate: Date,
+  maxEntries = 50,
+): Promise<RawPacketLog[]> {
+  const logsResult = await ewaterFetch("state", "/api/Logs/GetLogsInDateRangeByImei", {
+    method: "POST",
+    body: JSON.stringify({
+      imei,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    }),
+  });
+
+  if (logsResult.status !== 200) return [];
+
+  const raw = logsResult.data as Record<string, unknown>;
+  const logLines = Array.isArray(raw?.["logLines"])
+    ? (raw["logLines"] as Record<string, unknown>[])
+    : [];
+
+  // Newest-first, capped
+  const entries = [...logLines]
+    .sort((a, b) => {
+      const ta = new Date(String(a["timeReceived"] ?? 0)).getTime();
+      const tb = new Date(String(b["timeReceived"] ?? 0)).getTime();
+      return tb - ta;
+    })
+    .slice(0, maxEntries);
+
+  // Decode payloads in parallel
+  const results = await Promise.all(
+    entries.map(async (entry): Promise<RawPacketLog> => {
+      const payload = strOrNull(entry["payload"]);
+      const source = parsePacketSource(strOrNull(entry["source"]) ?? "{}");
+
+      let description: string | null = null;
+      let parsed = parseDescriptionFields("");
+
+      if (payload) {
+        try {
+          const descResult = await ewaterFetch(
+            "state",
+            `/api/Logs/DescribeRawData?data=${encodeURIComponent(payload)}`,
+          );
+          if (descResult.status === 200 && typeof descResult.data === "string") {
+            description = descResult.data as string;
+            parsed = parseDescriptionFields(description);
+          }
+        } catch {
+          // description remains null
+        }
+      }
+
+      return {
+        id: String(entry["id"] ?? ""),
+        timeReceived: strOrNull(entry["timeReceived"]) ?? "",
+        pipeline: strOrNull(entry["pipeline"]) ?? "",
+        protocol: strOrNull(entry["protocol"]) ?? "",
+        ...source,
+        ...parsed,
+        description,
+      };
+    }),
+  );
+
+  return results;
+}
