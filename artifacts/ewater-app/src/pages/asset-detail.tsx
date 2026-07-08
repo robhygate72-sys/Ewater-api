@@ -370,7 +370,7 @@ export default function AssetDetail() {
   const isEsense = tech.purpose?.toLowerCase() === "esense";
   const isCommunityTap = tech.purpose?.toLowerCase() === "communitytap";
   const hasDatalogCharts = isEsense || isCommunityTap;
-  const hasImei = !!tech.imei;
+  const hasImei = tech.imeis.length > 0;
   const tamper = hasFlag(tech.healthFlags, "tamper") || (tech.tamperSwitchState != null && tech.tamperSwitchState !== "None" && tech.tamperSwitchState !== "");
   const lowBattery = hasFlag(tech.healthFlags, "lowbattery") || hasFlag(tech.healthFlags, "low battery");
   const hasAlerts = lowBattery;
@@ -483,10 +483,20 @@ export default function AssetDetail() {
                     <span className="font-medium">{tech.purpose}</span>
                   </div>
                 )}
-                {tech.imei && (
+                {tech.imeis.length > 0 && (
                   <div>
-                    <span className="text-muted-foreground block mb-0.5">IMEI</span>
-                    <span className="font-mono text-[11px]">{tech.imei}</span>
+                    <span className="text-muted-foreground block mb-0.5">
+                      {tech.imeis.length > 1 ? "IMEIs" : "IMEI"}
+                    </span>
+                    {tech.imeis.length > 1 ? (
+                      <div className="space-y-0.5">
+                        {tech.imeis.map((imei) => (
+                          <span key={imei} className="font-mono text-[11px] block">{imei}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="font-mono text-[11px]">{tech.imeis[0]}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -612,7 +622,7 @@ export default function AssetDetail() {
         {/* ─── Packets (NB-IoT meter, IMEI assets only) ─── */}
         {hasImei && (
           <TabsContent value="packets" className="space-y-3 mt-3">
-            <RawPacketsPanel assetId={id} />
+            <RawPacketsPanel assetId={id} imeis={tech.imeis} />
           </TabsContent>
         )}
 

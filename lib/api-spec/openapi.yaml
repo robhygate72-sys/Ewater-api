@@ -346,9 +346,15 @@ paths:
             minimum: 1
             maximum: 100
           description: Max packets to return (1-100, default 50)
+        - name: imei
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Restrict to a single IMEI. Omit to merge packets across all IMEIs registered for the asset.
       responses:
         "200":
-          description: Decoded packet log entries, newest first. Empty array if asset has no IMEI.
+          description: Decoded packet log entries, newest first, merged across all IMEIs for the asset unless `imei` is given. Empty array if asset has no IMEI.
           content:
             application/json:
               schema:
@@ -790,7 +796,7 @@ components:
 
     AssetTechStatus:
       type: object
-      required: [assetId, name]
+      required: [assetId, name, imeis]
       properties:
         assetId:
           type: string
@@ -840,8 +846,10 @@ components:
           type: ["number", "null"]
         flowRateWeek:
           type: ["number", "null"]
-        imei:
-          type: ["string", "null"]
+        imeis:
+          type: array
+          items:
+            type: string
         firmware:
           type: array
           items:

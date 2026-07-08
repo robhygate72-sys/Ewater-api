@@ -243,8 +243,7 @@ export interface AssetTechStatus {
   flowRateToday?: number | null;
   /** @nullable */
   flowRateWeek?: number | null;
-  /** @nullable */
-  imei?: string | null;
+  imeis: string[];
   firmware?: FirmwareDevice[];
   recentCommands?: AssetCommand[];
   /** @nullable */
@@ -519,5 +518,9 @@ hours?: number;
  * @maximum 100
  */
 limit?: number;
+/**
+ * Restrict to a single IMEI. Omit to merge packets across all IMEIs registered for the asset.
+ */
+imei?: string;
 };
 

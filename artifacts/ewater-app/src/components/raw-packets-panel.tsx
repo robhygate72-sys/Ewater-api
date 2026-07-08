@@ -158,26 +158,40 @@ function PacketRow({ pkt }: { pkt: Packet }) {
 
 const HOUR_OPTIONS = [6, 12, 24, 48, 72] as const;
 
-export function RawPacketsPanel({ assetId }: { assetId: string }) {
+export function RawPacketsPanel({ assetId, imeis }: { assetId: string; imeis?: string[] }) {
   const [hours, setHours] = useState<number>(24);
+  const [imeiFilter, setImeiFilter] = useState<string>("all");
+  const hasMultipleImeis = !!imeis && imeis.length > 1;
 
   const { data: packets, isLoading, isError, refetch, isFetching } =
-    useGetAssetPackets(assetId, { hours }, {
+    useGetAssetPackets(assetId, { hours, imei: imeiFilter === "all" ? undefined : imeiFilter }, {
       query: {
         enabled: !!assetId,
-        queryKey: [`${BASE}/api/ewater/assets/${assetId}/packets`, hours],
+        queryKey: [`${BASE}/api/ewater/assets/${assetId}/packets`, hours, imeiFilter],
       },
     });
 
   return (
     <Card className="shadow-sm border">
       <CardHeader className="py-3 px-4 border-b border-border/50">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
             <Radio className="w-3.5 h-3.5" />
             Raw Packets
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {hasMultipleImeis && (
+              <select
+                value={imeiFilter}
+                onChange={(e) => setImeiFilter(e.target.value)}
+                className="text-[10px] font-medium rounded-md border border-border bg-background px-1.5 py-0.5 text-muted-foreground"
+              >
+                <option value="all">All IMEIs</option>
+                {imeis.map((imei) => (
+                  <option key={imei} value={imei}>{imei}</option>
+                ))}
+              </select>
+            )}
             <div className="flex rounded-md border border-border overflow-hidden">
               {HOUR_OPTIONS.map((h) => (
                 <button

@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { ewaterFetch } from "./ewater-client";
+import { tryDecodeShengdaLwm2m } from "./shengda-nbiot-decoder";
 
 // ---------------------------------------------------------------------------
 // Small scalar helpers
@@ -422,24 +423,27 @@ export async function fetchTicksPerLitre(assetId: string): Promise<number | null
   }
 }
 
-export async function fetchAssetImei(assetId: string): Promise<string | null> {
+// Returns every distinct IMEI registered for the asset (an asset can have
+// more than one NB-IoT module reporting under it, e.g. after a device swap).
+export async function fetchAssetImeis(assetId: string): Promise<string[]> {
   try {
     const result = await ewaterFetch(
       "state",
       `/api/Asset/GetIdentifiersByAssetId?assetId=${encodeURIComponent(assetId)}`,
     );
-    if (result.status !== 200) return null;
+    if (result.status !== 200) return [];
     const data = result.data as Record<string, unknown> | null;
     const idList = Array.isArray(data?.["identifiers"])
       ? (data!["identifiers"] as Record<string, unknown>[])
       : [];
+    const imeis: string[] = [];
     for (const entry of idList) {
       const imei = strOrNull(entry["imei"]);
-      if (imei) return imei;
+      if (imei && !imeis.includes(imei)) imeis.push(imei);
     }
-    return null;
+    return imeis;
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -1233,11 +1237,11 @@ export interface RawPacketLog {
   description: string | null;
 }
 
-export async function getRawPacketLogs(
+async function getRawPacketLogsForImei(
   imei: string,
   startDate: Date,
   endDate: Date,
-  maxEntries = 50,
+  maxEntries: number,
 ): Promise<RawPacketLog[]> {
   const logsResult = await ewaterFetch("state", "/api/Logs/GetLogsInDateRangeByImei", {
     method: "POST",
@@ -1274,17 +1278,24 @@ export async function getRawPacketLogs(
       let parsed = parseDescriptionFields("");
 
       if (payload) {
-        try {
-          const descResult = await ewaterFetch(
-            "state",
-            `/api/Logs/DescribeRawData?data=${encodeURIComponent(payload)}`,
-          );
-          if (descResult.status === 200 && typeof descResult.data === "string") {
-            description = descResult.data as string;
-            parsed = parseDescriptionFields(description);
+        const shengdaLwm2m = tryDecodeShengdaLwm2m(payload);
+        if (shengdaLwm2m) {
+          description = shengdaLwm2m.description;
+          const { description: _omit, ...fields } = shengdaLwm2m;
+          parsed = fields;
+        } else {
+          try {
+            const descResult = await ewaterFetch(
+              "state",
+              `/api/Logs/DescribeRawData?data=${encodeURIComponent(payload)}`,
+            );
+            if (descResult.status === 200 && typeof descResult.data === "string") {
+              description = descResult.data as string;
+              parsed = parseDescriptionFields(description);
+            }
+          } catch {
+            // description remains null
           }
-        } catch {
-          // description remains null
         }
       }
 
@@ -1301,4 +1312,26 @@ export async function getRawPacketLogs(
   );
 
   return results;
+}
+
+// Fetches raw packet logs across one or more IMEIs (an asset can have
+// multiple NB-IoT modules reporting over its lifetime, e.g. after a device
+// swap), merges them newest-first, and caps to maxEntries.
+export async function getRawPacketLogs(
+  imeis: string | string[],
+  startDate: Date,
+  endDate: Date,
+  maxEntries = 50,
+): Promise<RawPacketLog[]> {
+  const imeiList = Array.isArray(imeis) ? imeis : [imeis];
+  if (imeiList.length === 0) return [];
+
+  const perImei = await Promise.all(
+    imeiList.map((imei) => getRawPacketLogsForImei(imei, startDate, endDate, maxEntries)),
+  );
+
+  return perImei
+    .flat()
+    .sort((a, b) => new Date(b.timeReceived).getTime() - new Date(a.timeReceived).getTime())
+    .slice(0, maxEntries);
 }

@@ -23,7 +23,7 @@ import {
   getAssetFlowRate,
   getAssetEsenseCharts,
   fetchTicksPerLitre,
-  fetchAssetImei,
+  fetchAssetImeis,
   fetchAssetLcf,
   getRawPacketLogs,
   strOrNull,
@@ -265,18 +265,23 @@ router.get("/ewater/assets/:assetId/packets", async (req, res): Promise<void> =>
   const assetId = params.data.assetId;
   const hours = Math.min(Math.max(Number(req.query["hours"] ?? 24), 1), 72);
   const maxEntries = Math.min(Math.max(Number(req.query["limit"] ?? 50), 1), 100);
+  const imeiFilter = strOrNull(req.query["imei"]);
 
   try {
-    const imei = await fetchAssetImei(assetId);
-    if (!imei) {
+    const imeis = await fetchAssetImeis(assetId);
+    if (imeis.length === 0) {
       res.json([]);
+      return;
+    }
+    if (imeiFilter && !imeis.includes(imeiFilter)) {
+      res.status(400).json({ error: "IMEI is not registered for this asset" });
       return;
     }
 
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - hours * 3600 * 1000);
 
-    const packets = await getRawPacketLogs(imei, startDate, endDate, maxEntries);
+    const packets = await getRawPacketLogs(imeiFilter ? [imeiFilter] : imeis, startDate, endDate, maxEntries);
     res.json(packets);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -479,10 +484,15 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
     }));
 
     // Identifiers: real shape is { identifiers: [{assetId, imei, modemType, createdDate}] }
+    // An asset can have more than one IMEI over its lifetime (e.g. after a device swap).
     const idList = Array.isArray(identifiers?.["identifiers"])
       ? (identifiers!["identifiers"] as Record<string, unknown>[])
       : [];
-    const imei = idList.length > 0 ? strOrNull(idList[0]!["imei"]) : null;
+    const imeis: string[] = [];
+    for (const entry of idList) {
+      const imei = strOrNull(entry["imei"]);
+      if (imei && !imeis.includes(imei)) imeis.push(imei);
+    }
 
     // Recent commands: real shape is { commands: [{id, correlationId, createdDate, state, priority, retryCount}] }
     const cmdList = Array.isArray(commandsRaw?.["commands"])
@@ -532,7 +542,7 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
       flowRateToday: round2(numOrNull(flow?.["todayAverageFlowRate"])),
       flowRateWeek: round2(numOrNull(flow?.["weekAverageFlowRate"])),
       // Identifiers & firmware
-      imei,
+      imeis,
       firmware,
       recentCommands,
       // EWC calibration — price of water
@@ -973,7 +983,10 @@ router.post("/ewater/assets/:assetId/reset-meter", async (req, res): Promise<voi
 
   // The eWater command API takes the litre value directly (litreValue) plus the
   // device IMEI — no ticks conversion. Resolve the IMEI from the asset's identifiers.
-  const imei = await fetchAssetImei(assetId);
+  // If the asset has more than one registered IMEI (e.g. after a device swap), the
+  // most recently registered one is used since that's the module actually in service.
+  const imeis = await fetchAssetImeis(assetId);
+  const imei = imeis[imeis.length - 1] ?? null;
   if (!imei) {
     res.status(400).json({ error: "Could not determine device IMEI for this asset" }); return;
   }

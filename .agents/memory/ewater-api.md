@@ -140,6 +140,22 @@ Tick accumulator is the 8-byte field at offset 21, NOT the 4-byte ECR at offset 
 - Effect is deferred: the accumulated meter value updates only on the EWC's next
   health packet — surface that to the user, do not expect an immediate reading change.
 
+## Multi-IMEI assets (an asset can have more than one over its lifetime)
+`GetIdentifiersByAssetId` can return multiple `identifiers` rows (e.g. after a device
+swap) — treat IMEI as `string[]`, not a single value, everywhere (tech status, packet
+log fetch/filter, reset-meter command target). Dedup by value; packet logs must be
+fetched per-IMEI and merged, since the eWater logs API (`GetLogsInDateRangeByImei`) is
+keyed by a single IMEI. For a command needing exactly one IMEI (e.g. reset-meter), use
+the most recently registered one (last in the identifiers list) since that's the module
+actually in service — don't just take `idList[0]`.
+
+## Multiple wire protocols share one packet log stream
+`GetLogsInDateRangeByImei` returns packets from several concrete protocols mixed together
+(seen: `Ewc2_5`, `CommandApi_1`, `Gadwall`, `CommandApi_Gadwall_1`, plus CBOR/LwM2M-based
+NB-IoT modules). Decoding must try each known decoder against the raw payload and fall
+back gracefully (not assume one protocol per asset) — don't gate a decoder by asset type
+or purpose, since coexisting protocols show up in the same stream.
+
 ## API base URLs
 - auth: https://auth.ewater.io
 - query: https://query.ewater.io

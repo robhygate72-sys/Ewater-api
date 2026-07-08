@@ -198,7 +198,7 @@ export const GetAssetTechResponse = zod.object({
   "flowRateHour": zod.number().nullish(),
   "flowRateToday": zod.number().nullish(),
   "flowRateWeek": zod.number().nullish(),
-  "imei": zod.string().nullish(),
+  "imeis": zod.array(zod.string()),
   "firmware": zod.array(zod.object({
   "deviceType": zod.string(),
   "version": zod.string().nullish(),
@@ -359,7 +359,8 @@ export const getAssetPacketsQueryLimitMax = 100;
 
 export const GetAssetPacketsQueryParams = zod.object({
   "hours": zod.coerce.number().min(1).max(getAssetPacketsQueryHoursMax).default(getAssetPacketsQueryHoursDefault).describe('How many hours back to look (1-72, default 24)'),
-  "limit": zod.coerce.number().min(1).max(getAssetPacketsQueryLimitMax).default(getAssetPacketsQueryLimitDefault).describe('Max packets to return (1-100, default 50)')
+  "limit": zod.coerce.number().min(1).max(getAssetPacketsQueryLimitMax).default(getAssetPacketsQueryLimitDefault).describe('Max packets to return (1-100, default 50)'),
+  "imei": zod.coerce.string().optional().describe('Restrict to a single IMEI. Omit to merge packets across all IMEIs registered for the asset.')
 })
 
 export const GetAssetPacketsResponseItem = zod.object({
