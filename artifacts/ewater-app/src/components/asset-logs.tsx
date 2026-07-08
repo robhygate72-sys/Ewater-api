@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { Info, Loader2, Radio, FlaskConical } from "lucide-react";
-import { Ewc25PacketView, EwcReplyView, CommandApiPacketView } from "@/components/ewc25-packet-view";
+import { Ewc25PacketView, EwcReplyView, CommandApiPacketView, ShengdaPacketView } from "@/components/ewc25-packet-view";
 import { TapVisualizer, type ActiveTapAnim } from "@/components/tap-visualizer";
 import { entryToTapAnim, type TapAnim } from "@/lib/tap-animation";
 
@@ -36,6 +36,22 @@ const TEST_ANIMS: TapAnim[] = [
   { kind: "error", label: "Error event", tone: "error" },
 ];
 
+interface ShengdaDecoded {
+  valid: boolean;
+  messageType: string | null;
+  messageFunction: string | null;
+  meterReading: number | null;
+  prepayLitres: number | null;
+  supplyVoltage: number | null;
+  batteryState: string | null;
+  valveStatus: string | null;
+  signalPower: string | null;
+  signalSnr: string | null;
+  errorCode: number | null;
+  magneticAttack: boolean | null;
+  description: string | null;
+}
+
 interface LogEntry {
   id: string;
   timestamp: string;
@@ -43,6 +59,7 @@ interface LogEntry {
   protocol: string | null;
   pipeline: string | null;
   message: string | null;
+  shengda?: ShengdaDecoded | null;
 }
 
 interface LogPage {
@@ -142,7 +159,8 @@ function LogRow({ entry, isEsense, lcf, isNew = false, sensorRangeMetres1, senso
   const fb = raw ? firstByte(raw) : null;
   const isDatalog = isEwcProtocol && fb === 0x44;
   const isReply   = isEwcProtocol && (fb === 0x80 || fb === 0x88);
-  const isDecoded = isDatalog || isReply || isCommandApi;
+  const isShengda = !!entry.shengda;
+  const isDecoded = isDatalog || isReply || isCommandApi || isShengda;
   const long = !isDecoded && hexStr.length > 80;
 
   return (
@@ -175,6 +193,8 @@ function LogRow({ entry, isEsense, lcf, isNew = false, sensorRangeMetres1, senso
         <EwcReplyView hexPayload={hexStr} lcf={lcf} />
       ) : isCommandApi && raw ? (
         <CommandApiPacketView base64Payload={raw} />
+      ) : isShengda && entry.shengda ? (
+        <ShengdaPacketView decoded={entry.shengda} hexPayload={hexStr} />
       ) : (
         <div
           className={cn(long && "cursor-pointer")}

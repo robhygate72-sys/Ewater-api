@@ -59,6 +59,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 - eWater's packet trailer bytes[33–34] is the FCF (flow conversion factor), not the LCF (litres conversion factor) — always resolve the LCF from EWC settings (`LitresConversion`, falling back to `GetTicksPerLitre`) when converting ticks to litres. See `.agents/memory/ewater-api.md`.
 - When adding new eWater-derived data, add the logic to `lib/ewater-insights.ts` and have both the REST route and any MCP tool call it — don't reimplement inline in `routes/ewater.ts`.
+- The asset detail "Logs" tab (`asset-logs.tsx`, `/ewater/assets/:assetId/logs`) and "Packets" tab (`raw-packets-panel.tsx`, `/ewater/assets/:assetId/packets`) are two independent views over overlapping data — protocol decoding added to one does NOT automatically show up in the other. Shengda NB-IoT (CBOR/LwM2M) frames decode server-side only (`shengda-nbiot-decoder.ts`, via `tryDecodeShengdaLwm2m`); EWC/CommandApi frames decode client-side (`lib/ewc25.ts`). When adding a new protocol decoder, wire it into both tabs' backing routes/components, not just one.
 
 ## Pointers
 

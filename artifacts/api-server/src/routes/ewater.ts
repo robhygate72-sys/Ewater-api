@@ -34,6 +34,7 @@ import {
   healthRatingIsFault,
   normaliseAssetDto,
 } from "../lib/ewater-insights";
+import { tryDecodeShengdaLwm2m } from "../lib/shengda-nbiot-decoder";
 
 const router: IRouter = Router();
 
@@ -1241,13 +1242,36 @@ router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
           imei = rawSource;
         }
       }
+      const payload = strOrNull(l["payload"]);
+      const shengda = payload ? tryDecodeShengdaLwm2m(payload) : null;
+
       return {
         id: String(l["id"] ?? crypto.randomUUID()),
         timestamp: String(l["timeReceived"] ?? new Date().toISOString()),
         source: imei,
         protocol: strOrNull(l["protocol"]),
         pipeline: strOrNull(l["pipeline"]),
-        message: strOrNull(l["payload"]),
+        message: payload,
+        // Shengda NB-IoT (CBOR/LwM2M) frames aren't decodable client-side —
+        // decode them server-side and hand the frontend a ready-to-render
+        // summary + description, same shape used by the Packets tab.
+        shengda: shengda
+          ? {
+              valid: shengda.valid,
+              messageType: shengda.messageType,
+              messageFunction: shengda.messageFunction,
+              meterReading: shengda.meterReading,
+              prepayLitres: shengda.prepayLitres,
+              supplyVoltage: shengda.supplyVoltage,
+              batteryState: shengda.batteryState,
+              valveStatus: shengda.valveStatus,
+              signalPower: shengda.signalPower,
+              signalSnr: shengda.signalSnr,
+              errorCode: shengda.errorCode,
+              magneticAttack: shengda.magneticAttack,
+              description: shengda.description,
+            }
+          : null,
       };
     });
 

@@ -549,4 +549,83 @@ export function CommandApiPacketView({ base64Payload }: { base64Payload: string 
   );
 }
 
+// ─── Shengda NB-IoT (CBOR/LwM2M) packet view ──────────────────────────────────
+// Decoding happens server-side (CBOR isn't worth re-implementing client-side);
+// this just renders the structured summary + description the API already sends.
+
+export interface ShengdaDecoded {
+  valid: boolean;
+  messageType: string | null;
+  messageFunction: string | null;
+  meterReading: number | null;
+  prepayLitres: number | null;
+  supplyVoltage: number | null;
+  batteryState: string | null;
+  valveStatus: string | null;
+  signalPower: string | null;
+  signalSnr: string | null;
+  errorCode: number | null;
+  magneticAttack: boolean | null;
+  description: string | null;
+}
+
+export function ShengdaPacketView({ decoded, hexPayload }: {
+  decoded: ShengdaDecoded;
+  hexPayload: string;
+}) {
+  const [showRaw, setShowRaw] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20">
+          {decoded.messageFunction ?? "Shengda"}
+        </span>
+        {decoded.messageType && (
+          <span className="text-[10px] text-muted-foreground">{decoded.messageType}</span>
+        )}
+        {!decoded.valid && <span className="text-[10px] text-red-500 font-semibold">CRC ERR</span>}
+        {decoded.magneticAttack && (
+          <span className="text-[10px] text-red-500 font-semibold">TAMPER</span>
+        )}
+      </div>
+
+      <div className="bg-muted/30 rounded px-2.5 py-1.5 space-y-0">
+        {decoded.meterReading != null && (
+          <Field label="Meter reading" value={`${decoded.meterReading.toLocaleString()} L`} mono />
+        )}
+        {decoded.prepayLitres != null && (
+          <Field label="Prepay allowance" value={`${decoded.prepayLitres.toLocaleString()} L`} mono />
+        )}
+        {decoded.supplyVoltage != null && (
+          <Field label="Supply voltage" value={`${decoded.supplyVoltage.toFixed(2)} V`} />
+        )}
+        {decoded.batteryState && <Field label="Battery state" value={decoded.batteryState} />}
+        {decoded.valveStatus && <Field label="Valve" value={decoded.valveStatus} />}
+        {decoded.signalPower && <Field label="Signal power" value={decoded.signalPower} mono dim />}
+        {decoded.signalSnr && <Field label="Signal SNR" value={decoded.signalSnr} mono dim />}
+        {decoded.errorCode != null && <Field label="Error code" value={decoded.errorCode} mono />}
+      </div>
+
+      {decoded.description && (
+        <pre className="text-[10px] font-mono leading-relaxed whitespace-pre-wrap text-muted-foreground bg-muted/20 rounded px-2 py-1.5 overflow-x-auto">
+          {decoded.description}
+        </pre>
+      )}
+
+      <button
+        className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        onClick={() => setShowRaw((v) => !v)}
+      >
+        {showRaw ? "Hide raw hex ▲" : "Raw hex ▼"}
+      </button>
+      {showRaw && (
+        <p className="text-[10px] font-mono break-all leading-relaxed text-muted-foreground bg-muted/20 rounded px-2 py-1.5">
+          {hexPayload}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export { EWC25_EVENT_NAMES, eventCategory };
