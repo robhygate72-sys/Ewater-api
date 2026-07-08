@@ -423,8 +423,10 @@ export async function fetchTicksPerLitre(assetId: string): Promise<number | null
   }
 }
 
-// Returns every distinct IMEI registered for the asset (an asset can have
-// more than one NB-IoT module reporting under it, e.g. after a device swap).
+// Returns every distinct IMEI *registered* for the asset via eWater's
+// identifiers API (an asset can have more than one NB-IoT module reporting
+// under it, e.g. after a device swap). Used where an authoritative,
+// eWater-recognised device identity is required (e.g. targeting a command).
 export async function fetchAssetImeis(assetId: string): Promise<string[]> {
   try {
     const result = await ewaterFetch(
@@ -445,6 +447,71 @@ export async function fetchAssetImeis(assetId: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+// The "source" field on a log line is a JSON string like
+// {"IMEI":"869595067005701","Ledger":"20470"}, but some device types
+// (e.g. Shengda NB-IoT meters) report it as a bare IMEI string. Shared by
+// the /logs route and log-based IMEI discovery below so both parse it the
+// same way.
+export function extractImeiFromLogSource(rawSource: string | null): string | null {
+  if (!rawSource) return null;
+  try {
+    const parsed = JSON.parse(rawSource) as Record<string, unknown>;
+    return strOrNull(parsed["IMEI"]) ?? strOrNull(parsed["imei"]) ?? strOrNull(parsed["DeviceId"]);
+  } catch {
+    return strOrNull(rawSource);
+  }
+}
+
+// eWater's identifiers registry (`fetchAssetImeis` above) only tracks the
+// primary EWC controller module — a secondary device attached to the same
+// asset (e.g. a Shengda NB-IoT prepaid meter reporting under its own IMEI)
+// can be completely absent from it. Those devices are only discoverable by
+// looking at who has actually sent log traffic for this asset, so this scans
+// recent logs and pulls out any distinct IMEI seen in the `source` field.
+export async function discoverImeisFromLogs(assetId: string, windowDays = 30): Promise<string[]> {
+  try {
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - windowDays * 24 * 3600 * 1000);
+    const result = await ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+      method: "POST",
+      body: JSON.stringify({
+        assetId: Number(assetId),
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        pipeline: null,
+      }),
+    });
+    if (result.status !== 200) return [];
+    const lines = Array.isArray((result.data as Record<string, unknown>)?.["logLines"])
+      ? ((result.data as Record<string, unknown>)["logLines"] as Record<string, unknown>[])
+      : [];
+    const imeis: string[] = [];
+    for (const line of lines) {
+      const imei = extractImeiFromLogSource(strOrNull(line["source"]));
+      if (imei && !imeis.includes(imei)) imeis.push(imei);
+    }
+    return imeis;
+  } catch {
+    return [];
+  }
+}
+
+// Union of registered IMEIs (identifiers registry) and IMEIs discovered from
+// recent log traffic, for surfaces that should show/query every device
+// actually associated with the asset (tech summary, packet browsing) rather
+// than only the ones eWater has formally registered.
+export async function fetchAllKnownImeis(assetId: string): Promise<string[]> {
+  const [registered, discovered] = await Promise.all([
+    fetchAssetImeis(assetId),
+    discoverImeisFromLogs(assetId),
+  ]);
+  const imeis = [...registered];
+  for (const imei of discovered) {
+    if (!imeis.includes(imei)) imeis.push(imei);
+  }
+  return imeis;
 }
 
 // Primary source: EWC `LitresConversion` setting. Falls back to

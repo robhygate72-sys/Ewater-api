@@ -24,6 +24,9 @@ import {
   getAssetEsenseCharts,
   fetchTicksPerLitre,
   fetchAssetImeis,
+  fetchAllKnownImeis,
+  discoverImeisFromLogs,
+  extractImeiFromLogSource,
   fetchAssetLcf,
   getRawPacketLogs,
   strOrNull,
@@ -269,7 +272,10 @@ router.get("/ewater/assets/:assetId/packets", async (req, res): Promise<void> =>
   const imeiFilter = strOrNull(req.query["imei"]);
 
   try {
-    const imeis = await fetchAssetImeis(assetId);
+    // Use every known IMEI (registered + discovered from recent log traffic)
+    // so secondary devices like a Shengda NB-IoT meter — which never gets
+    // registered in eWater's identifiers API — still show up here.
+    const imeis = await fetchAllKnownImeis(assetId);
     if (imeis.length === 0) {
       res.json([]);
       return;
@@ -401,8 +407,11 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
   const idNum = Number(id);
 
   try {
-    const [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, entityRes, settingsRes] =
-      await Promise.allSettled([
+    const [
+      [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, entityRes, settingsRes],
+      discoveredImeis,
+    ] = await Promise.all([
+      Promise.allSettled([
         ewaterFetch("state", `/api/Asset/GetAssetBasicInfoByAssetID?assetId=${encodeURIComponent(id)}`),
         ewaterFetch("query", `/api/Asset/AssetConnectivityStatus?assetId=${encodeURIComponent(id)}`),
         ewaterFetch("query", `/api/Asset/AssetPowerStatus?assetId=${encodeURIComponent(id)}`),
@@ -414,7 +423,12 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
         ewaterFetch("state", `/api/Asset/GetCommandsForAsset?assetId=${encodeURIComponent(id)}&pageSize=20&pageIndex=0`),
         ewaterFetch("state", "/api/Entity/List"),
         ewaterFetch("state", `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(id)}`),
-      ]);
+      ]),
+      // Run alongside the batch above (not after it) — this is an extra
+      // eWater call purely to catch secondary devices (e.g. a Shengda
+      // NB-IoT meter) missing from the identifiers registry below.
+      discoverImeisFromLogs(id),
+    ]);
 
     const ok = <T>(r: PromiseSettledResult<{ status: number; data: unknown }>): T | null =>
       r.status === "fulfilled" && r.value.status === 200 ? (r.value.data as T) : null;
@@ -489,10 +503,19 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
     const idList = Array.isArray(identifiers?.["identifiers"])
       ? (identifiers!["identifiers"] as Record<string, unknown>[])
       : [];
-    const imeis: string[] = [];
+    const registeredImeis: string[] = [];
     for (const entry of idList) {
       const imei = strOrNull(entry["imei"]);
-      if (imei && !imeis.includes(imei)) imeis.push(imei);
+      if (imei && !registeredImeis.includes(imei)) registeredImeis.push(imei);
+    }
+    // eWater's identifiers registry only tracks the primary EWC controller —
+    // a secondary device on the same asset (e.g. a Shengda NB-IoT prepaid
+    // meter) can report under its own IMEI without ever being registered
+    // there, so merge in any additional IMEIs seen in recent log traffic
+    // (fetched concurrently above via `discoveredImeis`).
+    const imeis = [...registeredImeis];
+    for (const imei of discoveredImeis) {
+      if (!imeis.includes(imei)) imeis.push(imei);
     }
 
     // Recent commands: real shape is { commands: [{id, correlationId, createdDate, state, priority, retryCount}] }
@@ -1231,17 +1254,7 @@ router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
       : null;
 
     const entries = page.map((l) => {
-      // source is a JSON string like {"IMEI":"869595067005701","Ledger":"20470"} — extract IMEI
-      const rawSource = strOrNull(l["source"]);
-      let imei: string | null = null;
-      if (rawSource) {
-        try {
-          const parsed = JSON.parse(rawSource) as Record<string, unknown>;
-          imei = strOrNull(parsed["IMEI"]) ?? strOrNull(parsed["imei"]) ?? strOrNull(parsed["DeviceId"]);
-        } catch {
-          imei = rawSource;
-        }
-      }
+      const imei = extractImeiFromLogSource(strOrNull(l["source"]));
       const payload = strOrNull(l["payload"]);
       const shengda = payload ? tryDecodeShengdaLwm2m(payload) : null;
 
