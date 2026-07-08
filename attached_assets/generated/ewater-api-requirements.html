@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>eWater Platform API — Technical Requirements & Gap Analysis</title>
+<style>
+  @page { margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1a1f2b;
+    font-size: 11pt;
+    line-height: 1.55;
+    padding: 56px 64px;
+    max-width: 100%;
+  }
+  h1 {
+    font-size: 22pt;
+    color: #0b3d5c;
+    border-bottom: 3px solid #0b7285;
+    padding-bottom: 10px;
+    margin-top: 0;
+  }
+  h1:not(:first-of-type) { margin-top: 36px; page-break-before: always; }
+  h2 {
+    font-size: 15pt;
+    color: #0b3d5c;
+    margin-top: 28px;
+    border-bottom: 1px solid #cdd7dd;
+    padding-bottom: 4px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 12.5pt;
+    color: #0b5c7a;
+    margin-top: 20px;
+    page-break-after: avoid;
+  }
+  h4 { font-size: 11pt; color: #333; margin-top: 14px; }
+  p, li { font-size: 10.3pt; }
+  code {
+    background: #f1f4f6;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+    font-size: 9.3pt;
+    color: #a4262c;
+  }
+  pre {
+    background: #0b3d5c;
+    color: #e8f4fa;
+    padding: 14px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 9pt;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 9.3pt;
+    page-break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #cdd7dd;
+    padding: 6px 9px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #eaf3f6; color: #0b3d5c; }
+  blockquote {
+    border-left: 4px solid #0b7285;
+    margin: 10px 0;
+    padding: 4px 16px;
+    color: #444;
+    background: #f7fafb;
+  }
+  hr { border: none; border-top: 1px solid #cdd7dd; margin: 28px 0; }
+  a { color: #0b7285; }
+  strong { color: #12222e; }
+  .cover {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    page-break-after: always;
+  }
+  .cover h1 {
+    border: none;
+    font-size: 30pt;
+    margin-bottom: 6px;
+  }
+  .cover .subtitle { font-size: 14pt; color: #0b7285; margin-bottom: 40px; }
+  .cover .meta { font-size: 10.5pt; color: #555; line-height: 1.9; }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <h1>eWater Platform API — Technical Requirements & Gap Analysis</h1>
+    <div class="subtitle">Gap Analysis &amp; Endpoint Specification</div>
+    <div class="meta">Prepared for: eWater Engineering Team<br/>Prepared by: eWater Monitor project team (api-server / MCP integration)<br/>Date: July 8, 2026<br/>Status: Proposed — for eWater platform engineering review</div>
+  </div>
+  <h2>How to read this document</h2>
+<p>This is a gap analysis, not an implementation plan for our side. It compares what our
+<code>api-server</code> (REST + MCP) currently consumes from eWater&#39;s public APIs against what is
+actually available across the six Power BI data sources eWater&#39;s reporting stack draws
+from (<code>state</code>, <code>credits</code>, <code>assetcontroller</code>, <code>ewater_reporting</code>, <code>pulse</code>,
+<code>ewater_central</code>). Every proposed endpoint below is something <strong>eWater&#39;s platform team</strong>
+would build and host — our project would then be one of several consumers. Nothing here
+implies we are building these endpoints ourselves, standing up a new dashboard UI, or
+resolving PII-handling policy; PII-bearing fields are flagged inline so eWater&#39;s team can
+apply their own data-handling policy.</p>
+<p>Each new REST endpoint proposal is paired with an MCP tool, per this project&#39;s existing
+convention of never letting the two surfaces diverge (see <code>ewater-insights.ts</code> in our
+codebase) — we are recommending eWater&#39;s own public API adopt the same shared-logic /
+dual-surface discipline we use internally, not asking eWater to integrate with our MCP
+server.</p>
+<hr>
+<h2>1. Executive Summary</h2>
+<h3>1.1 What exists today</h3>
+<p>eWater exposes four API bases (<code>auth</code>, <code>query</code>, <code>state</code>, <code>command</code>) that our api-server
+consumes for: asset listing and detail, EWC device settings, tank height / inflow /
+voltage / flow-rate time series (eSense charts), raw packet log retrieval and decoding,
+dispense-volume calibration (LCF/preload) analysis, a coarse fleet health/fault snapshot,
+sensor-range auto-detection, and meter/settings write-back (reset tick accumulator, apply
+calibration). This is a genuinely capable data-access layer for <strong>individual-asset,
+telemetry-level</strong> questions — &quot;what is this device doing right now,&quot; &quot;what should its
+calibration be.&quot; We have built an MCP server on top of the same logic so external LLM
+clients (e.g. WhatsApp-based agents) can ask these questions in natural language, with a
+consistent pagination envelope across all list-shaped tool responses.</p>
+<h3>1.2 What the data dictionary reveals is missing</h3>
+<p>The Power BI data dictionary describes six live databases holding materially more than
+what any current eWater API surfaces. Concretely, <strong>nothing in the current API exposes</strong>:
+lifecycle/state-change history for an asset (<code>assetlifecyclehistory</code>), pre-aggregated
+downtime (<code>ewater_reporting</code> downtime tables), pre-aggregated multi-grain usage rollups
+(<code>state.public.ztrilist_generalwateruse_*</code>, 6 grains from hourly to all-time), the credits
+domain at all (<code>tagtopup</code>, <code>tagtopupstate</code>, wallet balances), per-country currency/config
+(<code>ewater_central.&quot;Country&quot;</code>/<code>&quot;Currency&quot;</code>), or any system-level supply-vs-disbursement
+comparison for non-revenue water (NRW) analysis. There is also <strong>no alerting primitive of
+any kind</strong> — no webhook, no subscription, no &quot;what changed since I last asked&quot; feed — so
+every consumer (including us) is left to poll full snapshots and diff them client-side,
+which does not scale past a handful of assets and cannot catch state changes that happen
+between polls.</p>
+<h3>1.3 Structure of this document</h3>
+<p>Section 2 covers each capability area as a <strong>current-state vs. target-state</strong> gap
+analysis. Section 3 is the concrete endpoint catalogue: one REST + one MCP tool per
+capability, with backing tables, response shape, caveats pulled directly from the data
+dictionary, and priority. Section 4 is a dedicated deep-dive on alerting and predictive
+maintenance, since that capability doesn&#39;t exist at all today and needs its own design
+(webhook vs. polling feed, threshold rule model, risk scoring). Section 5 covers API
+hygiene: versioning, deprecation policy, response envelope consistency, and pagination
+standardization across <strong>all</strong> list endpoints (not just the ones we happen to consume via
+MCP today).</p>
+<h3>1.4 Priority summary</h3>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Meaning</th>
+<th>Count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>P0</strong></td>
+<td>Blocks a capability area that already has a partial, unreliable implementation today (e.g. NRW, credit integrity) or is required to make alerting possible at all</td>
+<td>6 endpoints</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>High value, no current workaround, clearly requested capability area</td>
+<td>7 endpoints</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>Hardening / completeness — makes an existing area more usable at fleet scale</td>
+<td>4 endpoints</td>
+</tr>
+</tbody></table>
+<h3>1.5 Out of scope (explicitly)</h3>
+<ul>
+<li>Implementing any of these endpoints ourselves against eWater&#39;s databases — this is a
+requirements spec <strong>for</strong> eWater engineering.</li>
+<li>Dashboard UI/UX design for surfacing this data.</li>
+<li>PII governance policy (retention, consent, export rights). We flag which proposed
+response fields carry PII (tag owner identity, location, phone) so eWater&#39;s team can
+apply whatever policy they choose — we take no position on what that policy should be.</li>
+</ul>
+<hr>
+<h2>2. Capability Area Gap Analysis</h2>
+<p>For each area: <strong>Today</strong>, <strong>Gap</strong>, <strong>Why it matters</strong>, and pointer to the concrete
+endpoints in Section 3.</p>
+<h3>2.1 Asset health &amp; status</h3>
+<p><strong>Today:</strong> <code>GET /api/Asset/AssetHealthStatus</code>, <code>AssetPowerStatus</code>, <code>AssetFlowStatus</code>,
+<code>AssetUsageStatus</code> (query API) give a live snapshot per asset. <code>GET /api/Entity/HealthSnapshots</code> / <code>FaultSnapshots</code> give a fleet-wide rollup, but only current
+totals — no trend, no history of when an asset flipped from healthy to unhealthy.</p>
+<p><strong>Gap:</strong> There is no history endpoint for health/lifecycle state. <code>state.public.asset</code>
+carries a current <code>assetlifecyclestate</code>, and <code>state.public.assetlifecyclehistory</code> (per the
+data dictionary) records every transition, but nothing in the API returns it. Similarly,
+<code>ewater_reporting</code>&#39;s downtime tables (pre-aggregated per-asset downtime windows) have no
+API surface — a consumer wanting &quot;how much downtime did asset X have last month&quot; must
+currently reconstruct it from raw connectivity polling, which the current API doesn&#39;t even
+expose as a time series (only <code>lastCommsDt</code>, a single point-in-time value).</p>
+<p><strong>Why it matters:</strong> Every operational dashboard question about reliability (&quot;which assets
+are flapping,&quot; &quot;how long was this asset down,&quot; &quot;did it recover on its own or need
+intervention&quot;) requires this and has no current path except polling <code>AssetHealthStatus</code>
+forever and building your own history table — which is exactly the kind of duplicated,
+inconsistent client-side logic this document is trying to head off industry-wide.</p>
+<p>→ See 3.1 (<code>GET /assets/{assetId}/lifecycle-history</code>), 3.2
+(<code>GET /assets/{assetId}/downtime</code>), 3.3 (<code>GET /health/fleet-summary</code>).</p>
+<h3>2.2 Alerting &amp; anomaly detection</h3>
+<p><strong>Today:</strong> Nothing. <code>HealthSnapshots</code>/<code>FaultSnapshots</code> are pull-only aggregates with no
+delta/changed-since semantics and no way to be notified. Our own project has a local
+<code>alert_rules</code> table, but it stores <strong>our own derived config</strong> (e.g. detected sensor
+range) — it is not backed by any eWater-side alerting primitive, because none exists.</p>
+<p><strong>Gap:</strong> No webhook registration, no &quot;assets changed since cursor X&quot; feed, no
+threshold-rule concept anywhere in the eWater API surface.</p>
+<p><strong>Why it matters:</strong> This is the single biggest capability gap. Every consumer that wants
+timely awareness of a fault (battery critical, flow stopped, tank empty) is forced into
+inefficient polling of full snapshots, which (a) doesn&#39;t scale as fleet size grows and (b)
+can miss transient state changes that resolve between polls. See the dedicated proposal in
+Section 4.</p>
+<p>→ See 4 in full, plus 3.4–3.6.</p>
+<h3>2.3 Predictive maintenance</h3>
+<p><strong>Today:</strong> Nothing that combines signals. <code>AssetPowerStatus</code> does expose useful raw
+ingredients — <code>trendDirection</code>, <code>endOfDayDeclineConsecutiveDays</code>,
+<code>endOfDayDeclineTotalVoltageDrop</code>, <code>todayLowBatteryEventCount</code> — but there is no endpoint
+that turns these (plus flow-rate stability and connectivity-gap frequency) into a single
+&quot;this asset is likely to fail soon&quot; signal.</p>
+<p><strong>Gap:</strong> No risk-scoring endpoint, fleet-wide or per-asset. The raw ingredients exist but
+require a consumer to independently invent the same weighting/scoring logic, which we
+already had to partially do internally for calibration drift (<code>suggestedLcf</code>) — the
+platform is better positioned to do this once, centrally, than let every consumer
+reinvent it.</p>
+<p><strong>Why it matters:</strong> Turns &quot;battery dropped 0.3V a day for 5 days&quot; from a fact you&#39;d have
+to notice yourself into a proactive &quot;replace battery within 2 weeks&quot; signal — this is the
+difference between reactive and predictive maintenance.</p>
+<p>→ See 4.3 (risk scoring proposal) and 3.7 (<code>GET /assets/{assetId}/risk-score</code>), 3.8
+(<code>GET /risk-scores</code> fleet-wide).</p>
+<h3>2.4 NRW (non-revenue water) / leak detection</h3>
+<p><strong>Today:</strong> Our own calibration/gap analysis (<code>getCalibrationAnalysis</code>) infers likely meter
+drift from dispense-volume KDE vs. LCF/preload settings — but this is a <strong>per-meter
+calibration</strong> signal, not a true NRW measurement. It cannot detect a leak between the
+supply meter and the tap, only a miscalibrated tap meter.</p>
+<p><strong>Gap:</strong> The data dictionary describes exactly the data needed for real NRW: eSense
+(<code>purpose = &#39;eSense&#39;</code>) assets measure <strong>bulk supply into a water system</strong>, while
+tag-dispensing assets (via <code>generalwateruse</code>/<code>waterdisbursement</code>) measure <strong>litres
+actually dispensed to households</strong>. The difference between the two, at the water-system
+level, over the same time window, is the NRW signal — and no current API endpoint
+computes or exposes it. <code>Supply (All)</code> in Power BI is filtered to only 3 hardcoded eSense
+assets and isn&#39;t a general fleet-wide table either.</p>
+<p><strong>Why it matters:</strong> This is the highest-value analytical gap in the whole document — NRW
+is a named requirement, the data to compute it already exists in <code>state</code>, and it is
+currently only reachable by hand-building the same DAX-equivalent query dictionary
+engineers wrote once for Power BI. Two data-quality rules are mandatory for anyone
+implementing this (see 3.9&#39;s caveats): eSense readings must have spike-filtering applied
+(&gt;300 L/min = sensor fault) and eSense assets must never be summed into the disbursement
+side.</p>
+<p>→ See 3.9 (<code>GET /watersystems/{id}/nrw</code>), 3.10 (<code>GET /nrw/summary</code> fleet-wide).</p>
+<h3>2.5 Tag-flashing detection</h3>
+<p><strong>Today:</strong> No detection logic anywhere, ours or eWater&#39;s. &quot;Tag-flashing&quot; (rapid
+re-presentation of a tag to re-trigger a preload/free allowance, or exploiting a
+<code>FlowPreloadThreshold</code> window) is a known integrity concern implied by the existence of
+<code>FlowPreloadThreshold</code>/<code>FlowPreloadCharge</code> settings and the credits-domain topup-state
+tables, but nothing correlates rapid repeat taps against a single <code>nfcid</code> to flag it.</p>
+<p><strong>Gap:</strong> No endpoint returns per-tag event cadence at a granularity fine enough to detect
+&quot;same tag, same asset, &lt;N seconds apart, repeated M times&quot; patterns. The datalog packet
+stream (<code>GetLogsForAssetByReceivedDate</code>) has the raw events, but nfcid-level burst
+detection across the whole fleet is not something any consumer can do without pulling and
+decoding raw packets for every asset continuously.</p>
+<p><strong>Why it matters:</strong> This is a direct revenue-integrity issue (free/underpriced water via
+preload-window abuse) and currently invisible unless someone manually reviews packet logs
+asset-by-asset.</p>
+<p>→ See 3.11 (<code>GET /tags/{nfcid}/flashing-events</code>), 3.12
+(<code>GET /assets/{assetId}/tag-flashing-summary</code>).</p>
+<h3>2.6 Credit / topup integrity</h3>
+<p><strong>Today:</strong> Zero API surface. The <code>credits</code> DSN (<code>tagtopup</code>, <code>tagtopupstate</code>) is not
+touched by any current eWater endpoint we consume, and the data dictionary explicitly
+flags <code>supertapposition</code> as an unreliable indicator of topup delivery status — the
+dictionary&#39;s own recommendation is to join through <code>tagtopupstate.state</code> instead, which
+confirms this is a known, not hypothetical, data-quality issue.</p>
+<p><strong>Gap:</strong> No way to (a) list topups with their true delivery state, (b) find &quot;stuck&quot;
+topups (state not in a terminal collected/deleted/erased state, aged past a threshold), or
+(c) reconcile a tag&#39;s expected balance against topups-in minus usage-out.</p>
+<p><strong>Why it matters:</strong> Every topup that silently fails to reach the physical tag is a
+customer-facing trust problem (&quot;I paid but got no water&quot;) that is currently undetectable
+except by the customer complaining. This is the second-highest-priority gap after
+alerting, because — like NRW — the fix is &quot;expose data that already exists,&quot; not &quot;invent
+new instrumentation.&quot;</p>
+<p>→ See 3.13 (<code>GET /topups</code>), 3.14 (<code>GET /topups/stuck</code>), 3.15
+(<code>GET /tags/{nfcid}/reconciliation</code>).</p>
+<h3>2.7 Multi-country currency / config</h3>
+<p><strong>Today:</strong> Per-asset <code>priceOfWater</code> is derived from EWC device settings
+(<code>CurrencyConversion</code>, <code>LitresConversion</code>, <code>FlowConversion</code>) — this is asset-local and
+correct as far as it goes. But nothing in the API surfaces <strong>country-level</strong> currency
+config (currency code, exchange rate, average household size) — a consumer wanting to
+convert credits to a local currency, or estimate beneficiary counts per household, has no
+API to call and, per the data dictionary, the existing Power BI model hardcodes Kenya&#39;s
+values (<code>0.2109</code> KES/credit, <code>4.7</code> people/household) as if universal, which is simply
+wrong for the five other countries confirmed live (Gambia, UK, Portugal, Tanzania, Ghana).</p>
+<p><strong>Gap:</strong> No <code>GET</code> for <code>ewater_central.&quot;Country&quot;</code>/<code>&quot;Currency&quot;</code> — <code>CreditExchangeRate</code> and
+<code>AvgPeoplePerHousehold</code> per country.</p>
+<p><strong>Why it matters:</strong> Any multi-country rollup (revenue, beneficiary counts) computed
+without this is currently silently wrong outside Kenya. This is a correctness bug waiting
+to be inherited by every future non-Kenya deployment, not just a missing convenience
+endpoint.</p>
+<p>→ See 3.16 (<code>GET /countries/{countryId}/config</code>), 3.17
+(<code>GET /currency-config</code> fleet-wide).</p>
+<h3>2.8 Asset lifecycle &amp; uptime</h3>
+<p><strong>Today:</strong> Current asset detail returns a single <code>assetLifecycleState</code> snapshot
+(<code>PreInstallation</code> / <code>Staged</code> / <code>Active</code> / etc.) — no history of transitions, no
+uptime/downtime percentage over a period.</p>
+<p><strong>Gap:</strong> Same underlying gap as 2.1 — <code>assetlifecyclehistory</code> exists in <code>state</code> but has no
+API. Distinct from 2.1 in that this is specifically about the <strong>install-to-decommission
+lifecycle</strong> (when did this asset go live, when was it staged, when was it decommissioned)
+rather than transient online/offline health flapping — both matter, for different
+questions (fleet growth/attrition reporting vs. operational reliability).</p>
+<p>→ Same endpoints as 3.1/3.2 serve this; see caveats there for how the two lifecycle
+concepts (state-machine lifecycle vs. connectivity health) are distinguished in the
+response shape.</p>
+<h3>2.9 Fleet-wide query &amp; pagination</h3>
+<p><strong>Today:</strong> Inconsistent. Our MCP tool layer added a pagination envelope
+(<code>totalCount</code>/<code>returnedCount</code>/<code>offset</code>/<code>limit</code>/<code>hasMore</code>) specifically because
+<code>list_assets</code> was originally unbounded and could push an LLM client past its context
+window — but that fix was applied <strong>only at our MCP wrapper layer</strong>, on top of REST
+endpoints (<code>GetAssetList</code>, <code>Entity/List</code>, etc.) that remain themselves unpaged at the
+eWater API level. Every consumer of the raw eWater REST API (not just us) hits this same
+unbounded-response problem independently.</p>
+<p><strong>Gap:</strong> No consistent, platform-level pagination contract on eWater&#39;s own list
+endpoints. Consumers currently either fetch everything (fine at small scale, breaks as
+fleet grows past a few hundred assets) or invent their own paging wrapper as we did.</p>
+<p><strong>Why it matters:</strong> This isn&#39;t a new capability request, it&#39;s an API-hygiene fix that
+prevents every future consumer from re-solving the same problem we already had to solve
+once. See Section 5.3 for the concrete standard we recommend.</p>
+<hr>
+<h2>3. Proposed Endpoints</h2>
+<p>All proposed endpoints follow one shared list-response envelope (see 5.3) —
+<code>totalCount</code>, <code>returnedCount</code>, <code>offset</code>, <code>limit</code>, <code>hasMore</code> — mirroring the convention our
+own MCP layer already uses, applied here at the true API level instead of a wrapper.
+Base path assumed: <code>/api/v2/...</code> (see Section 5.1 for why a version prefix is proposed).</p>
+<p>Format per endpoint: <strong>Method &amp; path</strong> · <strong>Purpose</strong> · <strong>Params</strong> · <strong>Response shape</strong> ·
+<strong>Backing table(s)</strong> · <strong>Data caveats</strong> · <strong>Priority</strong> · <strong>Paired MCP tool</strong>.</p>
+<h3>3.1 Asset lifecycle history</h3>
+<ul>
+<li><strong><code>GET /api/v2/assets/{assetId}/lifecycle-history</code></strong></li>
+<li><strong>Purpose:</strong> Return the full sequence of lifecycle-state transitions for one asset
+(install → staged → active → decommissioned, etc.), for fleet-growth/attrition
+reporting and &quot;when did this asset actually go live&quot; questions.</li>
+<li><strong>Params:</strong> <code>assetId</code> (path, required); <code>from</code>, <code>to</code> (ISO date, optional, default
+all-time); <code>offset</code>, <code>limit</code> (default 50, max 500).</li>
+<li><strong>Response shape:</strong><pre><code class="language-json">{
+  &quot;assetId&quot;: 2706,
+  &quot;events&quot;: [
+    { &quot;state&quot;: &quot;Active&quot;, &quot;transitionDt&quot;: &quot;2025-03-11T08:00:00Z&quot;, &quot;previousState&quot;: &quot;Staged&quot; }
+  ],
+  &quot;totalCount&quot;: 4, &quot;returnedCount&quot;: 4, &quot;offset&quot;: 0, &quot;limit&quot;: 50, &quot;hasMore&quot;: false
+}
+</code></pre>
+</li>
+<li><strong>Backing table:</strong> <code>state.public.assetlifecyclehistory</code> (joined to <code>state.public.asset</code>
+for current state cross-check).</li>
+<li><strong>Data caveats:</strong> None flagged in the dictionary beyond standard row-level integrity;
+confirm sort order is transition-time ascending so <code>previousState</code> chaining is
+unambiguous.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>get_asset_lifecycle_history(assetId, from?, to?, offset?, limit?)</code></li>
+</ul>
+<h3>3.2 Asset downtime windows</h3>
+<ul>
+<li><strong><code>GET /api/v2/assets/{assetId}/downtime</code></strong></li>
+<li><strong>Purpose:</strong> Pre-aggregated downtime windows (start, end, duration) for an asset over a
+period — the reliability-reporting counterpart to 3.1&#39;s lifecycle history.</li>
+<li><strong>Params:</strong> <code>assetId</code> (path); <code>from</code>, <code>to</code> (default: trailing 30 days); <code>offset</code>,
+<code>limit</code>.</li>
+<li><strong>Response shape:</strong><pre><code class="language-json">{
+  &quot;assetId&quot;: 2706,
+  &quot;downtimeWindows&quot;: [
+    { &quot;startDt&quot;: &quot;...&quot;, &quot;endDt&quot;: &quot;...&quot;, &quot;durationMinutes&quot;: 132, &quot;reason&quot;: &quot;connectivity&quot; }
+  ],
+  &quot;uptimePercent&quot;: 98.4,
+  &quot;totalCount&quot;: 6, &quot;returnedCount&quot;: 6, &quot;offset&quot;: 0, &quot;limit&quot;: 50, &quot;hasMore&quot;: false
+}
+</code></pre>
+</li>
+<li><strong>Backing table:</strong> <code>ewater_reporting</code> downtime aggregation tables (per data dictionary
+§&quot;AssetDowntime&quot;-family tables — exact table name to be confirmed with eWater&#39;s
+reporting team, as the dictionary describes this as a reporting-layer aggregate rather
+than a single named source table).</li>
+<li><strong>Data caveats:</strong> Confirm whether <code>ewater_reporting</code>&#39;s downtime tables already apply
+any minimum-gap threshold (e.g. ignore sub-1-minute blips) — if so, document the
+threshold in the response so consumers don&#39;t double-filter or misinterpret precision.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>get_asset_downtime(assetId, from?, to?, offset?, limit?)</code></li>
+</ul>
+<h3>3.3 Fleet health summary (paginated, per-asset)</h3>
+<ul>
+<li><strong><code>GET /api/v2/health/fleet-summary</code></strong></li>
+<li><strong>Purpose:</strong> Per-asset current health rollup at fleet scale with filtering — the
+paginated, per-asset-detail counterpart to today&#39;s aggregate-only
+<code>HealthSnapshots</code>/<code>FaultSnapshots</code>.</li>
+<li><strong>Params:</strong> <code>status</code> (healthy/unhealthy/unknown), <code>waterSystemId</code>, <code>organisationId</code>,
+<code>countryId</code>, <code>offset</code>, <code>limit</code>.</li>
+<li><strong>Response shape:</strong> <code>{ assets: [{ assetId, name, connectivityStatus, powerStatus, flowStatus, tankHeightStatus, lastUpdatedDt }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> Same source as <code>query.HealthSnapshots</code>/<code>FaultSnapshots</code>, exposed
+per-asset instead of pre-aggregated only.</li>
+<li><strong>Data caveats:</strong> None beyond standard filtering semantics.</li>
+<li><strong>Priority:</strong> P2</li>
+<li><strong>MCP tool:</strong> <code>get_fleet_health_summary(status?, waterSystemId?, organisationId?, countryId?, offset?, limit?)</code></li>
+</ul>
+<h3>3.4 Alert rules (CRUD)</h3>
+<ul>
+<li><strong><code>POST /api/v2/alert-rules</code></strong> / <strong><code>GET /api/v2/alert-rules</code></strong> /
+<strong><code>PATCH /api/v2/alert-rules/{id}</code></strong> / <strong><code>DELETE /api/v2/alert-rules/{id}</code></strong></li>
+<li><strong>Purpose:</strong> Let a consumer register threshold-based alert rules server-side (e.g.
+&quot;battery &lt; 3.2V&quot;, &quot;no comms for &gt; 24h&quot;) instead of re-polling and re-deriving thresholds
+client-side. Full design in Section 4.2.</li>
+<li><strong>Params (POST body):</strong> <code>scope</code> (<code>asset</code>/<code>waterSystem</code>/<code>organisation</code>/<code>country</code>/
+<code>fleet</code>), <code>scopeId</code>, <code>metric</code> (enum, see 4.2), <code>operator</code> (<code>lt</code>/<code>gt</code>/<code>eq</code>/<code>noDataFor</code>),
+<code>threshold</code>, <code>windowMinutes</code> (for rate-of-change rules), <code>label</code>.</li>
+<li><strong>Response shape:</strong> <code>{ id, scope, scopeId, metric, operator, threshold, windowMinutes, label, createdDt, enabled }</code></li>
+<li><strong>Backing table:</strong> New — this is a platform-side rules table eWater would need to
+create; no dictionary table currently models it.</li>
+<li><strong>Data caveats:</strong> N/A (new capability).</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tools:</strong> <code>create_alert_rule(...)</code>, <code>list_alert_rules(scope?, scopeId?, offset?, limit?)</code>, <code>update_alert_rule(id, ...)</code>, <code>delete_alert_rule(id)</code></li>
+</ul>
+<h3>3.5 Active alerts feed</h3>
+<ul>
+<li><strong><code>GET /api/v2/alerts</code></strong></li>
+<li><strong>Purpose:</strong> List currently-fired alerts (rule breaches), filterable and paginated —
+the read side of 3.4, and the thing a webhook (4.1) would notify about.</li>
+<li><strong>Params:</strong> <code>status</code> (<code>active</code>/<code>acknowledged</code>/<code>resolved</code>), <code>assetId</code>, <code>ruleId</code>, <code>since</code>
+(cursor), <code>offset</code>, <code>limit</code>.</li>
+<li><strong>Response shape:</strong> <code>{ alerts: [{ id, ruleId, assetId, metric, firedDt, resolvedDt, status, value, threshold }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> New alert-events table (platform-side), populated by the rule
+evaluator described in 4.2.</li>
+<li><strong>Data caveats:</strong> N/A (new capability).</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tool:</strong> <code>get_active_alerts(status?, assetId?, ruleId?, since?, offset?, limit?)</code></li>
+</ul>
+<h3>3.6 Health-change feed (polling cursor)</h3>
+<ul>
+<li><strong><code>GET /api/v2/health/feed?since={cursor}</code></strong></li>
+<li><strong>Purpose:</strong> &quot;What changed since I last asked&quot; — a cheap polling alternative for
+consumers who can&#39;t or won&#39;t run a webhook receiver. Full design in Section 4.1.</li>
+<li><strong>Params:</strong> <code>since</code> (opaque cursor token, required after first call), <code>limit</code>.</li>
+<li><strong>Response shape:</strong> <code>{ changes: [{ assetId, factor, previousStatus, newStatus, changedDt }], nextCursor, hasMore }</code></li>
+<li><strong>Backing table:</strong> Derived from the same source feeding <code>HealthSnapshots</code>, diffed
+server-side and buffered in a short-retention change log.</li>
+<li><strong>Data caveats:</strong> N/A (new capability); document retention window (e.g. cursor expires
+after 24h of inactivity, forcing a client to fall back to a full snapshot).</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tool:</strong> <code>get_health_change_feed(since?, limit?)</code></li>
+</ul>
+<h3>3.7 Per-asset risk score</h3>
+<ul>
+<li><strong><code>GET /api/v2/assets/{assetId}/risk-score</code></strong></li>
+<li><strong>Purpose:</strong> Single predictive-maintenance signal (0–100) combining battery-decline
+trend, flow-anomaly frequency, and connectivity-gap frequency. Full model in 4.3.</li>
+<li><strong>Params:</strong> <code>assetId</code> (path).</li>
+<li><strong>Response shape:</strong> <code>{ assetId, riskScore, riskBand, contributingFactors: [{ factor, weight, detail }], computedDt }</code></li>
+<li><strong>Backing table:</strong> Computed from <code>query.AssetPowerStatus</code>/<code>AssetFlowStatus</code> history +
+downtime windows (3.2) — requires those to be persisted with history first, which is
+why this is sequenced after 3.1–3.3 in practice even though independently specified.</li>
+<li><strong>Data caveats:</strong> Model needs a minimum history window (recommend ≥14 days of data)
+before a score is meaningful — return <code>riskScore: null, reason: &quot;insufficient_history&quot;</code>
+rather than a misleadingly confident low score for new assets.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>get_asset_risk_score(assetId)</code></li>
+</ul>
+<h3>3.8 Fleet-wide risk scores</h3>
+<ul>
+<li><strong><code>GET /api/v2/risk-scores</code></strong></li>
+<li><strong>Purpose:</strong> Paginated, sorted-by-risk-descending list for triage (&quot;show me the 20
+riskiest assets right now&quot;).</li>
+<li><strong>Params:</strong> <code>waterSystemId?</code>, <code>organisationId?</code>, <code>countryId?</code>, <code>minRiskScore?</code>,
+<code>offset</code>, <code>limit</code> (default sort: <code>riskScore desc</code>).</li>
+<li><strong>Response shape:</strong> <code>{ assets: [{ assetId, name, riskScore, riskBand }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> Same as 3.7, fleet-scanned.</li>
+<li><strong>Data caveats:</strong> Same insufficient-history caveat as 3.7 — exclude or clearly flag
+assets below the minimum-history threshold rather than silently omitting them (a
+consumer paging through results should be able to tell &quot;excluded because new&quot; from
+&quot;genuinely zero risk&quot;).</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>list_risk_scores(waterSystemId?, organisationId?, countryId?, minRiskScore?, offset?, limit?)</code></li>
+</ul>
+<h3>3.9 Water-system NRW analysis</h3>
+<ul>
+<li><strong><code>GET /api/v2/watersystems/{waterSystemId}/nrw</code></strong></li>
+<li><strong>Purpose:</strong> Compare bulk supply (eSense) into a water system against actual metered
+disbursement to tags/households over the same window — the real NRW percentage.</li>
+<li><strong>Params:</strong> <code>waterSystemId</code> (path); <code>from</code>, <code>to</code> (default trailing 30 days).</li>
+<li><strong>Response shape:</strong><pre><code class="language-json">{
+  &quot;waterSystemId&quot;: 41,
+  &quot;supplyLitres&quot;: 128000,
+  &quot;disbursedLitres&quot;: 96400,
+  &quot;nrwLitres&quot;: 31600,
+  &quot;nrwPercent&quot;: 24.7,
+  &quot;supplyAssetIds&quot;: [2471],
+  &quot;excludedSpikeLitres&quot;: 2100,
+  &quot;dataQuality&quot;: &quot;supply_partial&quot;
+}
+</code></pre>
+</li>
+<li><strong>Backing table:</strong> Supply side from <code>state.public.ztrilist_supplybyasset_0of6</code>
+(<code>purpose = &#39;eSense&#39;</code> assets only); disbursement side from
+<code>state.public.ztrilist_generalwateruse_2of6_perday</code> joined through <code>wateruserid</code> →
+<code>asset</code>/<code>watersystem</code> (per data dictionary §4.4/4.5 worked examples).</li>
+<li><strong>Data caveats (mandatory, confirmed live 2026-06-18):</strong><ul>
+<li><strong>Exclude eSense from the disbursement side entirely</strong> (<code>purpose &lt;&gt; &#39;eSense&#39;</code>) — an
+eSense asset logged ~17M litres in one faulty session that would otherwise inflate a
+naive total by &gt;1000×.</li>
+<li><strong>Spike-filter the supply side</strong>: discard any reading implying &gt;300 L/min
+(18,000 L/hr) before summing — these are sensor-fault artifacts, not real supply.
+Report <code>excludedSpikeLitres</code> so consumers can see how much was filtered.</li>
+<li><strong>Not every water system has an eSense supply meter</strong> — <code>Supply (All)</code> today is
+filtered to only 3 hardcoded assets (2015, 2211, 2105) system-wide; <code>dataQuality</code>
+should reflect <code>&quot;supply_partial&quot;</code> / <code>&quot;supply_unavailable&quot;</code> when the water system in
+question lacks bulk-supply instrumentation, rather than silently returning <code>nrwPercent: null</code> with no explanation.</li>
+<li><strong>Pre-cutover data caveat</strong>: <code>generalwateruse</code> rollups are only reliably populated
+from ~July 2025 onward (the &quot;Data Waterfall&quot; cutover) — requests for <code>from</code> dates
+before that should either fall back to the legacy <code>waterdisbursement</code> path or return
+an explicit <code>dataQuality: &quot;pre_cutover_unavailable&quot;</code> rather than a silently-zero
+disbursement figure.</li>
+<li>Also drop the ~0.003% of <code>generalwateruse</code> rows carrying sentinel placeholder
+timestamps (<code>2000-01-01</code>/<code>2086-01-01</code>) before aggregating.</li>
+</ul>
+</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tool:</strong> <code>get_nrw_analysis(waterSystemId, from?, to?)</code></li>
+</ul>
+<h3>3.10 Fleet-wide NRW summary</h3>
+<ul>
+<li><strong><code>GET /api/v2/nrw/summary</code></strong></li>
+<li><strong>Purpose:</strong> Paginated NRW-percent ranking across all water systems with supply
+instrumentation — triage view for &quot;which systems are leaking the most.&quot;</li>
+<li><strong>Params:</strong> <code>countryId?</code>, <code>minNrwPercent?</code>, <code>offset</code>, <code>limit</code> (default sort:
+<code>nrwPercent desc</code>).</li>
+<li><strong>Response shape:</strong> <code>{ waterSystems: [{ waterSystemId, name, nrwPercent, dataQuality }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> Same as 3.9, fleet-scanned; only includes systems where
+<code>dataQuality</code> is not <code>&quot;supply_unavailable&quot;</code>.</li>
+<li><strong>Data caveats:</strong> Same as 3.9; additionally, systems with <code>supply_unavailable</code> should
+be countable (<code>totalSystemsCount</code> vs. <code>instrumentedSystemsCount</code>) so a consumer knows
+the denominator, not just the ranked list.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>list_nrw_summary(countryId?, minNrwPercent?, offset?, limit?)</code></li>
+</ul>
+<h3>3.11 Tag-flashing events</h3>
+<ul>
+<li><strong><code>GET /api/v2/tags/{nfcid}/flashing-events</code></strong></li>
+<li><strong>Purpose:</strong> Detect and list suspicious rapid repeat-presentation patterns for one tag
+(same tag, same asset, inter-arrival time below a configurable threshold, repeated
+beyond a configurable count) that suggest deliberate preload-window exploitation.</li>
+<li><strong>Params:</strong> <code>nfcid</code> (path); <code>from</code>, <code>to</code>; <code>maxIntervalSeconds</code> (default: tie to the
+asset&#39;s own <code>FlowPreloadThreshold</code> setting, not a hardcoded global); <code>minRepeats</code>
+(default 3).</li>
+<li><strong>Response shape:</strong> <code>{ nfcid, events: [{ assetId, burstStartDt, burstEndDt, tapCount, totalLitresPreloadOnly }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> Datalog packet stream per asset (event types 0x09/0x0B), keyed by
+<code>nfcid</code> from the packet&#39;s card UID field, cross-referenced with each asset&#39;s
+<code>FlowPreloadThreshold</code>/<code>FlowPreloadCharge</code> EWC settings.</li>
+<li><strong>Data caveats:</strong> Threshold should be <strong>per-asset</strong>, not a single fleet-wide constant —
+<code>FlowPreloadThreshold</code> already varies per device per the EWC settings model our own
+<code>getAssetEwcSettings</code> already reads; reusing a wrong global constant here would
+under/over-flag depending on device config. <strong>PII note:</strong> <code>nfcid</code> is a
+pseudonymous tag identifier, not directly a person&#39;s identity, but if any response ever
+joins through to tag-owner records, that join introduces PII and should be flagged by
+eWater&#39;s own data-handling policy at that point — this endpoint&#39;s <code>nfcid</code>-keyed shape
+as specified does not itself add PII beyond what&#39;s already visible in tag records.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>get_tag_flashing_events(nfcid, from?, to?, maxIntervalSeconds?, minRepeats?)</code></li>
+</ul>
+<h3>3.12 Asset-level tag-flashing summary</h3>
+<ul>
+<li><strong><code>GET /api/v2/assets/{assetId}/tag-flashing-summary</code></strong></li>
+<li><strong>Purpose:</strong> Fleet-triage counterpart to 3.11 — &quot;which assets have the most
+flashing-pattern activity,&quot; without requiring a consumer to already know which
+<code>nfcid</code>s to check.</li>
+<li><strong>Params:</strong> <code>assetId</code> (path); <code>from</code>, <code>to</code>.</li>
+<li><strong>Response shape:</strong> <code>{ assetId, distinctTagsFlagged, totalFlashingEvents, estimatedLitresLost }</code></li>
+<li><strong>Backing table:</strong> Aggregation of 3.11 at the asset level.</li>
+<li><strong>Data caveats:</strong> Same threshold caveat as 3.11; <code>estimatedLitresLost</code> should state its
+assumption (e.g. preload-charge litres × event count) explicitly in a <code>methodology</code>
+field so it isn&#39;t mistaken for a precisely metered figure.</li>
+<li><strong>Priority:</strong> P2</li>
+<li><strong>MCP tool:</strong> <code>get_tag_flashing_summary(assetId, from?, to?)</code></li>
+</ul>
+<h3>3.13 Topup listing</h3>
+<ul>
+<li><strong><code>GET /api/v2/topups</code></strong></li>
+<li><strong>Purpose:</strong> List wallet topups with their <strong>true delivery state</strong>, replacing the
+unreliable <code>supertapposition</code> field with a join through <code>tagtopupstate.state</code>.</li>
+<li><strong>Params:</strong> <code>nfcid?</code>, <code>state?</code> (delivery state enum), <code>from?</code>, <code>to?</code>, <code>offset</code>, <code>limit</code>.</li>
+<li><strong>Response shape:</strong> <code>{ topups: [{ id, nfcid, amount, currencyCode, requestedDt, deliveryState, deliveredDt }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> <code>credits.public.tagtopup</code> joined to <code>credits.public.tagtopupstate</code>.</li>
+<li><strong>Data caveats:</strong> <strong>Do not surface or derive delivery status from
+<code>supertapposition</code></strong> — the data dictionary explicitly confirms it is unreliable for
+this purpose; <code>tagtopupstate.state</code> is the source of truth. <strong>PII note:</strong> if <code>tagtopup</code>
+carries a purchaser phone number or payment reference, flag those fields explicitly in
+the eWater-side schema for their own PII policy — we take no position on whether/how
+they should be exposed here, only that they must be flagged, not silently included.</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tool:</strong> <code>list_topups(nfcid?, state?, from?, to?, offset?, limit?)</code></li>
+</ul>
+<h3>3.14 Stuck topups</h3>
+<ul>
+<li><strong><code>GET /api/v2/topups/stuck</code></strong></li>
+<li><strong>Purpose:</strong> Fleet-wide list of topups whose delivery state has not reached a terminal
+state (<code>collected</code>/<code>deleted</code>/<code>erased</code>) within a configurable age threshold — direct
+detection of the &quot;customer paid, tag never got credit&quot; failure mode.</li>
+<li><strong>Params:</strong> <code>minAgeHours</code> (default 24), <code>offset</code>, <code>limit</code>.</li>
+<li><strong>Response shape:</strong> <code>{ stuckTopups: [{ id, nfcid, amount, requestedDt, deliveryState, ageHours }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> Same as 3.13, filtered.</li>
+<li><strong>Data caveats:</strong> Same <code>supertapposition</code> warning as 3.13; confirm the full terminal
+state enum with eWater engineering before finalizing (<code>collected</code>/<code>deleted</code>/<code>erased</code>
+are the three named in the dictionary, but there may be transient intermediate states
+that should not count as &quot;stuck&quot; — e.g. a topup 2 minutes old in a normal
+in-flight state should not appear here even though it isn&#39;t yet terminal).</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tool:</strong> <code>get_stuck_topups(minAgeHours?, offset?, limit?)</code></li>
+</ul>
+<h3>3.15 Tag balance reconciliation</h3>
+<ul>
+<li><strong><code>GET /api/v2/tags/{nfcid}/reconciliation</code></strong></li>
+<li><strong>Purpose:</strong> For one tag, compare expected balance (sum of delivered topups minus
+metered usage-credit-spend) against whatever the platform believes the tag&#39;s current
+balance to be, surfacing any discrepancy.</li>
+<li><strong>Params:</strong> <code>nfcid</code> (path); <code>from?</code> (default: tag lifetime).</li>
+<li><strong>Response shape:</strong> <code>{ nfcid, totalToppedUp, totalDelivered, totalUsageSpend, expectedBalance, reportedBalance, discrepancy, methodology }</code></li>
+<li><strong>Backing table:</strong> <code>credits.tagtopup</code>/<code>tagtopupstate</code> for topup side; usage-credit-spend
+from <code>state.public.ztrilist_generalwateruse_*</code> (post-cutover) — <code>(maximumstartcredit − minimumendcredit)/1000</code> per the data dictionary&#39;s documented formula — falling back to
+legacy <code>assetcontroller.public.waterdisbursement</code> for pre-cutover history.</li>
+<li><strong>Data caveats:</strong> Must apply the same July-2025 cutover caveat as 3.9 — a naive
+lifetime sum will undercount pre-cutover usage-spend unless the legacy fallback path is
+actually implemented, not just documented. <strong>PII note:</strong> flag tag-owner identity if
+joined in by eWater&#39;s schema.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>get_tag_reconciliation(nfcid, from?)</code></li>
+</ul>
+<h3>3.16 Country currency/config</h3>
+<ul>
+<li><strong><code>GET /api/v2/countries/{countryId}/config</code></strong></li>
+<li><strong>Purpose:</strong> Expose the real per-country currency and demographic config that today is
+hardcoded as Kenya-only constants in Power BI DAX.</li>
+<li><strong>Params:</strong> <code>countryId</code> (path).</li>
+<li><strong>Response shape:</strong> <code>{ countryId, countryName, currencyCode, creditExchangeRate, avgPeoplePerHousehold }</code></li>
+<li><strong>Backing table:</strong> <code>ewater_central.public.&quot;Country&quot;</code> joined to
+<code>ewater_central.public.&quot;Currency&quot;</code>; <code>CountryID</code> matches <code>state.public.country.id</code>
+directly (confirmed in dictionary — no fuzzy join needed).</li>
+<li><strong>Data caveats:</strong> At least one row is known-bad in the source data (Austria&#39;s row maps
+to GMD with rate <code>1.0</code> — &quot;clearly junk/test config, not a real rate,&quot; per the
+dictionary) — either exclude/flag known-invalid country config rows or let eWater
+engineering clean the source row; don&#39;t let this endpoint silently propagate obviously
+wrong test data to consumers as if it were real.</li>
+<li><strong>Priority:</strong> P0</li>
+<li><strong>MCP tool:</strong> <code>get_country_config(countryId)</code></li>
+</ul>
+<h3>3.17 Fleet-wide currency/config listing</h3>
+<ul>
+<li><strong><code>GET /api/v2/currency-config</code></strong></li>
+<li><strong>Purpose:</strong> Bulk listing (all countries) for consumers building multi-country revenue
+or beneficiary-count rollups without one call per country.</li>
+<li><strong>Params:</strong> <code>offset</code>, <code>limit</code>.</li>
+<li><strong>Response shape:</strong> <code>{ countries: [{ countryId, countryName, currencyCode, creditExchangeRate, avgPeoplePerHousehold }], totalCount, returnedCount, offset, limit, hasMore }</code></li>
+<li><strong>Backing table:</strong> Same as 3.16.</li>
+<li><strong>Data caveats:</strong> Same known-bad-row caveat as 3.16.</li>
+<li><strong>Priority:</strong> P1</li>
+<li><strong>MCP tool:</strong> <code>list_currency_config(offset?, limit?)</code></li>
+</ul>
+<hr>
+<h2>4. Alerting &amp; Predictive Maintenance — Dedicated Proposal</h2>
+<p>This capability doesn&#39;t exist today in any form (Section 2.2), so it needs a self-contained
+design rather than a single endpoint spec.</p>
+<h3>4.1 Health-change delivery: webhook + polling feed, not either/or</h3>
+<p>Recommend supporting <strong>both</strong> delivery modes from day one, because consumer
+infrastructure varies (some can run a public HTTPS receiver, some can only poll on a
+schedule):</p>
+<ul>
+<li><strong>Webhook mode</strong> (<code>POST /api/v2/webhooks</code> to register a callback URL + event-type
+filter + shared secret for signature verification). eWater&#39;s platform pushes a JSON
+payload on each qualifying event (alert fired, alert resolved, health-factor
+transition). Must support: exponential backoff retry on non-2xx, a way to list
+delivery failures per subscription, and HMAC signing so receivers can verify
+authenticity.</li>
+<li><strong>Polling feed mode</strong> (3.6, <code>GET /health/feed?since=cursor</code>) for consumers without a
+webhook receiver, including cases like our own MCP server which is inherently
+request/response and stateless per invocation (see our architecture note: &quot;no
+server-initiated notifications... needed for a tool-only server&quot;) — an MCP client can&#39;t
+receive a push at all, so the cursor-based feed is the <em>only</em> viable mode for MCP-style
+consumers, which is why 3.6 is specified as P0 alongside the webhook, not instead of it.</li>
+</ul>
+<p>Both modes should be backed by the <strong>same underlying change-detection log</strong>, so there is
+one source of truth for &quot;what changed and when,&quot; not two independently-implemented
+detection paths that could disagree.</p>
+<h3>4.2 Threshold alert rules — proposed model</h3>
+<p>A rule (3.4) has: <code>scope</code> (single asset up to whole fleet), <code>metric</code>, <code>operator</code>,
+<code>threshold</code>, optional <code>windowMinutes</code> for rate-of-change or no-data rules. Proposed
+initial metric enum, chosen to map directly onto fields the API already computes
+somewhere today (so the evaluator has no new instrumentation to build, only a rules
+engine watching existing fields):</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Source field today</th>
+<th>Example rule</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>batteryVoltage</code></td>
+<td><code>AssetPowerStatus.lastKnownVoltage</code></td>
+<td><code>lt 3.2</code></td>
+</tr>
+<tr>
+<td><code>batteryDeclineDays</code></td>
+<td><code>AssetPowerStatus.endOfDayDeclineConsecutiveDays</code></td>
+<td><code>gt 5</code></td>
+</tr>
+<tr>
+<td><code>noCommsMinutes</code></td>
+<td>derived from <code>lastCommsDt</code></td>
+<td><code>gt 1440</code> (24h)</td>
+</tr>
+<tr>
+<td><code>flowRateToday</code></td>
+<td><code>AssetFlowStatus.todayAverageFlowRate</code></td>
+<td><code>eq 0</code> combined with recent usage expectation</td>
+</tr>
+<tr>
+<td><code>tankHeightPercent</code></td>
+<td><code>GetTankHeightHistoryByDateRange</code></td>
+<td><code>lt 10</code></td>
+</tr>
+<tr>
+<td><code>nrwPercent</code> (3.9)</td>
+<td>new</td>
+<td><code>gt 30</code></td>
+</tr>
+<tr>
+<td><code>riskScore</code> (3.7)</td>
+<td>new</td>
+<td><code>gt 75</code></td>
+</tr>
+</tbody></table>
+<p>Evaluation cadence should match each metric&#39;s natural update frequency (no point
+evaluating <code>batteryVoltage</code> more often than the device reports it) — recommend the
+evaluator be event-driven off ingestion, not a fixed global poll interval, to avoid
+needless load and to catch state changes immediately rather than up to one poll interval
+late.</p>
+<h3>4.3 Risk scoring — proposed model</h3>
+<p>Rather than a black-box score, recommend an explainable weighted model returning
+contributing factors (3.7&#39;s <code>contributingFactors</code> field), e.g.:</p>
+<ul>
+<li><strong>Battery trend factor</strong>: normalized <code>endOfDayDeclineConsecutiveDays</code> and
+<code>endOfDayDeclineTotalVoltageDrop</code> — a battery declining steadily for 5+ days is a
+stronger signal than a single low reading.</li>
+<li><strong>Flow anomaly factor</strong>: frequency of days where <code>todayAverageFlowRate</code> deviates
+sharply (e.g. &gt;2 standard deviations) from the asset&#39;s own trailing baseline —
+asset-relative, not a fleet-wide constant, since normal flow varies hugely by tap
+location/usage pattern.</li>
+<li><strong>Connectivity factor</strong>: downtime-window frequency/duration from 3.2 over a trailing
+window (e.g. 30 days) — frequent short outages can be as predictive of impending
+failure as one long outage.</li>
+</ul>
+<p>Each factor should be independently inspectable (<code>contributingFactors[].weight</code> and
+<code>.detail</code>) so a maintenance team can see <em>why</em> an asset scored high, not just the number —
+this is the same &quot;surface the reasoning, not just a magic value&quot; principle already applied
+in our own calibration-analysis feature (<code>getCalibrationAnalysis</code>&#39;s plain-language
+interpretation), extended to the platform level.</p>
+<p>Explicitly flag <code>riskScore: null, reason: &quot;insufficient_history&quot;</code> for assets without
+enough trailing data (recommend ≥14 days) rather than emitting a falsely-confident low
+score — a brand-new asset should read as &quot;unknown,&quot; not &quot;healthy.&quot;</p>
+<hr>
+<h2>5. Versioning, Deprecation &amp; API Hygiene</h2>
+<h3>5.1 Versioning</h3>
+<p>None of the current eWater API bases (<code>auth</code>, <code>query</code>, <code>state</code>, <code>command</code>) carry any
+version prefix or header. Recommend introducing <code>/api/v2/...</code> for every endpoint proposed
+in this document (the &quot;v2&quot; label signals &quot;the next generation of this surface,&quot; not that
+today&#39;s endpoints are being renamed) — the existing unversioned endpoints continue to
+serve as-is; there is no requirement here to touch them. Establishing versioning now,
+before consumers proliferate further, avoids a much more painful retrofit later.</p>
+<h3>5.2 Response envelope consistency</h3>
+<p>Today, error responses vary base-to-base — some return a bare error string, some a
+structured object. Recommend a single error envelope for all new (<code>v2</code>) endpoints:</p>
+<pre><code class="language-json">{ &quot;error&quot;: { &quot;code&quot;: &quot;ASSET_NOT_FOUND&quot;, &quot;message&quot;: &quot;No asset with id 99999&quot;, &quot;details&quot;: {} } }
+</code></pre>
+<p>with a stable <code>code</code> enum documented per endpoint, so consumers can branch on <code>code</code>
+rather than string-matching <code>message</code> (which is exactly the kind of brittle client
+behavior a documented error taxonomy prevents).</p>
+<h3>5.3 Pagination — one contract for every list endpoint</h3>
+<p>Adopt, at the true API level, the same envelope our MCP layer already had to invent as a
+wrapper (see 2.9): every list-shaped response returns <code>totalCount</code>, <code>returnedCount</code>,
+<code>offset</code>, <code>limit</code>, <code>hasMore</code>, with a sane default <code>limit</code> (recommend 50) and a hard max
+(recommend 500) enforced server-side regardless of what a client requests. <code>totalCount</code>
+must be present on every page (not just the first) so a consumer can answer &quot;how many
+total&quot; from any single call, matching the rationale already proven out in our own
+<code>listAssetsPaged</code>. This should apply retroactively to any endpoint eWater chooses to
+version into <code>v2</code> — not just the new endpoints proposed in Section 3.</p>
+<h3>5.4 Deprecation policy</h3>
+<p>Recommend a <code>Sunset</code> HTTP header (RFC 8594) on any <code>v1</code>/unversioned endpoint once a <code>v2</code>
+equivalent ships, plus a maintained changelog entry per breaking change. Minimum
+deprecation window recommendation: 6 months from <code>Sunset</code> header appearing to actual
+removal, given that consumer integrations (like ours) are typically maintained
+intermittently, not continuously monitored for upstream API changes.</p>
+<h3>5.5 OpenAPI as the contract</h3>
+<p>Recommend eWater publish (or at minimum maintain internally, even if not yet public) an
+OpenAPI spec for the <code>v2</code> surface, mirroring the contract-first discipline our own
+project already follows (<code>lib/api-spec/openapi.yaml</code> → generated Zod validators + typed
+client hooks via Orval). This lets any consumer — including a future revision of our own
+MCP server — generate a typed client instead of hand-decoding response shapes from
+documentation prose, which is a meaningful source of the exact kind of quiet
+misinterpretation bugs already seen in the current integration (e.g. our own confirmed
+history of misreading <code>AssetFlowStatus</code> field names on the first pass — see our internal
+notes on <code>*AverageFlowRate</code> naming — a generated, typed client would have caught that at
+compile time instead of silently returning <code>null</code>).</p>
+<hr>
+<h2>Appendix A — Data caveats referenced throughout (source: Power BI data dictionary)</h2>
+<ul>
+<li><strong>July 2025 &quot;Data Waterfall&quot; cutover</strong>: <code>state.public.ztrilist_generalwateruse_*</code>
+tables are only reliably populated from ~July 2025 onward; pre-cutover analysis needs a
+legacy-table fallback, not a silent zero.</li>
+<li><strong>eSense exclusion/spike rules</strong>: exclude <code>purpose = &#39;eSense&#39;</code> from any disbursement
+total; cap supply-side eSense readings at 300 L/min before aggregating.</li>
+<li><strong><code>supertapposition</code> is unreliable</strong> for topup delivery status — use
+<code>tagtopupstate.state</code> instead.</li>
+<li><strong>Hardcoded currency/demographic constants</strong> (<code>0.2109</code> KES/credit, <code>4.7</code>
+people/household) are Kenya-specific and wrong for every other country — use
+<code>ewater_central.&quot;Country&quot;</code>/<code>&quot;Currency&quot;</code> instead.</li>
+<li><strong>Known-bad config row</strong>: Austria maps to GMD at rate <code>1.0</code> in <code>ewater_central</code> — treat
+as test/junk data, not a real country config.</li>
+<li><strong>Sentinel placeholder timestamps</strong>: ~0.003% of <code>generalwateruse_0of6</code> rows carry
+<code>2000-01-01</code>/<code>2086-01-01</code> bounds — filter these out of any date-sensitive query.</li>
+<li><strong><code>Supply (All)</code></strong> is hardcoded to 3 assets (2015, 2211, 2105) — not a general
+fleet-wide bulk-supply table; NRW analysis should report <code>dataQuality: &quot;supply_partial&quot;</code>/<code>&quot;supply_unavailable&quot;</code> for systems without dedicated instrumentation.</li>
+</ul>
+<h2>Appendix B — PII flag summary</h2>
+<p>Fields that may carry personally-identifiable information if eWater&#39;s schema joins them
+in, flagged here for eWater&#39;s own policy determination (not resolved by this document):
+tag-owner identity/name/phone on topup and tag-reconciliation responses (3.13–3.15),
+precise asset GPS coordinates when correlated with a named household, and any future join
+from <code>nfcid</code> to a real-world identity in the tag-flashing endpoints (3.11–3.12).</p>
+
+</body>
+</html>

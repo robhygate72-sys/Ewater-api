@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.chromium
     pkgs.freetype
     pkgs.fontconfig
     pkgs.harfbuzz

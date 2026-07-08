@@ -18,3 +18,9 @@ id = "uoG25WOw30x81-ACb_OFw"
 uri = "file://exports/Ol_Moran_NRW_Calibration_Review.pdf"
 type = "pdf"
 title = "Ol Moran, Kenya — Non-Revenue Water Calibration Review"
+
+[[outputs]]
+id = "rvOyv9OAAJw1MPx_q8g1T"
+uri = "file://attached_assets/generated/eWater-API-Technical-Requirements.pdf"
+type = "pdf"
+title = "eWater Platform API — Technical Requirements & Gap Analysis"
