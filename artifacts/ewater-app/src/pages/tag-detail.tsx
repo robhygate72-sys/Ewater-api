@@ -4,7 +4,7 @@ import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Tag, Home, Droplet, Calendar, Activity, AlertTriangle, ExternalLink } from "lucide-react";
+import { Tag, Home, Droplet, AlertTriangle, ExternalLink, History } from "lucide-react";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,26 @@ interface TagDetailResponse {
   household: HouseholdInfo | null;
 }
 
+interface UsageEvent {
+  timeReceived: string;
+  assetId: number;
+  eventType: number;
+  eventName: string;
+  litresDispensed: number | null;
+  creditConsumed: number | null;
+  flowTicks: number;
+  flowTimeSecs: number;
+}
+
+interface UsagePage {
+  items: UsageEvent[];
+  totalCount: number;
+  returnedCount: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 function Row({ label, value, mono = false, dim = false }: {
   label: string;
   value: React.ReactNode;
@@ -62,6 +82,9 @@ export default function TagDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [usage, setUsage] = useState<UsagePage | null>(null);
+  const [isLoadingUsage, setIsLoadingUsage] = useState(false);
+
   useEffect(() => {
     if (!nfcId) return;
     setIsLoading(true);
@@ -75,6 +98,16 @@ export default function TagDetailPage() {
       .then((d: TagDetailResponse) => setData(d))
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setIsLoading(false));
+  }, [nfcId]);
+
+  useEffect(() => {
+    if (!nfcId) return;
+    setIsLoadingUsage(true);
+    fetch(`/api/ewater/tags/${encodeURIComponent(nfcId)}/usage?days=30&limit=50`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: UsagePage | null) => setUsage(d))
+      .catch(() => {})
+      .finally(() => setIsLoadingUsage(false));
   }, [nfcId]);
 
   const tag = data?.tag;
@@ -202,6 +235,78 @@ export default function TagDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Usage history card */}
+            <Card className="shadow-sm border">
+              <CardHeader className="py-3 px-4 border-b border-border/50">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <History className="w-3.5 h-3.5" />
+                  Recent usage (last 30 days)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-0 py-0">
+                {isLoadingUsage && (
+                  <div className="p-4 space-y-2">
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-4/5" />
+                  </div>
+                )}
+                {!isLoadingUsage && (!usage || usage.items.length === 0) && (
+                  <div className="px-4 py-6 text-center">
+                    <Droplet className="w-5 h-5 mx-auto mb-2 text-muted-foreground/30" />
+                    <p className="text-xs text-muted-foreground">No dispense events found in the last 30 days</p>
+                  </div>
+                )}
+                {!isLoadingUsage && usage && usage.items.length > 0 && (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border/40 bg-muted/20">
+                            <th className="px-4 py-2 text-left font-medium text-muted-foreground">Time</th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground">Litres</th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground">Credits</th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground">Asset</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {usage.items.map((ev, i) => (
+                            <tr key={i} className="border-b border-border/30 last:border-0 hover:bg-muted/10">
+                              <td className="px-4 py-2 text-muted-foreground font-mono whitespace-nowrap">
+                                {formatDateTime(ev.timeReceived)}
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono">
+                                {ev.litresDispensed != null
+                                  ? <span className="text-blue-600 dark:text-blue-400">{ev.litresDispensed.toFixed(2)} L</span>
+                                  : <span className="text-muted-foreground/40">—</span>}
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono">
+                                {ev.creditConsumed != null
+                                  ? <span className={cn(ev.creditConsumed > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/40")}>
+                                      {ev.creditConsumed > 0 ? `-${ev.creditConsumed.toFixed(2)}` : "0"}
+                                    </span>
+                                  : <span className="text-muted-foreground/40 text-[10px]">no credit</span>}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                <Link href={`/assets/${ev.assetId}`} className="text-primary hover:underline">
+                                  {ev.assetId}
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {usage.totalCount > usage.returnedCount && (
+                      <div className="px-4 py-2 text-xs text-muted-foreground border-t border-border/30 text-center">
+                        Showing {usage.returnedCount} of {usage.totalCount} events
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </>
         )}
       </div>

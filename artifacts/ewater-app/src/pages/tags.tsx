@@ -64,9 +64,11 @@ export default function TagsPage() {
 
   const selectedSystem = waterSystems.find((w) => w.id === selectedSystemId);
 
+  const NFC_HEX_RE = /^[0-9A-Fa-f]{8}$/;
+
   const handleSearch = () => {
     const v = searchInput.trim().toUpperCase();
-    if (v) setSearchValue(v);
+    if (NFC_HEX_RE.test(v)) setSearchValue(v);
   };
 
   const handleSystemChange = (id: number | null) => {
@@ -95,7 +97,7 @@ export default function TagsPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="font-mono text-sm h-9"
               />
-              <Button size="sm" onClick={handleSearch} disabled={!searchInput.trim()}>
+              <Button size="sm" onClick={handleSearch} disabled={!NFC_HEX_RE.test(searchInput.trim())}>
                 Look up
               </Button>
             </div>

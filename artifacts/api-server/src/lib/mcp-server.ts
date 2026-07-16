@@ -27,6 +27,7 @@ import {
   getRegisteredTagIds,
   getTagInfo,
   getHouseholdInfo,
+  getTagUsage,
   singleItemPage,
 } from "./ewater-insights";
 import { logger } from "./logger";
@@ -390,6 +391,34 @@ function createEwaterMcpServer(): McpServer {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, householdId }, "MCP get_household_info failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_tag_usage",
+    {
+      title: "Get NFC tag usage history",
+      description:
+        "Returns recent dispense events recorded for an NFC tag by scanning the EWC packet log for the tag's primary asset. Each event includes the timestamp, litres dispensed (derived from tick count ÷ LCF), credit consumed, and event type (Dispense / Dispense no-credit). Useful for verifying that a household is actively using their tap, debugging credit deduction problems, or computing per-tag consumption over a period. Obtain nfcId and primaryAssetId from `get_tag_info`. Window is capped at 90 days; default is 30. Response uses the standard pagination envelope with events under `items`.",
+      inputSchema: {
+        nfcId: z.string().describe("NFC tag ID (8-char hex, e.g. 'D32268F0')"),
+        primaryAssetId: z.number().int().describe("Asset ID of the tag's primary tap (from get_tag_info)"),
+        windowDays: z.number().int().min(1).max(90).default(30).describe("How many days back to scan (1–90, default 30)"),
+        offset: z.number().int().min(0).default(0).describe("Pagination offset (default 0)"),
+        limit: z.number().int().min(1).max(200).default(50).describe("Max events to return (default 50)"),
+      },
+    },
+    async ({ nfcId, primaryAssetId, windowDays, offset, limit }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const page = await getTagUsage(nfcId, primaryAssetId, windowDays, offset, limit);
+        return jsonToolResult(page);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, nfcId }, "MCP get_tag_usage failed");
         return errorToolResult(`eWater API error: ${msg}`);
       }
     },

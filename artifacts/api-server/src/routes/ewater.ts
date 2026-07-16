@@ -32,6 +32,7 @@ import {
   getRegisteredTagIds,
   getTagInfo,
   getHouseholdInfo,
+  getTagUsage,
   strOrNull,
   numOrNull,
   numOrZero,
@@ -1346,6 +1347,28 @@ router.get("/ewater/tags/:nfcId", async (req, res): Promise<void> => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch tag info");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// GET /api/ewater/tags/:nfcId/usage?days=30&offset=0&limit=100
+router.get("/ewater/tags/:nfcId/usage", async (req, res): Promise<void> => {
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+  const nfcId = req.params["nfcId"];
+  if (!nfcId) { res.status(400).json({ error: "nfcId required" }); return; }
+
+  const days   = Math.min(90, Math.max(1, Number(req.query["days"]   ?? 30)));
+  const offset = Math.max(0,          Number(req.query["offset"]  ?? 0));
+  const limit  = Math.min(200, Math.max(1, Number(req.query["limit"]  ?? 100)));
+
+  try {
+    const tag = await getTagInfo(nfcId.toUpperCase());
+    if (!tag) { res.status(404).json({ error: "Tag not found" }); return; }
+    const page = await getTagUsage(nfcId, tag.primaryAssetId, days, offset, limit);
+    res.json(page);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch tag usage");
     res.status(502).json({ error: `eWater API error: ${msg}` });
   }
 });

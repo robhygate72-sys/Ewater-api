@@ -1483,6 +1483,121 @@ export async function getTagInfo(nfcId: string): Promise<TagInfo | null> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Tag usage events — scans EWC packet log for dispense events matching a tag
+// ---------------------------------------------------------------------------
+
+export interface TagUsageEvent {
+  timeReceived: string;
+  assetId: number;
+  eventType: number;
+  eventName: string;
+  litresDispensed: number | null;
+  creditConsumed: number | null;
+  flowTicks: number;
+  flowTimeSecs: number;
+}
+
+export async function getTagUsage(
+  nfcId: string,
+  primaryAssetId: number | null,
+  windowDays: number,
+  offset?: number,
+  limit?: number,
+): Promise<Page<TagUsageEvent>> {
+  const empty = paginateArray([] as TagUsageEvent[], limit, offset);
+  if (!primaryAssetId) return empty;
+
+  const endDate = new Date();
+  const startDate = new Date(endDate.getTime() - windowDays * 24 * 3600 * 1000);
+  const targetUid = nfcId.toUpperCase();
+
+  try {
+    const [logsResult, lcf] = await Promise.all([
+      ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+        method: "POST",
+        body: JSON.stringify({
+          assetId: primaryAssetId,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          pipeline: null,
+        }),
+      }),
+      fetchAssetLcf(String(primaryAssetId)),
+    ]);
+
+    if (logsResult.status !== 200) return empty;
+
+    const body = logsResult.data as Record<string, unknown>;
+    const lines = Array.isArray(body["logLines"])
+      ? (body["logLines"] as Record<string, unknown>[])
+      : [];
+
+    const events: TagUsageEvent[] = [];
+
+    for (const line of lines) {
+      const payload = strOrNull(line["payload"]);
+      const time = strOrNull(line["timeReceived"]);
+      if (!payload || !time) continue;
+
+      try {
+        const bytes = Array.from(atob(payload), (c) => c.charCodeAt(0));
+        // EWC2.5 datalog packet: 39 bytes, header 0x44, ETX 0x03 at [37]
+        if (bytes.length !== 39 || bytes[0] !== 0x44) continue;
+
+        const eventType = bytes[5]!;
+        // 0x09 = standard dispense, 0x0b = no-credit dispense
+        if (eventType !== 0x09 && eventType !== 0x0b) continue;
+
+        // UID at bytes[12..15] (4 bytes, big-endian hex)
+        const uid = [bytes[12]!, bytes[13]!, bytes[14]!, bytes[15]!]
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+          .toUpperCase();
+
+        if (uid !== targetUid) continue;
+
+        const flowTicks = (bytes[28]! << 16) | (bytes[29]! << 8) | bytes[30]!;
+        const flowTimeSecs = (bytes[31]! << 8) | bytes[32]!;
+        const startCreditMits =
+          (bytes[20]! * 16777216) + (bytes[21]! * 65536) + (bytes[22]! * 256) + bytes[23]!;
+        const endCreditMits =
+          (bytes[24]! * 16777216) + (bytes[25]! * 65536) + (bytes[26]! * 256) + bytes[27]!;
+
+        const litresDispensed =
+          lcf != null && lcf > 0 ? Math.round((flowTicks / lcf) * 100) / 100 : null;
+        // endCreditMits === 0xFFFFFFFF means no-credit event (no deduction)
+        const creditConsumed =
+          endCreditMits !== 0xffffffff
+            ? Math.round(((startCreditMits - endCreditMits) / 1000) * 100) / 100
+            : null;
+
+        events.push({
+          timeReceived: time,
+          assetId: primaryAssetId,
+          eventType,
+          eventName: eventType === 0x09 ? "Dispense" : "Dispense (no credit)",
+          litresDispensed,
+          creditConsumed,
+          flowTicks,
+          flowTimeSecs,
+        });
+      } catch {
+        // skip malformed packets
+      }
+    }
+
+    // Newest-first
+    events.sort(
+      (a, b) => new Date(b.timeReceived).getTime() - new Date(a.timeReceived).getTime(),
+    );
+
+    return paginateArray(events, limit, offset);
+  } catch {
+    return empty;
+  }
+}
+
 export interface HouseholdInfo {
   householdId: string;
   name: string | null;
