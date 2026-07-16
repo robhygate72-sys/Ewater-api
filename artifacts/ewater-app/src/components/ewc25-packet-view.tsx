@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import {
   decodeEwc25,
@@ -109,6 +110,20 @@ function ESenseFields({ d, rangeMetres1, rangeMetres2, rangeMetres3 }: {
 
 // ─── EWC2.5 datalog section renderers ─────────────────────────────────────────
 
+function TagUidField({ uid }: { uid: string }) {
+  if (!uid || uid === "00000000") {
+    return <Field label="Tag UID" value={uid || "—"} mono dim />;
+  }
+  return (
+    <Field
+      label="Tag UID"
+      value={
+        <Link href={`/tags/${uid.toUpperCase()}`} className="font-mono text-primary hover:underline">{uid}</Link>
+      }
+    />
+  );
+}
+
 function StandardFields({ d }: { d: Ewc25Decoded }) {
   const creditUsed = d.creditUsedMits;
   const dispensed = d.endCreditMits === 0xFFFFFFFF;
@@ -116,7 +131,7 @@ function StandardFields({ d }: { d: Ewc25Decoded }) {
   return (
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
-      <Field label="Tag UID" value={d.uid} mono />
+      <TagUidField uid={d.uid} />
       {d.event !== 0x02 && d.event !== 0x07 && (
         <>
           <Divider />
@@ -152,7 +167,7 @@ function NoCreditFields({ d }: { d: Ewc25Decoded }) {
   return (
     <>
       <Field label="Battery" value={`${d.batteryVolts.toFixed(2)} V`} />
-      <Field label="Tag UID" value={d.uid} mono />
+      <TagUidField uid={d.uid} />
       <Divider />
       <Field label="Start credit" value={`${mitsToCredits(d.startCreditMits)} credits`} />
       <Field label="End credit" value={`${mitsToCredits(d.endCreditMits)} credits`} />
@@ -303,7 +318,7 @@ function ReplyDataFields({ data }: { data: EwcReplyData }) {
       return (
         <>
           <Field label="Device time" value={data.deviceTimeStr} mono />
-          <Field label="Tag UID" value={data.uid === "00000000" ? "No tag" : data.uid} mono dim={data.uid === "00000000"} />
+          <TagUidField uid={data.uid} />
           <Field label="Battery" value={`${data.batteryVolts.toFixed(2)} V`} />
           <Field label="Pressure" value={data.pressureOk ? "OK" : "NO PRESSURE"} dim={data.pressureOk} />
           <Divider />

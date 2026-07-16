@@ -29,6 +29,9 @@ import {
   extractImeiFromLogSource,
   fetchAssetLcf,
   getRawPacketLogs,
+  getRegisteredTagIds,
+  getTagInfo,
+  getHouseholdInfo,
   strOrNull,
   numOrNull,
   numOrZero,
@@ -1292,6 +1295,73 @@ router.get("/ewater/assets/:assetId/logs", async (req, res): Promise<void> => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch asset logs");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Tags — registered user roster (Reference API)
+// GET /api/ewater/tags?waterSystemId={id}&offset={n}&limit={n}
+// GET /api/ewater/tags/:nfcId
+// GET /api/ewater/households/:householdId
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/tags", async (req, res): Promise<void> => {
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+  const waterSystemIdRaw = req.query["waterSystemId"];
+  if (typeof waterSystemIdRaw !== "string" || !waterSystemIdRaw) {
+    res.status(400).json({ error: "waterSystemId query parameter required" });
+    return;
+  }
+  const waterSystemId = Number(waterSystemIdRaw);
+  if (isNaN(waterSystemId)) { res.status(400).json({ error: "waterSystemId must be a number" }); return; }
+  const offset = Number(req.query["offset"] ?? 0);
+  const limit = Math.min(Math.max(Number(req.query["limit"] ?? 100), 1), 500);
+
+  try {
+    const page = await getRegisteredTagIds(waterSystemId, offset, limit);
+    res.json(page);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch registered tag IDs");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+router.get("/ewater/tags/:nfcId", async (req, res): Promise<void> => {
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+  const nfcId = req.params["nfcId"];
+  if (!nfcId) { res.status(400).json({ error: "nfcId required" }); return; }
+
+  try {
+    const tag = await getTagInfo(nfcId.toUpperCase());
+    if (!tag) { res.status(404).json({ error: "Tag not found" }); return; }
+
+    let household = null;
+    if (tag.householdId) {
+      household = await getHouseholdInfo(tag.householdId);
+    }
+
+    res.json({ tag, household });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch tag info");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+router.get("/ewater/households/:householdId", async (req, res): Promise<void> => {
+  if (!getCredentials()) { res.status(401).json({ error: "No credentials configured" }); return; }
+  const householdId = req.params["householdId"];
+  if (!householdId) { res.status(400).json({ error: "householdId required" }); return; }
+
+  try {
+    const household = await getHouseholdInfo(householdId);
+    if (!household) { res.status(404).json({ error: "Household not found" }); return; }
+    res.json(household);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "Failed to fetch household info");
     res.status(502).json({ error: `eWater API error: ${msg}` });
   }
 });

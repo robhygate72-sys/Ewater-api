@@ -12,6 +12,8 @@ import NotificationsPage from "@/pages/notifications";
 import ExportPage from "@/pages/export";
 import Login from "@/pages/login";
 import McpDocsPage from "@/pages/mcp-docs";
+import TagsPage from "@/pages/tags";
+import TagDetailPage from "@/pages/tag-detail";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
@@ -111,6 +113,8 @@ function Router() {
       <Route path="/watchlist" component={Watchlist} />
       <Route path="/notifications" component={NotificationsPage} />
       <Route path="/export" component={ExportPage} />
+      <Route path="/tags" component={TagsPage} />
+      <Route path="/tags/:nfcId" component={TagDetailPage} />
       <Route component={NotFound} />
     </Switch>
   );

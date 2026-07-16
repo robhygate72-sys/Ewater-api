@@ -24,6 +24,9 @@ import {
   getAssetFlowRate,
   getAssetHistoryPaged,
   getCalibrationAnalysis,
+  getRegisteredTagIds,
+  getTagInfo,
+  getHouseholdInfo,
   singleItemPage,
 } from "./ewater-insights";
 import { logger } from "./logger";
@@ -304,6 +307,89 @@ function createEwaterMcpServer(): McpServer {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, assetId }, "MCP get_calibration_analysis failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_registered_tags",
+    {
+      title: "List registered NFC tags",
+      description:
+        "Lists all fully-registered NFC tag IDs for one eWater water system (registered = tag has a household record and has completed sign-up). Use `list_water_systems` first to get a `waterSystemId`. Response uses the standard pagination envelope; `totalCount` is the true fleet size for that system — use it to answer 'how many registered users?' questions directly without fetching all pages. Pass an nfcId from this list to `get_tag_info` for registration and usage details.",
+      inputSchema: {
+        waterSystemId: z.number().int().describe("The eWater water system ID (from list_water_systems)"),
+        limit: z.number().int().min(1).max(500).default(100).describe("Max tag IDs to return per call (1-500, default 100)"),
+        offset: z.number().int().min(0).default(0).describe("Number of tag IDs to skip before returning results, for paging"),
+      },
+    },
+    async ({ waterSystemId, limit, offset }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const page = await getRegisteredTagIds(waterSystemId, offset, limit);
+        return jsonToolResult({
+          nfcIds: page.items,
+          totalCount: page.totalCount,
+          returnedCount: page.returnedCount,
+          offset: page.offset,
+          limit: page.limit,
+          hasMore: page.hasMore,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, waterSystemId }, "MCP list_registered_tags failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_tag_info",
+    {
+      title: "Get NFC tag info",
+      description:
+        "Returns registration details for one NFC tag: when it signed up, which household it belongs to (householdId), which asset is its primary tap (primaryAssetId), credit balance, dispense and top-up counts, and whether it has been deleted or blacklisted. Pass householdId to `get_household_info` for the household record. Pass primaryAssetId to `get_asset_ewc_settings` or `get_asset_history` for the tap's technical data. Response uses the standard single-item pagination envelope (totalCount/returnedCount are 1, hasMore is false) with the tag record under `data`.",
+      inputSchema: {
+        nfcId: z.string().describe("The NFC tag ID (8-character hex string, e.g. 'D32268F0' — case-insensitive)"),
+      },
+    },
+    async ({ nfcId }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const tag = await getTagInfo(nfcId.toUpperCase());
+        if (!tag) return errorToolResult(`Tag not found: ${nfcId}`);
+        return jsonToolResult(singleItemPage(tag));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, nfcId }, "MCP get_tag_info failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_household_info",
+    {
+      title: "Get household info",
+      description:
+        "Returns the household record for a registered eWater customer: household name, creation date, last-active date, and the linked asset and system IDs. Obtain a householdId from `get_tag_info`. Phone number, address, and GPS coordinates are absent — removed by eWater per Kenya data-protection law. Response uses the standard single-item pagination envelope (totalCount/returnedCount are 1, hasMore is false) with the household record under `data`.",
+      inputSchema: {
+        householdId: z.string().describe("The household UUID (from get_tag_info)"),
+      },
+    },
+    async ({ householdId }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const household = await getHouseholdInfo(householdId);
+        if (!household) return errorToolResult(`Household not found: ${householdId}`);
+        return jsonToolResult(singleItemPage(household));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, householdId }, "MCP get_household_info failed");
         return errorToolResult(`eWater API error: ${msg}`);
       }
     },

@@ -1402,3 +1402,113 @@ export async function getRawPacketLogs(
     .sort((a, b) => new Date(b.timeReceived).getTime() - new Date(a.timeReceived).getTime())
     .slice(0, maxEntries);
 }
+
+// ---------------------------------------------------------------------------
+// Tag & Household lookup — Reference API
+//
+// Confirmed endpoint shapes (2026-07-16):
+//   GET /api/Reference/GetTagIdsByRegisteredWaterSystem?waterSystemId={id}
+//     → string[]  (NFC IDs of all fully-registered tags in that water system)
+//   GET /api/Reference/GetTagInfo?tagId={nfcId}
+//     → { nfcId, favAssetId, favSystemId, favCountryId, lastAssetId,
+//         signUpDt, createdDt, lastUsageDt, deletedDt, blackListDt,
+//         householdId, credits, disbursementCount, topUpCount, ... }
+//   GET /api/Reference/GetHouseholdInfo?householdId={uuid}
+//     → { householdId, name, assetId, systemId, createdDt, lastActiveDt,
+//         mobileUseConsent, stats, previousWaterSources }
+//   Note: no GPS coordinates in household record — eWater strips them.
+// ---------------------------------------------------------------------------
+
+export interface TagInfo {
+  nfcId: string;
+  primaryAssetId: number | null;
+  primarySystemId: number | null;
+  primaryCountryId: number | null;
+  householdId: string | null;
+  signUpDt: string | null;
+  createdDt: string | null;
+  lastUsageDt: string | null;
+  disbursementCount: number | null;
+  topUpCount: number | null;
+  credits: number | null;
+  isDeleted: boolean;
+  isBlacklisted: boolean;
+}
+
+export async function getRegisteredTagIds(
+  waterSystemId: number,
+  offset?: number,
+  limit?: number,
+): Promise<Page<string>> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Reference/GetTagIdsByRegisteredWaterSystem?waterSystemId=${encodeURIComponent(waterSystemId)}`,
+    );
+    if (result.status !== 200 || !Array.isArray(result.data)) {
+      return paginateArray([] as string[], limit, offset);
+    }
+    const ids = (result.data as unknown[]).filter((s): s is string => typeof s === "string");
+    return paginateArray(ids, limit, offset);
+  } catch {
+    return paginateArray([] as string[], limit, offset);
+  }
+}
+
+export async function getTagInfo(nfcId: string): Promise<TagInfo | null> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Reference/GetTagInfo?tagId=${encodeURIComponent(nfcId)}`,
+    );
+    if (result.status !== 200) return null;
+    const d = result.data as Record<string, unknown>;
+    return {
+      nfcId: strOrNull(d["nfcId"]) ?? nfcId,
+      primaryAssetId: numOrNull(d["favAssetId"]),
+      primarySystemId: numOrNull(d["favSystemId"]),
+      primaryCountryId: numOrNull(d["favCountryId"]),
+      householdId: strOrNull(d["householdId"]),
+      signUpDt: strOrNull(d["signUpDt"]),
+      createdDt: strOrNull(d["createdDt"]),
+      lastUsageDt: strOrNull(d["lastUsageDt"]),
+      disbursementCount: numOrNull(d["disbursementCount"]),
+      topUpCount: numOrNull(d["topUpCount"]),
+      credits: numOrNull(d["credits"]),
+      isDeleted: d["deletedDt"] != null,
+      isBlacklisted: d["blackListDt"] != null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface HouseholdInfo {
+  householdId: string;
+  name: string | null;
+  assetId: number | null;
+  systemId: number | null;
+  createdDt: string | null;
+  lastActiveDt: string | null;
+}
+
+export async function getHouseholdInfo(householdId: string): Promise<HouseholdInfo | null> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Reference/GetHouseholdInfo?householdId=${encodeURIComponent(householdId)}`,
+    );
+    if (result.status !== 200) return null;
+    const d = result.data as Record<string, unknown>;
+    return {
+      householdId: strOrNull(d["householdId"]) ?? householdId,
+      name: strOrNull(d["name"]),
+      assetId: numOrNull(d["assetId"]),
+      systemId: numOrNull(d["systemId"]),
+      createdDt: strOrNull(d["createdDt"]),
+      lastActiveDt: strOrNull(d["lastActiveDt"]),
+    };
+  } catch {
+    return null;
+  }
+}
