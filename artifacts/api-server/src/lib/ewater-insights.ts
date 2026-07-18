@@ -1758,6 +1758,7 @@ export interface GetAssetLogsOptions {
   limit?: number;
   before?: string;
   protocol?: string;
+  excludeProtocols?: string[];
 }
 
 function buildEwcDatalog(d: Ewc25Decoded): AssetLogEwcDatalog {
@@ -1914,7 +1915,7 @@ export async function getAssetLogs(
   assetId: string | number,
   options: GetAssetLogsOptions = {},
 ): Promise<Page<AssetLogEntry>> {
-  const { days = 7, limit = 50, before, protocol: protocolFilter } = options;
+  const { days = 7, limit = 50, before, protocol: protocolFilter, excludeProtocols } = options;
   const cappedDays = Math.min(Math.max(days, 1), 30);
   const cappedLimit = Math.min(Math.max(limit, 1), 100);
 
@@ -1944,12 +1945,16 @@ export async function getAssetLogs(
     return tb - ta;
   });
 
-  const filtered = protocolFilter
-    ? sorted.filter((l) => {
-        const p = strOrNull(l["protocol"]) ?? "";
-        return p.toLowerCase() === protocolFilter.toLowerCase();
-      })
-    : sorted;
+  const excludeSet = excludeProtocols
+    ? new Set(excludeProtocols.map((p) => p.toLowerCase()))
+    : null;
+
+  const filtered = sorted.filter((l) => {
+    const p = (strOrNull(l["protocol"]) ?? "").toLowerCase();
+    if (protocolFilter && p !== protocolFilter.toLowerCase()) return false;
+    if (excludeSet && excludeSet.has(p)) return false;
+    return true;
+  });
 
   const totalCount = filtered.length;
   const page = filtered.slice(0, cappedLimit);
