@@ -335,6 +335,12 @@ async function fetchRawAssetsList(): Promise<Record<string, unknown>[] | null> {
   }
 }
 
+export async function getAssetById(assetId: number): Promise<AssetSummary | null> {
+  const assets = await listAssets();
+  const idStr = String(assetId);
+  return assets.find((a) => a.id === idStr) ?? null;
+}
+
 export async function listAssets(): Promise<AssetSummary[]> {
   const [rawAssets, hierarchy] = await Promise.all([fetchRawAssetsList(), fetchEntityHierarchy()]);
   const raw = rawAssets ?? hierarchy.rawAssets;

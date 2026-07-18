@@ -17,6 +17,7 @@ import { z } from "zod";
 import { getCredentials } from "./ewater-client";
 import {
   listAssetsPaged,
+  getAssetById,
   listCountries,
   listOrganisations,
   listWaterSystems,
@@ -159,7 +160,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "List eWater assets",
       description:
-        "Lists eWater assets (dispensers/taps), paginated (max 100 per call, default 50) and optionally filtered by status, water system, organisation, or country. The response's totalCount is the true total matching the filters across every page — use it directly to answer 'how many' questions without fetching every page. Use limit/offset to page through results. To scope to a specific location, first call list_water_systems (optionally via list_countries/list_organisations) to resolve names/ids, then pass waterSystemName/waterSystemId (or organisation/country equivalents) here instead of paging through everything.",
+        "Returns all eWater assets (taps/dispensers) visible to this account. Each item includes: id (numeric asset ID), name, asset type, status, GPS location, water system name, and country name. When to call: when a user asks to list all taps, find an asset by name or location, count assets, or find an asset ID when only the name is known. Do NOT call this if you already have a numeric asset ID (e.g. primary_asset_id from get_tag) — call get_asset directly instead. Paginated: max 100 per call, default 50; totalCount is the true total across all pages. To scope to a location, pass waterSystemName/waterSystemId (resolve via list_water_systems if needed) instead of paging through everything. What to call next: use the id from any result as assetId for get_asset, get_asset_history, get_asset_flow_rate, get_asset_ewc_settings, or get_calibration_analysis.",
       inputSchema: {
         limit: z.number().int().min(1).max(100).default(50).describe("Max assets to return per call (1-100, default 50)"),
         offset: z.number().int().min(0).default(0).describe("Number of matching assets to skip before returning results, for paging. Omit or 0 for the first page."),
@@ -204,11 +205,36 @@ function createEwaterMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "get_asset",
+    {
+      title: "Get asset by ID",
+      description:
+        "Returns full details for one eWater asset given its numeric ID: asset name, asset type (e.g. CommunityTap), status (Active/Inactive), GPS coordinates, water system name, and country name. When to call: when a user asks 'what water system does this tag/household use?', 'what tap is asset ID X?', or any question needing details about a specific asset. Call this after get_tag using primary_asset_id as the input. Where assetId comes from: the primary_asset_id field returned by get_tag, or the id field from list_assets. Never guess the water system name, country, or asset type — this tool returns the real values. Response uses the standard single-item envelope with the asset record under `data`.",
+      inputSchema: {
+        assetId: z.number().int().describe("The numeric eWater asset ID (primary_asset_id from get_tag, or id from list_assets)"),
+      },
+    },
+    async ({ assetId }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const asset = await getAssetById(assetId);
+        if (!asset) return errorToolResult(`Asset not found: ${assetId}`);
+        return jsonToolResult(singleItemPage(asset));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, assetId }, "MCP get_asset failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
     "get_asset_history",
     {
       title: "Get asset history",
       description:
-        "Returns time-series history for one eWater asset over the last N days: tank height (water/chlorine), daily water inflow, battery voltage history + status, and dispense flow-rate history. Each time-series (tankHeight, dailyInflow, voltageHistory, flowRateHistory) is independently paginated with the standard envelope (totalCount/returnedCount/hasMore) using the same limit/offset — use a larger `days` range plus limit/offset paging rather than assuming one call returns everything for long ranges.",
+        "Returns time-series history for one eWater asset over the last N days (1–180, default 7). Includes: tank water and chlorine height over time, daily water inflow volume, battery voltage history and charge status, and dispense flow-rate history. When to call: when asked about asset performance over time, water levels, tank fill history, battery health trends, or historical flow rates for a specific tap or dispenser. Where assetId comes from: the primary_asset_id field from get_tag, the id field from list_assets or get_asset, or a numeric asset ID mentioned in the conversation — never guess the assetId. Each time-series (tankHeight, dailyInflow, voltageHistory, flowRateHistory) is independently paginated with the standard envelope; use limit/offset to page through long ranges.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
         days: z.number().int().min(1).max(180).default(7).describe("Number of days of history to return (1-180, default 7)"),
@@ -245,7 +271,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get asset EWC settings",
       description:
-        "Returns the electronic water controller (EWC) device settings for one asset: flow conversion factor (FCF), litres conversion factor (LCF), currency conversion (FX), preload charge, price of water, and other device configuration values. Response uses the standard pagination envelope (single-item: totalCount/returnedCount are 1, hasMore is false) with the settings under `data`.",
+        "Returns the EWC (electronic water controller) configuration for one eWater asset: flow conversion factor (FCF), litres conversion factor (LCF), currency/FX settings, preload charge, price per litre, and other device configuration values. When to call: when asked about pricing, how much water a credit buys, device configuration, preload settings, or calibration factors for a specific tap or dispenser. Where assetId comes from: the primary_asset_id field from get_tag, the id field from list_assets or get_asset, or a numeric asset ID mentioned in the conversation — never guess the assetId. Response uses the standard single-item envelope with settings under `data`.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
       },
@@ -269,7 +295,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get asset flow rate",
       description:
-        "Returns the most recent dispense flow rate (litres/minute) for one asset, derived from the last 24 hours of device logs. Response uses the standard pagination envelope (single-item: totalCount/returnedCount are 1, hasMore is false) with the result under `data`.",
+        "Returns the most recent dispense flow rate in litres/minute for one eWater asset, calculated from the last 24 hours of device logs. When to call: when asked 'is the tap flowing properly?', 'what is the current flow rate?', 'how fast is water dispensing?', or any question about live dispensing performance for a specific asset. Where assetId comes from: the primary_asset_id field from get_tag, the id field from list_assets or get_asset, or a numeric asset ID mentioned in the conversation — never guess the assetId. Response uses the standard single-item envelope with the result under `data`.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
       },
@@ -293,7 +319,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "Get calibration / NRW gap analysis",
       description:
-        "Runs a calibration and non-revenue-water (NRW) gap analysis for one asset over the last N days. Compares the configured litres-conversion factor (LCF) against the typical dispense volume derived from a KDE of dispense events (assumed to cluster around a true 20L fill), and compares the configured preload against the measured preload from 'no credit' events. Returns the LCF gap %, preload gap, and a plain-language interpretation of likely meter drift / under- or over-reading. Response uses the standard pagination envelope (single-item: totalCount/returnedCount are 1, hasMore is false) with the analysis under `data`.",
+        "Runs a calibration and non-revenue-water (NRW) gap analysis for one eWater asset over N days (1–180, default 30). Compares the configured litres-conversion factor (LCF) against measured dispense events to detect meter drift. Compares configured preload against actual 'no credit' event data. Returns: LCF gap %, preload gap, and a plain-language summary of whether the meter is over-reading or under-reading. When to call: when asked about NRW, meter drift, calibration accuracy, revenue loss, or whether LCF or preload settings are correct for a specific tap. Where assetId comes from: the primary_asset_id field from get_tag, the id field from list_assets or get_asset, or a numeric asset ID mentioned in the conversation — never guess the assetId. Response uses the standard single-item envelope with the analysis under `data`.",
       inputSchema: {
         assetId: z.string().describe("The eWater asset ID"),
         days: z.number().int().min(1).max(180).default(30).describe("Number of days of dispense history to analyze (1-180, default 30)"),
@@ -318,7 +344,7 @@ function createEwaterMcpServer(): McpServer {
     {
       title: "List registered NFC tags",
       description:
-        "Lists all fully-registered NFC tag IDs for one eWater water system (registered = tag has a household record and has completed sign-up). Use `list_water_systems` first to get a `waterSystemId`. Response uses the standard pagination envelope; `totalCount` is the true fleet size for that system — use it to answer 'how many registered users?' questions directly without fetching all pages. Pass an nfcId from this list to `get_tag_info` for registration and usage details.",
+        "Lists all fully-registered NFC tag IDs for one eWater water system (registered = tag has a household record and has completed sign-up). Use `list_water_systems` first to get a `waterSystemId`. Response uses the standard pagination envelope; `totalCount` is the true fleet size for that system — use it to answer 'how many registered users?' questions directly without fetching all pages. What to call next: pass any nfcId from this list to `get_tag` to look up that tag's registration details, credit balance, and household.",
       inputSchema: {
         waterSystemId: z.number().int().describe("The eWater water system ID (from list_water_systems)"),
         limit: z.number().int().min(1).max(500).default(100).describe("Max tag IDs to return per call (1-500, default 100)"),
@@ -340,11 +366,36 @@ function createEwaterMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "get_tag",
+    {
+      title: "Get NFC tag",
+      description:
+        "Looks up an NFC water tag by its short tag ID (e.g. DBDA4ED2). Returns: primary_asset_id (numeric), primary_system_id (numeric), primary_country_id (numeric), household_id (UUID), sign-up date, last usage date, disbursement count, top-up count, credit balance, deleted status, blacklisted status. When to call: any time a user mentions a tag ID or asks about a specific NFC tag, household, or registered water user. This is always the starting point — call this first. What to call next with the result: for the tap/dispenser name and water system name → get_asset(assetId = primary_asset_id); for the household name → get_household(householdId = household_id). Never guess the household name, water system name, or country from the IDs returned — always resolve them via the appropriate follow-up tool call. Response uses the standard single-item envelope with the tag record under `data`.",
+      inputSchema: {
+        nfcId: z.string().describe("The NFC tag ID (8-character hex string, e.g. 'DBDA4ED2' — case-insensitive)"),
+      },
+    },
+    async ({ nfcId }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const tag = await getTagInfo(nfcId.toUpperCase());
+        if (!tag) return errorToolResult(`Tag not found: ${nfcId}`);
+        return jsonToolResult(singleItemPage(tag));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, nfcId }, "MCP get_tag failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
     "get_tag_info",
     {
-      title: "Get NFC tag info",
+      title: "Get NFC tag info (alias)",
       description:
-        "Returns registration details for one NFC tag: when it signed up, which household it belongs to (householdId), which asset is its primary tap (primaryAssetId), credit balance, dispense and top-up counts, and whether it has been deleted or blacklisted. Pass householdId to `get_household_info` for the household record. Pass primaryAssetId to `get_asset_ewc_settings` or `get_asset_history` for the tap's technical data. Response uses the standard single-item pagination envelope (totalCount/returnedCount are 1, hasMore is false) with the tag record under `data`.",
+        "Alias for get_tag — prefer get_tag for new calls. Looks up an NFC water tag by its short tag ID. Returns primary_asset_id, household_id, credit balance, dispense/top-up counts, and status flags. What to call next: get_asset(primary_asset_id) for the tap name and water system; get_household(household_id) for the household name. Never guess the water system name or household name from IDs — always resolve via follow-up tool.",
       inputSchema: {
         nfcId: z.string().describe("The NFC tag ID (8-character hex string, e.g. 'D32268F0' — case-insensitive)"),
       },
@@ -365,13 +416,38 @@ function createEwaterMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "get_household",
+    {
+      title: "Get household",
+      description:
+        "Returns the registered household name and details for a given household UUID: household name, creation date, last-active date, and the linked asset and system IDs. When to call: after get_tag, when the user asks 'who is this tag registered to?', 'what is the household name?', or 'whose account is this?'. Where householdId comes from: the household_id field returned by get_tag. Never guess the household name — always call this tool when you have a household_id from a tag lookup. Phone number, address, and GPS coordinates are absent — removed by eWater per data-protection policy. Response uses the standard single-item envelope with the household record under `data`.",
+      inputSchema: {
+        householdId: z.string().describe("The household UUID (household_id field from get_tag)"),
+      },
+    },
+    async ({ householdId }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const household = await getHouseholdInfo(householdId);
+        if (!household) return errorToolResult(`Household not found: ${householdId}`);
+        return jsonToolResult(singleItemPage(household));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, householdId }, "MCP get_household failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
     "get_household_info",
     {
-      title: "Get household info",
+      title: "Get household info (alias)",
       description:
-        "Returns the household record for a registered eWater customer: household name, creation date, last-active date, and the linked asset and system IDs. Obtain a householdId from `get_tag_info`. Phone number, address, and GPS coordinates are absent — removed by eWater per Kenya data-protection law. Response uses the standard single-item pagination envelope (totalCount/returnedCount are 1, hasMore is false) with the household record under `data`.",
+        "Alias for get_household — prefer get_household for new calls. Returns the registered household name and details for a given household UUID. Where householdId comes from: the household_id field from get_tag. Never guess the household name — always call this tool when you have a household_id. Response uses the standard single-item envelope with the household record under `data`.",
       inputSchema: {
-        householdId: z.string().describe("The household UUID (from get_tag_info)"),
+        householdId: z.string().describe("The household UUID (from get_tag)"),
       },
     },
     async ({ householdId }) => {
