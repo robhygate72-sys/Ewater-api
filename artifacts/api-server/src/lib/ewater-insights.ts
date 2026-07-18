@@ -9,6 +9,13 @@
 
 import { ewaterFetch } from "./ewater-client";
 import { tryDecodeShengdaLwm2m } from "./shengda-nbiot-decoder";
+import {
+  decodeEwc25,
+  type Ewc25Decoded,
+  decodeEwcReply,
+  type EwcReplyDecoded,
+  decodeCommandApiPayload,
+} from "./ewc25";
 
 // ---------------------------------------------------------------------------
 // Small scalar helpers
@@ -1632,4 +1639,310 @@ export async function getHouseholdInfo(householdId: string): Promise<HouseholdIn
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Asset logs with full packet decoding
+// ---------------------------------------------------------------------------
+
+export interface AssetLogEwcDatalog {
+  kind: "ewc-datalog";
+  event: number;
+  eventName: string;
+  eventCategory: string;
+  deviceTimeStr: string;
+  tagUid: string;
+  batteryVolts: number;
+  flowTicks: number;
+  litres: number | null;
+  flowTimeSecs: number;
+  creditUsedMits: number;
+  startCreditMits: number;
+  endCreditMits: number;
+  fcf: number;
+  xorValid: boolean;
+  unmeteredFlowTicks?: number;
+  tamper?: { tamp1Open: boolean; tamp2Open: boolean };
+  pressureOk?: boolean;
+  startUp?: { powerUpCount: number; firmwareDateStr: string };
+  healthState?: {
+    vbatAdcRaw: number;
+    vwatAdcRaw: number;
+    vsen1: number;
+    vsen2: number;
+    vsen3: number;
+    tickAccumulatorHex: string;
+    flags: {
+      tamp2: boolean; tamp1: boolean; gsmNotLocked: boolean; valveOn: boolean;
+      lockFlag: boolean; proxFlag: boolean; lowBattery: boolean; rfidDisabled: boolean;
+    };
+  };
+}
+
+export interface AssetLogEwcReply {
+  kind: "ewc-reply";
+  ok: boolean;
+  cmdName: string;
+  xorValid: boolean;
+  replyKind: string;
+  deviceTimeStr?: string;
+  tagUid?: string;
+  batteryVolts?: number;
+  pressureOk?: boolean;
+  valveOn?: boolean;
+  tamp1?: boolean;
+  tamp2?: boolean;
+  lowBattery?: boolean;
+  rfidDisabled?: boolean;
+  flowCount?: number;
+  samplePeriodMs?: number;
+  logNumber?: number;
+  logDatalog?: AssetLogEwcDatalog | null;
+  creditMits?: number;
+  eepromAddr?: number;
+  eepromValue?: number;
+  tickAccHex?: string;
+  logPointer?: number;
+  rawHex?: string;
+}
+
+export interface AssetLogCmdApi {
+  kind: "cmdapi";
+  cmdName: string | null;
+  outgoingPipeline: string | null;
+  priority: string | null;
+  retry: boolean;
+  args: Record<string, unknown> | null;
+}
+
+export interface AssetLogShengda {
+  kind: "shengda-nbiot";
+  valid: boolean;
+  messageType: string;
+  messageFunction: string;
+  meterReading: number | null;
+  prepayLitres: number | null;
+  supplyVoltage: number | null;
+  batteryState: string | null;
+  valveStatus: string | null;
+  signalPower: string | null;
+  signalSnr: string | null;
+  errorCode: number | null;
+  magneticAttack: boolean | null;
+  description: string;
+}
+
+export type AssetLogDecoded = AssetLogEwcDatalog | AssetLogEwcReply | AssetLogCmdApi | AssetLogShengda;
+
+export interface AssetLogEntry {
+  id: string;
+  timestamp: string;
+  source: string | null;
+  protocol: string | null;
+  pipeline: string | null;
+  rawPayload: string | null;
+  decoded: AssetLogDecoded | null;
+}
+
+export interface GetAssetLogsOptions {
+  days?: number;
+  limit?: number;
+  before?: string;
+  protocol?: string;
+}
+
+function buildEwcDatalog(d: Ewc25Decoded): AssetLogEwcDatalog {
+  const out: AssetLogEwcDatalog = {
+    kind: "ewc-datalog",
+    event: d.event,
+    eventName: d.eventName,
+    eventCategory: d.category,
+    deviceTimeStr: d.deviceTimeStr,
+    tagUid: d.uid,
+    batteryVolts: d.batteryVolts,
+    flowTicks: d.flowTicks,
+    litres: d.litres,
+    flowTimeSecs: d.flowTimeSecs,
+    creditUsedMits: d.creditUsedMits,
+    startCreditMits: d.startCreditMits,
+    endCreditMits: d.endCreditMits,
+    fcf: d.fcf,
+    xorValid: d.xorValid,
+  };
+  if (d.unmeteredFlowTicks !== undefined) out.unmeteredFlowTicks = d.unmeteredFlowTicks;
+  if (d.tamper !== undefined) out.tamper = d.tamper;
+  if (d.pressureOk !== undefined) out.pressureOk = d.pressureOk;
+  if (d.startUp !== undefined) out.startUp = d.startUp;
+  if (d.healthState !== undefined) out.healthState = d.healthState;
+  return out;
+}
+
+function buildEwcReply(r: EwcReplyDecoded, lcf: number | null): AssetLogEwcReply {
+  const out: AssetLogEwcReply = {
+    kind: "ewc-reply",
+    ok: r.ok,
+    cmdName: r.cmdName,
+    xorValid: r.xorValid,
+    replyKind: r.data.kind,
+  };
+  const d = r.data;
+  if (d.kind === "get-status") {
+    out.deviceTimeStr = d.deviceTimeStr;
+    out.tagUid = d.uid;
+    out.batteryVolts = d.batteryVolts;
+    out.pressureOk = d.pressureOk;
+    out.valveOn = d.valveOn;
+    out.tamp1 = d.tamp1;
+    out.tamp2 = d.tamp2;
+    out.lowBattery = d.lowBattery;
+    out.rfidDisabled = d.rfidDisabled;
+    out.flowCount = d.flowCount;
+    out.samplePeriodMs = d.samplePeriodMs;
+  } else if (d.kind === "read-log") {
+    out.logNumber = d.logNumber;
+    out.logDatalog = d.datalog.valid ? buildEwcDatalog(d.datalog) : null;
+  } else if (d.kind === "valve-on" || d.kind === "valve-off" || d.kind === "top-up") {
+    out.creditMits = d.creditMits;
+  } else if (d.kind === "eeprom-read" || d.kind === "eeprom-word-read") {
+    out.eepromAddr = d.addr;
+    out.eepromValue = d.value;
+  } else if (d.kind === "tick-accumulator") {
+    out.tickAccHex = d.hex;
+  } else if (d.kind === "get-time") {
+    out.deviceTimeStr = d.deviceTimeStr;
+  } else if (d.kind === "log-pointer-read") {
+    out.logPointer = d.pointer;
+  } else if (d.kind === "generic") {
+    out.rawHex = d.rawHex;
+  }
+  // lcf unused in reply but kept in signature for future embedded-datalog litres
+  void lcf;
+  return out;
+}
+
+function decodeAssetLogPayload(
+  payload: string,
+  protocol: string | null,
+  lcf: number | null,
+): AssetLogDecoded | null {
+  // 1. Try Shengda NB-IoT (base64, magic header 01 01 ... 3C)
+  const shengda = tryDecodeShengdaLwm2m(payload);
+  if (shengda) {
+    return {
+      kind: "shengda-nbiot",
+      valid: shengda.valid,
+      messageType: shengda.messageType,
+      messageFunction: shengda.messageFunction,
+      meterReading: shengda.meterReading,
+      prepayLitres: shengda.prepayLitres,
+      supplyVoltage: shengda.supplyVoltage,
+      batteryState: shengda.batteryState,
+      valveStatus: shengda.valveStatus,
+      signalPower: shengda.signalPower,
+      signalSnr: shengda.signalSnr,
+      errorCode: shengda.errorCode,
+      magneticAttack: shengda.magneticAttack,
+      description: shengda.description,
+    };
+  }
+
+  // 2. CommandApi (base64 JSON with a Payload field carrying the inner command)
+  if (protocol?.toLowerCase().includes("cmdapi") || protocol?.toLowerCase().includes("commandapi")) {
+    const cmdApi = decodeCommandApiPayload(payload);
+    if (cmdApi) {
+      return {
+        kind: "cmdapi",
+        cmdName: cmdApi.cmdName,
+        outgoingPipeline: cmdApi.outgoingPipeline,
+        priority: cmdApi.priority,
+        retry: cmdApi.retry,
+        args: cmdApi.args as Record<string, unknown> | null,
+      };
+    }
+  }
+
+  // 3. EWC hex payloads — detect by leading byte
+  const hexClean = payload.replace(/\s+/g, "").toLowerCase();
+
+  // EWC reply: 0x80 (success) or 0x88 (error)
+  if (hexClean.startsWith("80") || hexClean.startsWith("88")) {
+    const reply = decodeEwcReply(payload, lcf);
+    if (reply.valid) return buildEwcReply(reply, lcf);
+  }
+
+  // EWC 2.5 DATALOG: 0x44 header
+  if (hexClean.startsWith("44")) {
+    const datalog = decodeEwc25(payload, lcf);
+    if (datalog.valid) return buildEwcDatalog(datalog);
+  }
+
+  return null;
+}
+
+export async function getAssetLogs(
+  assetId: string | number,
+  options: GetAssetLogsOptions = {},
+): Promise<Page<AssetLogEntry>> {
+  const { days = 7, limit = 50, before, protocol: protocolFilter } = options;
+  const cappedDays = Math.min(Math.max(days, 1), 30);
+  const cappedLimit = Math.min(Math.max(limit, 1), 100);
+
+  const endDate = before ? new Date(before) : new Date();
+  const startDate = new Date(endDate.getTime() - cappedDays * 24 * 3600 * 1000);
+
+  // LCF needed to convert flow ticks → litres in EWC packets
+  const lcf = await fetchAssetLcf(String(assetId)).catch(() => null);
+
+  const result = await ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+    method: "POST",
+    body: JSON.stringify({
+      assetId: Number(assetId),
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      pipeline: null,
+    }),
+  });
+
+  const body = result.status === 200 ? (result.data as Record<string, unknown>) : {};
+  const lines = Array.isArray(body["logLines"]) ? (body["logLines"] as Record<string, unknown>[]) : [];
+
+  // Sort descending (most recent first)
+  const sorted = [...lines].sort((a, b) => {
+    const ta = new Date(String(a["timeReceived"] ?? 0)).getTime();
+    const tb = new Date(String(b["timeReceived"] ?? 0)).getTime();
+    return tb - ta;
+  });
+
+  const filtered = protocolFilter
+    ? sorted.filter((l) => {
+        const p = strOrNull(l["protocol"]) ?? "";
+        return p.toLowerCase() === protocolFilter.toLowerCase();
+      })
+    : sorted;
+
+  const totalCount = filtered.length;
+  const page = filtered.slice(0, cappedLimit);
+
+  const entries: AssetLogEntry[] = page.map((l) => {
+    const payload = strOrNull(l["payload"]);
+    const protocol = strOrNull(l["protocol"]);
+    return {
+      id: String(l["id"] ?? crypto.randomUUID()),
+      timestamp: String(l["timeReceived"] ?? new Date().toISOString()),
+      source: extractImeiFromLogSource(strOrNull(l["source"])),
+      protocol,
+      pipeline: strOrNull(l["pipeline"]),
+      rawPayload: payload,
+      decoded: payload ? decodeAssetLogPayload(payload, protocol, lcf) : null,
+    };
+  });
+
+  return {
+    items: entries,
+    totalCount,
+    returnedCount: entries.length,
+    offset: 0,
+    limit: cappedLimit,
+    hasMore: totalCount > cappedLimit,
+  };
 }

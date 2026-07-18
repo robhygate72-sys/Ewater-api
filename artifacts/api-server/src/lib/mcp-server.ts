@@ -18,6 +18,7 @@ import { getCredentials } from "./ewater-client";
 import {
   listAssetsPaged,
   getAssetById,
+  getAssetLogs,
   listCountries,
   listOrganisations,
   listWaterSystems,
@@ -489,6 +490,50 @@ function createEwaterMcpServer(): McpServer {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, nfcId }, "MCP get_tag_usage failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_asset_logs",
+    {
+      title: "Get asset logs (decoded packets)",
+      description:
+        "Returns recent device communication logs for one eWater asset, with every packet fully decoded by protocol. Each log entry includes a `decoded` object whose `kind` field identifies the protocol and determines which fields are present:\n\n" +
+        "kind='ewc-datalog' — EWC 2.5 DATALOG packet (39 bytes, header 0x44). Fields: eventName (one of: No Error/Dispense, No Credit, Format-ID Fail, Not Mifare 1k, Keycode Load Error, Card Comms Error, Auth Error CRYPTO1, Format-Checksum Fail, EEPROM Write Error Int/Ext, Tag Removed, RS232 Command Error, Dispense Limit, MFRC Chip Error, Block Read/Write Error, No Flow, Prox Detect, Low Battery, Pressure Event, SuperTap Top-Up, Host Valve Off, Start-Up, No Flow Repeat, Tamper, Health State), eventCategory (dispense/error/warning/status/startup), deviceTimeStr (device RTC time HH:MM:SS DD/MM/YYYY), tagUid (8-char hex NFC tag UID), batteryVolts, flowTicks, litres (flowTicks÷LCF — null when LCF unknown), flowTimeSecs, creditUsedMits, startCreditMits, endCreditMits, fcf (flow conversion factor), xorValid. Event-specific extras: unmeteredFlowTicks (No Credit event); tamper.tamp1Open/tamp2Open (Tamper event); pressureOk (Pressure event); startUp.powerUpCount + startUp.firmwareDateStr (Start-Up event); healthState.vbatAdcRaw/vwatAdcRaw/vsen1/vsen2/vsen3/tickAccumulatorHex/flags (valveOn, lowBattery, tamper1, tamper2, gsmNotLocked, rfidDisabled, proxFlag, lockFlag) for Health State event.\n\n" +
+        "kind='ewc-reply' — EWC reply from the device (0x80 success / 0x88 error). Fields: ok (true=success), cmdName (e.g. Get Status, Valve ON, Valve OFF, Tap Top-Up, Read SPI Log, Set Clock, Read/Write EEPROM Byte/Word, Read Tick Accumulator, Get Time, Read/Write Log Pointer, Factory Reset, Version Message), xorValid, replyKind. Reply-kind-specific extras: get-status → deviceTimeStr, tagUid, batteryVolts, pressureOk, valveOn, tamp1, tamp2, lowBattery, rfidDisabled, flowCount, samplePeriodMs; read-log → logNumber + logDatalog (fully decoded EWC datalog embedded in the reply); valve-on/valve-off/top-up → creditMits; eeprom-read/eeprom-word-read → eepromAddr, eepromValue; tick-accumulator → tickAccHex; get-time → deviceTimeStr; log-pointer-read → logPointer.\n\n" +
+        "kind='cmdapi' — CommandApi outgoing command (base64 JSON wrapper). Fields: cmdName (same command names as ewc-reply), outgoingPipeline, priority, retry, args (object whose shape depends on cmdName: credit → creditMits; read-log → logNumber; set-clock → timeStr; eeprom-read → addr; eeprom-write → addr+value; eeprom-word-write → addr+value; log-pointer-write → pointer).\n\n" +
+        "kind='shengda-nbiot' — Shengda NB-IoT CBOR/LwM2M meter frame. Fields: valid (CRC check), messageType, messageFunction, meterReading (pulse count), prepayLitres, supplyVoltage, batteryState, valveStatus, signalPower, signalSnr, errorCode, magneticAttack, description (human-readable summary of all fields).\n\n" +
+        "decoded is null for unknown or undecipherable payloads (rawPayload still present for inspection).\n\n" +
+        "When to call: when asked about recent device activity, last packet received, whether a device is online/transmitting, NFC tap events, valve commands sent, meter readings, battery health in raw logs, or to debug a specific dispense or error event. " +
+        "Where assetId comes from: the primary_asset_id field from get_tag, the id field from list_assets or get_asset, or a numeric asset ID mentioned in the conversation — never guess. " +
+        "What to call next: if decoded.tagUid matches a tag you want to investigate → get_tag(tagUid); if logs show repeated No Flow or Low Battery events → get_asset_flow_rate or get_asset_ewc_settings; if Shengda errorCode is non-zero → get_calibration_analysis.",
+      inputSchema: {
+        assetId: z.string().describe("The eWater asset ID (numeric, as a string)"),
+        days: z.number().int().min(1).max(30).default(7).describe("How many days of logs to fetch (1–30, default 7)"),
+        limit: z.number().int().min(1).max(100).default(50).describe("Max log entries to return (1–100, default 50)"),
+        before: z.string().optional().describe("ISO timestamp cursor — return only entries received before this time (for paging; use the timestamp of the last entry from the previous call)"),
+        protocol: z.string().optional().describe("Filter by protocol name (e.g. Ewc2_5, CmdApi, 4CCv1) — omit to return all protocols"),
+      },
+    },
+    async ({ assetId, days, limit, before, protocol }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const page = await getAssetLogs(assetId, { days, limit, before, protocol });
+        return jsonToolResult({
+          assetId,
+          logs: page.items,
+          totalCount: page.totalCount,
+          returnedCount: page.returnedCount,
+          offset: page.offset,
+          limit: page.limit,
+          hasMore: page.hasMore,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, assetId }, "MCP get_asset_logs failed");
         return errorToolResult(`eWater API error: ${msg}`);
       }
     },
