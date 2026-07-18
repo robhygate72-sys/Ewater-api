@@ -1656,11 +1656,20 @@ export interface AssetLogEwcDatalog {
   flowTicks: number;
   litres: number | null;
   flowTimeSecs: number;
+  usageCounter: number;
   creditUsedMits: number;
   startCreditMits: number;
   endCreditMits: number;
   fcf: number;
+  datalogPointer: number;
   xorValid: boolean;
+  // eSENSE sensor ADC values — uid bytes 0-2 and rs byte reinterpreted
+  // on eSENSE assets (purpose='esense'). On non-eSENSE assets these bytes
+  // carry the NFC tag UID instead; use tagUid in that case.
+  vsen1Adc: number;
+  vsen2Adc: number;
+  vsen3Adc: number;
+  vwatAdc: number;
   unmeteredFlowTicks?: number;
   tamper?: { tamp1Open: boolean; tamp2Open: boolean };
   pressureOk?: boolean;
@@ -1752,6 +1761,11 @@ export interface GetAssetLogsOptions {
 }
 
 function buildEwcDatalog(d: Ewc25Decoded): AssetLogEwcDatalog {
+  // uid is an 8-char hex string (4 bytes). On eSENSE assets bytes 0-2 are
+  // VSEN1/2/3 ADC; byte 3 (uid[6-7]) is unused. The rs byte is VWAT ADC.
+  const vsen1Adc = parseInt(d.uid.slice(0, 2), 16) || 0;
+  const vsen2Adc = parseInt(d.uid.slice(2, 4), 16) || 0;
+  const vsen3Adc = parseInt(d.uid.slice(4, 6), 16) || 0;
   const out: AssetLogEwcDatalog = {
     kind: "ewc-datalog",
     event: d.event,
@@ -1763,11 +1777,17 @@ function buildEwcDatalog(d: Ewc25Decoded): AssetLogEwcDatalog {
     flowTicks: d.flowTicks,
     litres: d.litres,
     flowTimeSecs: d.flowTimeSecs,
+    usageCounter: d.usageCounter,
     creditUsedMits: d.creditUsedMits,
     startCreditMits: d.startCreditMits,
     endCreditMits: d.endCreditMits,
     fcf: d.fcf,
+    datalogPointer: d.datalogPointer,
     xorValid: d.xorValid,
+    vsen1Adc,
+    vsen2Adc,
+    vsen3Adc,
+    vwatAdc: d.rs,
   };
   if (d.unmeteredFlowTicks !== undefined) out.unmeteredFlowTicks = d.unmeteredFlowTicks;
   if (d.tamper !== undefined) out.tamper = d.tamper;
@@ -1937,13 +1957,24 @@ export async function getAssetLogs(
   const entries: AssetLogEntry[] = page.map((l) => {
     const payload = strOrNull(l["payload"]);
     const protocol = strOrNull(l["protocol"]);
+    // Convert base64 payload → space-separated hex for readability
+    let rawPayload: string | null = null;
+    if (payload) {
+      try {
+        rawPayload = Array.from(Buffer.from(payload, "base64"))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join(" ");
+      } catch {
+        rawPayload = payload;
+      }
+    }
     return {
       id: String(l["id"] ?? crypto.randomUUID()),
       timestamp: String(l["timeReceived"] ?? new Date().toISOString()),
       source: extractImeiFromLogSource(strOrNull(l["source"])),
       protocol,
       pipeline: strOrNull(l["pipeline"]),
-      rawPayload: payload,
+      rawPayload,
       decoded: payload ? decodeAssetLogPayload(payload, protocol, lcf) : null,
     };
   });
