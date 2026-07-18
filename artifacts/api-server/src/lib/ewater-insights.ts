@@ -1861,18 +1861,29 @@ function decodeAssetLogPayload(
     }
   }
 
-  // 3. EWC hex payloads — detect by leading byte
-  const hexClean = payload.replace(/\s+/g, "").toLowerCase();
+  // 3. EWC payloads — the API returns payload as base64; decode to hex bytes first
+  let hexPayload: string;
+  try {
+    const bytes = Buffer.from(payload, "base64");
+    hexPayload = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return null;
+  }
+  if (!hexPayload) return null;
+
+  const firstByte = parseInt(hexPayload.slice(0, 2), 16);
 
   // EWC reply: 0x80 (success) or 0x88 (error)
-  if (hexClean.startsWith("80") || hexClean.startsWith("88")) {
-    const reply = decodeEwcReply(payload, lcf);
+  if (firstByte === 0x80 || firstByte === 0x88) {
+    const reply = decodeEwcReply(hexPayload, lcf);
     if (reply.valid) return buildEwcReply(reply, lcf);
   }
 
   // EWC 2.5 DATALOG: 0x44 header
-  if (hexClean.startsWith("44")) {
-    const datalog = decodeEwc25(payload, lcf);
+  if (firstByte === 0x44) {
+    const datalog = decodeEwc25(hexPayload, lcf);
     if (datalog.valid) return buildEwcDatalog(datalog);
   }
 
