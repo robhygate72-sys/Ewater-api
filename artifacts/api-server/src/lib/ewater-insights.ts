@@ -1993,3 +1993,123 @@ export async function getAssetLogs(
     hasMore: totalCount > cappedLimit,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Disbursements (Usage API — per-day aggregated dispense totals)
+// ---------------------------------------------------------------------------
+
+export interface DisbursementDay {
+  date: string;               // lowerBound ISO — start of the day bucket
+  readingCount: number;
+  estimateTotalLitres: number;
+  totalSeconds: number;
+  totalTicks: number;
+  totalCredits: number | null; // null when sentinel value (no-credit events ≈ 2 147 483)
+  longFlowLitres: number;
+  longFlowSeconds: number;
+}
+
+export interface DisbursementsResult {
+  requestedStart: string;
+  requestedEnd: string;
+  aggregationWindow: string;
+  days: DisbursementDay[];
+  totalLitres: number;
+  totalReadings: number;
+}
+
+const CREDIT_SENTINEL_THRESHOLD = 1_000_000; // values above this are no-credit overflow
+
+function parseDisbursementsResponse(raw: Record<string, unknown>): DisbursementsResult {
+  const rawDays = Array.isArray(raw["data"])
+    ? (raw["data"] as Record<string, unknown>[])
+    : [];
+
+  const days: DisbursementDay[] = rawDays.map((d) => {
+    const totalCredits = numOrNull(d["totalCredits"]);
+    return {
+      date: strOrNull(d["lowerBound"]) ?? "",
+      readingCount: parseInt(String(d["readingCount"] ?? "0"), 10) || 0,
+      estimateTotalLitres: numOrNull(d["estimateTotalLitres"]) ?? 0,
+      totalSeconds: numOrNull(d["totalSeconds"]) ?? 0,
+      totalTicks: numOrNull(d["totalTicks"]) ?? 0,
+      totalCredits:
+        totalCredits != null && totalCredits > CREDIT_SENTINEL_THRESHOLD
+          ? null
+          : totalCredits,
+      longFlowLitres: numOrNull(d["longFlowLitres"]) ?? 0,
+      longFlowSeconds: numOrNull(d["longFlowSeconds"]) ?? 0,
+    };
+  });
+
+  const totalLitres = Math.round(days.reduce((s, d) => s + d.estimateTotalLitres, 0) * 100) / 100;
+  const totalReadings = days.reduce((s, d) => s + d.readingCount, 0);
+
+  return {
+    requestedStart: strOrNull(raw["requestedStart"]) ?? "",
+    requestedEnd: strOrNull(raw["requestedEnd"]) ?? "",
+    aggregationWindow: strOrNull(raw["aggregationWindow"]) ?? "PerDay",
+    days,
+    totalLitres,
+    totalReadings,
+  };
+}
+
+function buildDisbursementsDateRange(days: number): { startDate: string; endDate: string } {
+  const endDate = new Date();
+  const startDate = new Date(endDate.getTime() - days * 24 * 3600 * 1000);
+  return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
+}
+
+export async function getDisbursementsByTagAndAsset(
+  nfcId: string,
+  assetId: string | number,
+  days = 30,
+): Promise<DisbursementsResult> {
+  const { startDate, endDate } = buildDisbursementsDateRange(days);
+  const result = await ewaterFetch("state", "/api/Usage/GetDisbursementsByTagAndAsset", {
+    method: "POST",
+    body: JSON.stringify({
+      tagId: nfcId.toUpperCase(),
+      assetId: Number(assetId),
+      startDate,
+      endDate,
+    }),
+  });
+  if (result.status !== 200) throw new Error(`eWater Usage API returned ${result.status}`);
+  return parseDisbursementsResponse(result.data as Record<string, unknown>);
+}
+
+export async function getDisbursementsByTag(
+  nfcId: string,
+  days = 30,
+): Promise<DisbursementsResult> {
+  const { startDate, endDate } = buildDisbursementsDateRange(days);
+  const result = await ewaterFetch("state", "/api/Usage/GetDisbursementsByTag", {
+    method: "POST",
+    body: JSON.stringify({
+      tagId: nfcId.toUpperCase(),
+      startDate,
+      endDate,
+    }),
+  });
+  if (result.status !== 200) throw new Error(`eWater Usage API returned ${result.status}`);
+  return parseDisbursementsResponse(result.data as Record<string, unknown>);
+}
+
+export async function getDisbursementsByAsset(
+  assetId: string | number,
+  days = 30,
+): Promise<DisbursementsResult> {
+  const { startDate, endDate } = buildDisbursementsDateRange(days);
+  const result = await ewaterFetch("state", "/api/Usage/GetDisbursementsByAsset", {
+    method: "POST",
+    body: JSON.stringify({
+      assetId: Number(assetId),
+      startDate,
+      endDate,
+    }),
+  });
+  if (result.status !== 200) throw new Error(`eWater Usage API returned ${result.status}`);
+  return parseDisbursementsResponse(result.data as Record<string, unknown>);
+}

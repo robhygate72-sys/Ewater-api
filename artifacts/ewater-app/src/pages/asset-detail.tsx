@@ -27,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { EwcSettingsPanel } from "@/components/ewc-settings-panel";
 import { MeterReadingPanel } from "@/components/water-meter";
 import { RawPacketsPanel } from "@/components/raw-packets-panel";
+import { DisbursementsPanel } from "@/components/disbursements-panel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -596,6 +597,20 @@ export default function AssetDetail() {
                 </div>
               </div>
             )}
+          </SectionCard>
+
+          {/* Daily disbursements from Usage API */}
+          <SectionCard
+            title="Daily Disbursements (last 30 days)"
+            icon={<Droplet className="w-3.5 h-3.5" />}
+            className="!px-0"
+          >
+            <div className="-mx-4">
+              <DisbursementsPanel
+                url={`${BASE}/api/ewater/assets/${encodeURIComponent(id)}/disbursements`}
+                days={30}
+              />
+            </div>
           </SectionCard>
 
           {/* Water usage + flow rate charts (eSense + CommunityTap) */}

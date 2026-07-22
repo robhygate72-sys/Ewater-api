@@ -30,6 +30,9 @@ import {
   getTagInfo,
   getHouseholdInfo,
   getTagUsage,
+  getDisbursementsByTagAndAsset,
+  getDisbursementsByTag,
+  getDisbursementsByAsset,
   singleItemPage,
 } from "./ewater-insights";
 import { logger } from "./logger";
@@ -689,6 +692,97 @@ function createEwaterMcpServer(): McpServer {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, assetId }, "MCP get_asset_logs failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  // ─── Disbursements (Usage API — per-day aggregated dispense totals) ─────────
+
+  server.registerTool(
+    "get_disbursements_by_tag_and_asset",
+    {
+      title: "Get disbursements by tag and asset",
+      description:
+        "Returns per-day aggregated water disbursements for a specific NFC tag on a specific asset over a date window. " +
+        "Each day bucket includes: estimateTotalLitres (eWater's estimated volume), totalTicks (raw flow-meter ticks), totalSeconds (total dispense duration), totalCredits (credits deducted — null means a no-credit event), readingCount (number of dispenses that day). " +
+        "Also returns totalLitres and totalReadings as period-level summaries. " +
+        "Use this to answer 'how much water did household X collect from tap Y this month?' or to compare a household's usage at a specific tap. " +
+        SINGLE_ITEM_WHATSAPP,
+      inputSchema: {
+        nfcId: z.string().describe("NFC tag ID (hex, e.g. 'A7370000'). Case-insensitive."),
+        assetId: z.union([z.string(), z.number()]).describe("Asset ID of the dispenser/tap."),
+        days: z.number().int().min(1).max(365).default(30).describe("Number of days to look back (default 30, max 365)."),
+      },
+    },
+    async ({ nfcId, assetId, days }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const result = await getDisbursementsByTagAndAsset(nfcId, assetId, days ?? 30);
+        return jsonToolResult(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, nfcId, assetId }, "MCP get_disbursements_by_tag_and_asset failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_disbursements_by_tag",
+    {
+      title: "Get disbursements by tag",
+      description:
+        "Returns per-day aggregated water disbursements for a specific NFC tag across ALL assets over a date window. " +
+        "Each day bucket includes: estimateTotalLitres, totalTicks, totalSeconds, totalCredits (null = no-credit event), readingCount. " +
+        "Also returns totalLitres and totalReadings as period-level summaries. " +
+        "Use this to answer 'how much water has household X used in total this month across all taps?' " +
+        "If the tag was used at multiple taps on the same day, their volumes are summed into a single daily bucket. " +
+        SINGLE_ITEM_WHATSAPP,
+      inputSchema: {
+        nfcId: z.string().describe("NFC tag ID (hex, e.g. 'A7370000'). Case-insensitive."),
+        days: z.number().int().min(1).max(365).default(30).describe("Number of days to look back (default 30, max 365)."),
+      },
+    },
+    async ({ nfcId, days }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const result = await getDisbursementsByTag(nfcId, days ?? 30);
+        return jsonToolResult(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, nfcId }, "MCP get_disbursements_by_tag failed");
+        return errorToolResult(`eWater API error: ${msg}`);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_disbursements_by_asset",
+    {
+      title: "Get disbursements by asset",
+      description:
+        "Returns per-day aggregated water disbursements from a specific asset (tap/dispenser) across ALL NFC tags over a date window. " +
+        "Each day bucket includes: estimateTotalLitres (total volume dispensed that day), totalTicks, totalSeconds, totalCredits (null = no-credit events), readingCount (total number of individual dispenses). " +
+        "Also returns totalLitres and totalReadings as period-level summaries. " +
+        "Use this to answer 'how much water was dispensed from tap X this month?' or 'how many people collected water from this asset today?' " +
+        SINGLE_ITEM_WHATSAPP,
+      inputSchema: {
+        assetId: z.union([z.string(), z.number()]).describe("Asset ID of the dispenser/tap."),
+        days: z.number().int().min(1).max(365).default(30).describe("Number of days to look back (default 30, max 365)."),
+      },
+    },
+    async ({ assetId, days }) => {
+      const credErr = requireEwaterCredentials();
+      if (credErr) return errorToolResult(credErr.error);
+      try {
+        const result = await getDisbursementsByAsset(assetId, days ?? 30);
+        return jsonToolResult(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, assetId }, "MCP get_disbursements_by_asset failed");
         return errorToolResult(`eWater API error: ${msg}`);
       }
     },

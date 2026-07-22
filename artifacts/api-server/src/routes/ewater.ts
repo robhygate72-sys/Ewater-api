@@ -33,6 +33,9 @@ import {
   getTagInfo,
   getHouseholdInfo,
   getTagUsage,
+  getDisbursementsByTagAndAsset,
+  getDisbursementsByTag,
+  getDisbursementsByAsset,
   strOrNull,
   numOrNull,
   numOrZero,
@@ -1385,6 +1388,47 @@ router.get("/ewater/households/:householdId", async (req, res): Promise<void> =>
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch household info");
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Disbursements (Usage API — per-day aggregated dispense totals)
+// ---------------------------------------------------------------------------
+
+// GET /api/ewater/tags/:nfcId/disbursements?days=30[&assetId=662]
+// If assetId is provided → GetDisbursementsByTagAndAsset; else → GetDisbursementsByTag
+router.get("/ewater/tags/:nfcId/disbursements", async (req, res): Promise<void> => {
+  const nfcId = (req.params["nfcId"] ?? "").toUpperCase();
+  const days = Math.min(Math.max(parseInt(String(req.query["days"] ?? "30"), 10) || 30, 1), 365);
+  const rawAssetId = req.query["assetId"];
+
+  try {
+    let result;
+    if (rawAssetId != null && rawAssetId !== "") {
+      result = await getDisbursementsByTagAndAsset(nfcId, String(rawAssetId), days);
+    } else {
+      result = await getDisbursementsByTag(nfcId, days);
+    }
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch tag disbursements");
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: `eWater API error: ${msg}` });
+  }
+});
+
+// GET /api/ewater/assets/:assetId/disbursements?days=30
+router.get("/ewater/assets/:assetId/disbursements", async (req, res): Promise<void> => {
+  const assetId = req.params["assetId"] ?? "";
+  const days = Math.min(Math.max(parseInt(String(req.query["days"] ?? "30"), 10) || 30, 1), 365);
+
+  try {
+    const result = await getDisbursementsByAsset(assetId, days);
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch asset disbursements");
+    const msg = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: `eWater API error: ${msg}` });
   }
 });

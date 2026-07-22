@@ -4,7 +4,8 @@ import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Tag, Home, Droplet, AlertTriangle, ExternalLink, History } from "lucide-react";
+import { Tag, Home, Droplet, AlertTriangle, ExternalLink, History, BarChart2 } from "lucide-react";
+import { DisbursementsPanel } from "@/components/disbursements-panel";
 import { formatDateTime } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
@@ -236,12 +237,28 @@ export default function TagDetailPage() {
               </Card>
             )}
 
+            {/* Daily disbursements card */}
+            <Card className="shadow-sm border">
+              <CardHeader className="py-3 px-4 border-b border-border/50">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <BarChart2 className="w-3.5 h-3.5" />
+                  Daily disbursements (last 30 days)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-0 py-0">
+                <DisbursementsPanel
+                  url={`/api/ewater/tags/${encodeURIComponent(nfcId)}/disbursements`}
+                  days={30}
+                />
+              </CardContent>
+            </Card>
+
             {/* Usage history card */}
             <Card className="shadow-sm border">
               <CardHeader className="py-3 px-4 border-b border-border/50">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <History className="w-3.5 h-3.5" />
-                  Recent usage (last 30 days)
+                  Recent usage events (last 30 days)
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-0 py-0">
