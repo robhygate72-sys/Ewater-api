@@ -31,3 +31,10 @@ uri = "file://exports/eWater-API-Reference.pdf"
 type = "pdf"
 title = "eWater Monitor — REST API & MCP Server Reference"
 description = "Complete reference for all REST endpoints (/api) and MCP server tools (/api/mcp), including parameters, response shapes, pagination envelope, and key concepts."
+
+[[outputs]]
+id = "EDnQH9GziVYSI7GXxleHV"
+uri = "file://ewater-api-reference.pdf"
+type = "pdf"
+title = "eWater API & MCP Endpoint Reference"
+description = "Upstream eWater API endpoints consumed by the app, and all MCP tools exposed — August 2026"
