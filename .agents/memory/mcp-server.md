@@ -1,16 +1,46 @@
 ---
-name: Remote MCP server pattern
-description: How to add a bearer-protected, stateless Streamable HTTP MCP server alongside an existing Express REST API without duplicating business logic.
+name: MCP server — tools exposed by this app
+description: The MCP endpoint this app exposes and the full list of tools registered on it.
 ---
 
-## Pattern
+## Endpoint
 
-- Extract shared business logic (data fetching, computed insights) into one lib module. Both REST routes and MCP tools call into it — never duplicate logic inline in a route handler or tool handler.
-- Run the MCP server in **stateless** mode: `sessionIdGenerator: undefined`, and create a fresh `McpServer` + `StreamableHTTPServerTransport` per incoming request (don't try to reuse/cache a single server instance across requests). This avoids session-lifecycle bookkeeping (init/close tracking, session ID storage) that's unnecessary for a tool-only server with no server-initiated notifications.
-- Mount the MCP endpoint on all three methods the Streamable HTTP spec uses — `POST`, `GET`, `DELETE` — pointed at the same handler; the transport internally branches on method.
-- Mount the MCP route(s) *before* the general API router if paths could otherwise collide, and after body-parsing middleware (`express.json()`) since the SDK expects the already-parsed body passed into `transport.handleRequest(req, res, req.body)`.
-- Gate every request with a bearer-token check (compare `Authorization: Bearer <token>` against an env secret) before constructing the transport; return a JSON-RPC formatted 401 error (`{jsonrpc:"2.0", error:{code:-32001,...}, id:null}`) on failure, not a plain HTTP 401 body.
+`POST|GET|DELETE /api/mcp` — Streamable HTTP, bearer-token auth (`Authorization: Bearer <MCP_BEARER_TOKEN>`).
+Stateless: fresh `McpServer` + `StreamableHTTPServerTransport` per request (no session state).
+All tools delegate to `lib/ewater-insights.ts` — no eWater logic lives in the MCP layer.
 
-**Why:** keeps the MCP surface as a thin adapter over the same insights module used by the REST API, so the two can never drift, and avoids the complexity of stateful session management when the tool has no need for server push or resumable streams.
+## Tools
 
-**How to apply:** when adding a new remote-tool-callable capability (MCP, or a similar tool-calling protocol) to an existing Express API, follow this same shared-lib-plus-thin-adapter shape rather than building the tool logic directly into the transport layer.
+### Hierarchy drill-down
+- **list_countries** — all countries with org/system/asset counts
+- **list_organisations** — organisations; filter by countryId/countryName
+- **list_water_systems** — water systems; filter by organisationId/Name, countryId/Name
+
+### Assets
+- **list_assets** — paginated asset list (max 100/call); filter by status, waterSystemId/Name, organisationId/Name, countryId/Name
+- **get_asset** — full details for one asset by numeric assetId
+- **get_asset_history** — time-series: tankHeight, dailyInflow, voltageHistory, flowRateHistory, dispenseVolumes; params: assetId, days (1–180), limit, offset
+- **get_asset_ewc_settings** — device config: LCF, FCF, preloadCharge, pricePerLitre, etc.
+- **get_asset_flow_rate** — most-recent flow rate (L/min) from last 24 h of logs
+- **get_calibration_analysis** — NRW/LCF gap analysis; params: assetId, days (1–180, default 30)
+
+### Tags / households
+- **list_registered_tags** — all registered NFC tag IDs for a waterSystemId; paginated
+- **get_tag** — tag lookup by 8-char hex nfcId → primary_asset_id, household_id, credit balance, dispense/top-up counts, status flags
+- **get_tag_info** — alias for get_tag (kept for back-compat)
+- **get_household** — household name + details by householdId UUID (from get_tag)
+- **get_household_info** — alias for get_household (kept for back-compat)
+- **get_tag_usage** — dispense events for a tag; params: nfcId, days (1–90), offset, limit
+
+### Logs
+- **get_asset_logs** — decoded device packets most-recent-first; params: assetId, days (1–30), limit (1–100), before (ISO cursor), protocol, excludeProtocols
+  - Decoded kinds: `ewc-datalog` (EWC 2.5 telemetry), `ewc-reply` (device reply to command), `cmdapi` (outgoing command record), `shengda-nbiot` (NB-IoT CBOR frame)
+
+### Disbursements (aggregated daily totals from eWater usage API)
+- **get_disbursements_by_tag_and_asset** — daily totals for one tag at one asset; params: nfcId, assetId, days (1–365)
+- **get_disbursements_by_tag** — daily totals for one tag across all assets; params: nfcId, days (1–365)
+- **get_disbursements_by_asset** — daily totals for one asset across all tags; params: assetId, days (1–365)
+
+## Auth pattern
+
+Bearer check against `process.env.MCP_BEARER_TOKEN`. Returns JSON-RPC formatted 401 (`{jsonrpc:"2.0", error:{code:-32001,...}, id:null}`) on failure — not a plain HTTP body.
