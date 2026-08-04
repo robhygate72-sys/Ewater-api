@@ -24,3 +24,10 @@ id = "rvOyv9OAAJw1MPx_q8g1T"
 uri = "file://attached_assets/generated/eWater-API-Technical-Requirements.pdf"
 type = "pdf"
 title = "eWater Platform API — Technical Requirements & Gap Analysis"
+
+[[outputs]]
+id = "is-MpB7nMyaPSolelrQHw"
+uri = "file://exports/eWater-API-Reference.pdf"
+type = "pdf"
+title = "eWater Monitor — REST API & MCP Server Reference"
+description = "Complete reference for all REST endpoints (/api) and MCP server tools (/api/mcp), including parameters, response shapes, pagination envelope, and key concepts."

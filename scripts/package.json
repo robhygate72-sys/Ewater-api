@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "generate-ewater-requirements-pdf": "tsx ./src/generate-ewater-requirements-pdf.ts",
+    "generate-api-reference-pdf": "tsx ./src/generate-api-reference-pdf.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

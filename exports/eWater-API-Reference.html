@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>eWater Monitor — REST API &amp; MCP Server Reference</title>
+<style>
+  @page { margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1a1f2b;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    padding: 52px 60px;
+  }
+  h1 {
+    font-size: 21pt;
+    color: #0b3d5c;
+    border-bottom: 3px solid #0b7285;
+    padding-bottom: 10px;
+    margin-top: 0;
+  }
+  h1.page-break { page-break-before: always; margin-top: 0; }
+  h2 {
+    font-size: 14pt;
+    color: #0b3d5c;
+    margin-top: 30px;
+    border-bottom: 1px solid #cdd7dd;
+    padding-bottom: 4px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11.5pt;
+    color: #0b5c7a;
+    margin-top: 22px;
+    page-break-after: avoid;
+  }
+  h4 { font-size: 10.5pt; color: #333; margin-top: 14px; page-break-after: avoid; }
+  p, li { font-size: 10pt; }
+  code {
+    background: #f1f4f6;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+    font-size: 9pt;
+    color: #a4262c;
+  }
+  pre {
+    background: #0d2d40;
+    color: #d6eaf5;
+    padding: 12px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 8.5pt;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 8px 0;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: 8.5pt; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #cdd7dd;
+    padding: 5px 9px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #eaf3f6; color: #0b3d5c; font-size: 9pt; }
+  blockquote {
+    border-left: 4px solid #0b7285;
+    margin: 8px 0;
+    padding: 4px 16px;
+    color: #444;
+    background: #f7fafb;
+  }
+  hr { border: none; border-top: 1px solid #cdd7dd; margin: 22px 0; }
+  a { color: #0b7285; }
+  strong { color: #12222e; }
+  .endpoint-block {
+    background: #f7fafb;
+    border: 1px solid #cdd7dd;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+  }
+  .method-get    { background:#1a7a4a; color:#fff; padding:2px 7px; border-radius:3px; font-size:8.5pt; font-weight:bold; font-family:monospace; }
+  .method-post   { background:#0b5c9a; color:#fff; padding:2px 7px; border-radius:3px; font-size:8.5pt; font-weight:bold; font-family:monospace; }
+  .method-delete { background:#8b2020; color:#fff; padding:2px 7px; border-radius:3px; font-size:8.5pt; font-weight:bold; font-family:monospace; }
+  .tool-block {
+    background: #f2f8fc;
+    border: 1px solid #b8d8e8;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+  }
+  .tool-name { font-family: "SF Mono", Consolas, Menlo, monospace; font-size: 9.5pt; color: #0b3d5c; font-weight: bold; }
+  .cover {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    page-break-after: always;
+  }
+  .cover-title { font-size: 28pt; color: #0b3d5c; font-weight: 700; margin-bottom: 6px; border: none; }
+  .cover-sub { font-size: 13pt; color: #0b7285; margin-bottom: 40px; }
+  .cover-meta { font-size: 10pt; color: #555; line-height: 2; }
+  .toc-entry { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10pt; }
+  .toc-entry a { color: #0b3d5c; text-decoration: none; }
+  .toc-dot { flex: 1; border-bottom: 1px dotted #aaa; margin: 0 6px; position: relative; top: -3px; }
+  .section-label {
+    display: inline-block;
+    font-size: 8pt;
+    background: #0b7285;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 7px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1 class="cover-title" style="border:none">eWater Monitor</h1>
+  <div class="cover-sub">REST API &amp; MCP Server Reference</div>
+  <div class="cover-meta">
+    Base URL: <code>/api</code> (REST) &nbsp;·&nbsp; <code>/api/mcp</code> (MCP)<br/>
+    Auth: eWater credentials via <code>POST /api/ewater/credentials</code><br/>
+    MCP auth: <code>Authorization: Bearer &lt;MCP_BEARER_TOKEN&gt;</code><br/>
+    Generated: 04 August 2026
+  </div>
+</div>
+
+<h1>Contents</h1>
+<div style="margin:16px 0">
+  <div class="toc-entry"><a>Part 1 — REST API</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Credentials</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Assets</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Tags &amp; Households</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Disbursements</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Calibration</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Dashboard &amp; Utilities</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="margin-top:6px"><a>Part 2 — MCP Server</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Overview &amp; Auth</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Hierarchy Tools</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Asset Tools</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Tag &amp; Household Tools</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Disbursement Tools</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="padding-left:16px"><a>&nbsp;&nbsp;Log Tools</a><span class="toc-dot"></span></div>
+  <div class="toc-entry" style="margin-top:6px"><a>Appendix — Pagination Envelope &amp; Errors</a><span class="toc-dot"></span></div>
+</div>
+
+<!-- ======================================================= -->
+<h1 class="page-break"><span class="section-label">PART 1</span> REST API</h1>
+
+<p>All REST endpoints are served under the base path <code>/api</code> and communicate in JSON.
+Most endpoints require eWater credentials to be configured first (see Credentials below).
+Unauthenticated requests receive <code>401 { "error": "No credentials configured" }</code>.
+Upstream eWater API errors are proxied back as <code>502 { "error": "eWater API error: …" }</code>.</p>
+
+<!-- ─── Credentials ─── -->
+<h2>Credentials</h2>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/credentials</code></p>
+  <p style="margin:0 0 4px 0"><strong>Check credential status</strong></p>
+  <p>Returns whether eWater credentials are configured and when the session token expires.</p>
+  <pre>{ "isConfigured": true, "environment": "live", "tokenExpiresAt": "2026-08-04T16:00:00Z" }</pre>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-post">POST</span> <code>/api/ewater/credentials</code></p>
+  <p style="margin:0 0 4px 0"><strong>Save eWater credentials</strong></p>
+  <p>Stores credentials and validates them by obtaining a session token immediately. Returns <code>401</code> when credentials are invalid.</p>
+  <p><strong>Body:</strong> <code>{ "username": "user@example.com", "password": "…" }</code></p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-delete">DELETE</span> <code>/api/ewater/credentials</code></p>
+  <p style="margin:0 0 4px 0"><strong>Clear saved credentials</strong></p>
+  <p>Removes stored credentials and invalidates the session. Subsequent API calls return <code>401</code>.</p>
+</div>
+
+<!-- ─── Assets ─── -->
+<h2>Assets</h2>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets</code></p>
+  <p style="margin:0 0 4px 0"><strong>List all assets</strong></p>
+  <p>Returns every asset (community taps, controllers, eSENSE sensors) visible to this account.
+  Fields: <code>id</code>, <code>name</code>, <code>type</code>, <code>status</code>,
+  <code>isOnline</code>, <code>batteryVoltage</code>, <code>waterSystemName</code>, <code>countryName</code>.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId</code></p>
+  <p style="margin:0 0 4px 0"><strong>Get asset details</strong></p>
+  <p>Full detail for one asset: basic info, health status, connectivity, and power — fetched in parallel from the eWater State and Query APIs.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>path · string</td><td>required</td><td>Numeric asset ID</td></tr></table>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/tech</code></p>
+  <p style="margin:0 0 4px 0"><strong>Comprehensive technical status bundle</strong></p>
+  <p>Aggregates all technical data for one asset in a single call (12 upstream requests in parallel): connectivity, power, flow, usage, status values, firmware, identifiers, recent commands, EWC settings, and entity hierarchy for water system / country resolution. Primary endpoint used by the asset detail page.</p>
+  <p><strong>Key fields:</strong> <code>lastCommsDt</code>, <code>batteryVoltage / batteryTrend / batteryTodayHigh / batteryTodayLow</code>,
+  <code>flowRateHour / flowRateToday / flowRateWeek</code>,
+  <code>litresDispensedToday</code>, <code>imeis[]</code>, <code>firmware[]</code>,
+  <code>healthFlags</code>, <code>tamperSwitchState</code>, <code>ewcFcf / ewcLcf / ewcFx / ewcPreload / priceOfWater</code>.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/ewc</code></p>
+  <p style="margin:0 0 4px 0"><strong>EWC calibration settings</strong></p>
+  <p>Returns the Electronic Water Controller device configuration: FCF, LCF (ticks per litre — the calibration factor), currency/FX, preload, price per litre, and all other EWC parameters.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/esense-charts</code></p>
+  <p style="margin:0 0 4px 0"><strong>eSENSE time-series charts</strong></p>
+  <p>Chart data for eSENSE tank-level assets over a configurable window.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>path · string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>days</code></td><td>query · integer</td><td>optional (default 3)</td><td>Days to look back</td></tr></table>
+  <p><strong>Response includes:</strong> <code>tankHeight[]</code> (water &amp; chlorine depth with min/max bands),
+  <code>dailyInflow[]</code> (litres per day), <code>voltageHistory[]</code>,
+  <code>voltageStatus</code>, <code>flowRateHistory[]</code> (per-dispense L/min),
+  <code>dispenseVolumes</code> (histogram + KDE curve + suggested LCF calibration model).</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/meter-reading</code></p>
+  <p style="margin:0 0 4px 0"><strong>Tick accumulator meter reading</strong></p>
+  <p>Extracts the lifetime tick accumulator from the most recent <code>HEALTH_STATE</code> (0x19) EWC packet in the last 14 days and converts it to litres using the asset's LCF.</p>
+  <p><strong>Response:</strong> <code>{ ticks, lcf, litres, timestamp, found }</code>.
+  <code>found: false</code> = no HEALTH_STATE packet received recently.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/flow-rate</code></p>
+  <p style="margin:0 0 4px 0"><strong>Most recent flow rate</strong></p>
+  <p>Most recent valid dispense flow rate (L/min) from EWC logs in the last 24 hours.</p>
+  <p><strong>Response:</strong> <code>{ flowRate, timestamp, timedOut }</code>. <code>timedOut: true</code> = no dispense in 24 h.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/telemetry</code></p>
+  <p style="margin:0 0 4px 0"><strong>Raw telemetry log</strong></p>
+  <p>Last 50 raw telemetry entries for an asset (last 7 days), newest first. For fully decoded entries use <code>/logs</code>.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/logs</code></p>
+  <p style="margin:0 0 4px 0"><strong>Decoded protocol logs (cursor paginated)</strong></p>
+  <p>Decoded asset communication logs, newest first. EWC 2.5 and Shengda NB-IoT frames are decoded server-side. Shengda frames include a <code>shengda.description</code> human-readable summary.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>path · string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>before</code></td><td>query · ISO timestamp</td><td>optional</td><td>Return only entries before this time — use last entry's timestamp to page</td></tr><tr><td><code>protocol</code></td><td>query · string</td><td>optional</td><td>Filter: Ewc2_5 | CommandApi_1 | 4CCv1 | Gadwall</td></tr><tr><td><code>limit</code></td><td>query · integer 1–100</td><td>optional (default 50)</td><td>Max entries per call</td></tr><tr><td><code>windowDays</code></td><td>query · integer 1–30</td><td>optional (default 7)</td><td>How many days back to scan</td></tr></table>
+  <p><strong>Response:</strong> <code>{ entries[], nextBefore, hasMore }</code>. Pass <code>nextBefore</code> as <code>before</code> to page forward.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/packets</code></p>
+  <p style="margin:0 0 4px 0"><strong>Raw NB-IoT packet logs</strong></p>
+  <p>Decoded Shengda NB-IoT CBOR/LwM2M packet logs, merged across all IMEIs registered to the asset (including secondary devices not in the identifier registry).</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>path · string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>hours</code></td><td>query · integer 1–72</td><td>optional (default 24)</td><td>How many hours back</td></tr><tr><td><code>limit</code></td><td>query · integer 1–100</td><td>optional (default 50)</td><td>Max packets</td></tr><tr><td><code>imei</code></td><td>query · string</td><td>optional</td><td>Restrict to a single IMEI</td></tr></table>
+</div>
+
+<!-- ─── Tags & Households ─── -->
+<h2>Tags &amp; Households</h2>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/tags</code></p>
+  <p style="margin:0 0 4px 0"><strong>List registered NFC tags for a water system</strong></p>
+  <p>Paginated list of NFC tag IDs that have completed registration in the given water system.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>waterSystemId</code></td><td>query · integer</td><td>required</td><td>Water system ID from /ewater/entities</td></tr><tr><td><code>offset</code></td><td>query · integer</td><td>optional (default 0)</td><td>Pagination offset</td></tr><tr><td><code>limit</code></td><td>query · integer 1–500</td><td>optional (default 100)</td><td>Max tag IDs to return</td></tr></table>
+  <p><strong>Response:</strong> pagination envelope with <code>tagIds[]</code>. <code>totalCount</code> = full registered fleet size.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/tags/:nfcId</code></p>
+  <p style="margin:0 0 4px 0"><strong>Get tag info and household</strong></p>
+  <p>Registration details for an NFC tag plus the linked household record.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>path · string</td><td>required</td><td>8-character hex tag ID (e.g. A7370000) — case-insensitive</td></tr></table>
+  <p><strong>Response:</strong> <code>{ tag: { primaryAssetId, householdId, creditBalance, disbursementCount, topUpCount, signUpDate, lastUsageDate, deleted, blacklisted }, household }</code>.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/tags/:nfcId/usage</code></p>
+  <p style="margin:0 0 4px 0"><strong>Tag dispense event history</strong></p>
+  <p>Individual dispense events for an NFC tag from the EWC packet log of the tag's primary asset.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>path · string</td><td>required</td><td>NFC tag ID</td></tr><tr><td><code>days</code></td><td>query · integer 1–90</td><td>optional (default 30)</td><td>Days back to scan</td></tr><tr><td><code>offset</code></td><td>query · integer</td><td>optional (default 0)</td><td>Pagination offset</td></tr><tr><td><code>limit</code></td><td>query · integer 1–200</td><td>optional (default 100)</td><td>Max events</td></tr></table>
+  <p>Event fields: <code>timestamp</code>, <code>litres</code>, <code>creditConsumed</code>, <code>eventType</code> (Dispense | No Credit).</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/households/:householdId</code></p>
+  <p style="margin:0 0 4px 0"><strong>Get household</strong></p>
+  <p>Household name and registration details by UUID (from <code>tag.householdId</code>). Phone number and address are omitted per eWater data-protection policy.</p>
+</div>
+
+<!-- ─── Disbursements ─── -->
+<h2>Disbursements (Usage API)</h2>
+<p>Per-day aggregated dispense totals from the eWater Usage API. Each day bucket includes:
+<code>date</code>, <code>estimateTotalLitres</code>, <code>totalTicks</code>, <code>totalSeconds</code>,
+<code>totalCredits</code> (null = no-credit event), <code>readingCount</code>.
+Period-level summaries <code>totalLitres</code> and <code>totalReadings</code> are also returned at the top level.</p>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/tags/:nfcId/disbursements</code></p>
+  <p style="margin:0 0 4px 0"><strong>Tag disbursements</strong></p>
+  <p>Per-day totals for one NFC tag. If <code>assetId</code> is supplied, scoped to that tap only; otherwise aggregated across all taps.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>path · string</td><td>required</td><td>NFC tag ID</td></tr><tr><td><code>days</code></td><td>query · integer 1–365</td><td>optional (default 30)</td><td>Days to look back</td></tr><tr><td><code>assetId</code></td><td>query · string</td><td>optional</td><td>Scope to a specific asset</td></tr></table>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/assets/:assetId/disbursements</code></p>
+  <p style="margin:0 0 4px 0"><strong>Asset disbursements</strong></p>
+  <p>Per-day totals from one tap across all NFC tags.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>path · string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>days</code></td><td>query · integer 1–365</td><td>optional (default 30)</td><td>Days to look back</td></tr></table>
+</div>
+
+<!-- ─── Calibration ─── -->
+<h2>Calibration</h2>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-post">POST</span> <code>/api/ewater/assets/:assetId/detect-sensor-range</code></p>
+  <p style="margin:0 0 4px 0"><strong>Auto-detect eSENSE sensor range</strong></p>
+  <p>Correlates recent VSEN ADC readings from EWC packets with the eWater tank-height API to back-calculate the sensor's full-scale range in metres. Persists the result for use by alert rules.</p>
+  <p><strong>Response:</strong> <code>{ sensorRangeMetres1, sensorRangeMetres2, sensorRangeMetres3, vsen1, vsen2, vsen3, depthMetres1, timeDeltaSeconds }</code>.
+  Returns <code>422</code> when no sensor data is available.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-post">POST</span> <code>/api/ewater/assets/:assetId/apply-calibration</code></p>
+  <p style="margin:0 0 4px 0"><strong>Write LCF + Preload to device</strong></p>
+  <p>Sends <code>RequestSettingChange</code> to the eWater Command API for both <code>LitresConversion</code> and <code>Preload</code>. The device applies changes on its next comms cycle.</p>
+  <p><strong>Body:</strong> <code>{ "lcf": 512, "preload": 0 }</code> — both integers.</p>
+  <p><strong>Response:</strong> <code>{ success, results: [{ settingKey, success, error }] }</code>.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-post">POST</span> <code>/api/ewater/assets/:assetId/reset-meter</code></p>
+  <p style="margin:0 0 4px 0"><strong>Reset tick accumulator</strong></p>
+  <p>Sends <code>ResetTickAccumulator</code> to the eWater Command API. IMEI is resolved automatically.</p>
+  <p><strong>Body:</strong> <code>{ "litres": 15420.5 }</code> &nbsp; <strong>Response:</strong> <code>{ litres, success, error }</code>.</p>
+</div>
+
+<!-- ─── Dashboard & Utilities ─── -->
+<h2>Dashboard &amp; Utilities</h2>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/dashboard</code></p>
+  <p style="margin:0 0 4px 0"><strong>System health dashboard</strong></p>
+  <p>Aggregated health snapshot: online/offline/fault counts, power and flow fault tallies, recent system-level alerts.</p>
+  <table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>lifecycleState</code></td><td>query · string</td><td>optional (default Active)</td><td>PreInstallation | Staged | Active</td></tr></table>
+  <p><strong>Response:</strong> <code>{ totalAssets, onlineCount, offlineCount, faultCount, powerFaultCount, flowFaultCount, lastUpdated, recentAlerts[] }</code>.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/ewater/entities</code></p>
+  <p style="margin:0 0 4px 0"><strong>Entity hierarchy</strong></p>
+  <p>Country → Organisation → Water System hierarchy with asset counts per water system.</p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-post">POST</span> <code>/api/ewater/proxy</code></p>
+  <p style="margin:0 0 4px 0"><strong>Generic eWater API proxy</strong></p>
+  <p>Forwards an arbitrary request to any eWater upstream endpoint. For debugging and ad-hoc exploration.</p>
+  <p><strong>Body:</strong> <code>{ "api": "state|query|command|auth", "path": "/api/…", "method": "GET|POST", "body": {…} }</code></p>
+</div>
+
+
+<div class="endpoint-block">
+  <p style="margin:0 0 6px 0"><span class="method-get">GET</span> <code>/api/healthz</code></p>
+  <p style="margin:0 0 4px 0"><strong>Health check</strong></p>
+  <p>Returns <code>{ "status": "ok" }</code>. No authentication required.</p>
+</div>
+
+<!-- ======================================================= -->
+<h1 class="page-break"><span class="section-label">PART 2</span> MCP Server</h1>
+
+<h2>Overview &amp; Authentication</h2>
+<p>The MCP server is exposed at <code>POST/GET/DELETE /api/mcp</code> using the
+<strong>Streamable HTTP</strong> transport (JSON-RPC 2.0). It provides the same data as the REST API
+as callable tools designed for LLM clients (Claude, GPT-4, WhatsApp AI agents, etc.).
+The server is <strong>stateless</strong> — a fresh server + transport is created per request.</p>
+
+<h3>Authentication</h3>
+<pre>Authorization: Bearer &lt;MCP_BEARER_TOKEN&gt;</pre>
+<p>This is separate from the eWater credentials. Both must be configured: the bearer token protects the
+MCP endpoint itself; the eWater credentials (set via the REST API) are used by the tool implementations to reach live data.</p>
+
+<h3>Pagination Envelope</h3>
+<p>Every tool response uses the same envelope:</p>
+<pre>{
+  "totalCount": 142,      // true total across all pages
+  "returnedCount": 25,    // records in this response
+  "offset": 0,
+  "limit": 25,
+  "hasMore": true,
+  "items": [ … ]          // or named array: "assets", "tagIds", etc.
+}</pre>
+<p>Single-object tools (<code>get_asset_ewc_settings</code>, <code>get_asset_flow_rate</code>, <code>get_calibration_analysis</code>)
+return their result under <code>data</code> with <code>totalCount: 1</code>, <code>hasMore: false</code>.</p>
+
+<h3>Typical Call Chain</h3>
+<pre>get_tag(nfcId)
+  → get_asset(primary_asset_id)                          // tap name, water system, country
+  → get_household(household_id)                          // household name
+  → get_disbursements_by_tag_and_asset(nfcId, assetId)   // water usage this month
+  → get_asset_logs(assetId)                              // recent device activity</pre>
+
+<!-- ─── Hierarchy Tools ─── -->
+<h2>Hierarchy Tools</h2>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">list_countries</span></p>
+  <p style="margin:0 0 6px 0">Lists all countries with organisation, water system, and asset counts. No inputs required. Always <code>hasMore: false</code>.</p>
+  
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">list_organisations</span></p>
+  <p style="margin:0 0 6px 0">Lists organisations with water system and asset counts, optionally filtered by country.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>countryId</code></td><td>integer</td><td>optional</td><td>Filter by country ID</td></tr><tr><td><code>countryName</code></td><td>string</td><td>optional</td><td>Filter by exact country name</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">list_water_systems</span></p>
+  <p style="margin:0 0 6px 0">Lists water systems with asset counts. Pass the returned ID into <code>list_assets</code> or <code>list_registered_tags</code>.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>organisationId</code></td><td>integer</td><td>optional</td><td>Filter by organisation ID</td></tr><tr><td><code>organisationName</code></td><td>string</td><td>optional</td><td>Filter by exact organisation name</td></tr><tr><td><code>countryId</code></td><td>integer</td><td>optional</td><td>Filter by country ID</td></tr><tr><td><code>countryName</code></td><td>string</td><td>optional</td><td>Filter by exact country name</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">list_assets</span></p>
+  <p style="margin:0 0 6px 0">Paginated asset list. <code>totalCount</code> answers 'how many?' in a single call without paging everything.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>limit</code></td><td>integer 1–100</td><td>optional (default 50)</td><td>Max assets per call</td></tr><tr><td><code>offset</code></td><td>integer</td><td>optional (default 0)</td><td>Pagination offset</td></tr><tr><td><code>status</code></td><td>string</td><td>optional</td><td>Active | Staged | PreInstallation | Suspended</td></tr><tr><td><code>waterSystemId / waterSystemName</code></td><td>integer / string</td><td>optional</td><td>Scope to a water system</td></tr><tr><td><code>organisationId / organisationName</code></td><td>integer / string</td><td>optional</td><td>Scope to an organisation</td></tr><tr><td><code>countryId / countryName</code></td><td>integer / string</td><td>optional</td><td>Scope to a country</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_asset</span></p>
+  <p style="margin:0 0 6px 0">Full details for one asset: name, type, status, GPS, water system, country. Always call this after <code>get_tag</code> to resolve asset details — never guess.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>integer</td><td>required</td><td>From list_assets or get_tag.primary_asset_id</td></tr></table>
+</div>
+
+<!-- ─── Asset Tools ─── -->
+<h2>Asset Telemetry &amp; Analysis Tools</h2>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_asset_history</span></p>
+  <p style="margin:0 0 6px 0">Time-series: tank height (water &amp; chlorine), daily inflow, battery voltage, flow-rate history, dispense volume histogram. Each series independently paginated. For trend questions: 'was the tank stable last week?'</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>days</code></td><td>integer 1–180</td><td>optional (default 7)</td><td>Days of history</td></tr><tr><td><code>limit</code></td><td>integer 1–2000</td><td>optional (default 500)</td><td>Max entries per time-series</td></tr><tr><td><code>offset</code></td><td>integer</td><td>optional (default 0)</td><td>Entries to skip per time-series</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_asset_ewc_settings</span></p>
+  <p style="margin:0 0 6px 0">EWC device configuration: LCF (litres per tick — calibration factor), FCF (ticks per credit), preload charge, price per litre, currency/FX settings, and all other EWC device parameters.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>string</td><td>required</td><td>Numeric asset ID</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_asset_flow_rate</span></p>
+  <p style="margin:0 0 6px 0">Most recent dispense flow rate in L/min from the last 24 hours. <code>timedOut: true</code> means no dispense recorded — check for blockage or closure.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>string</td><td>required</td><td>Numeric asset ID</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_calibration_analysis</span></p>
+  <p style="margin:0 0 6px 0">NRW / meter-drift analysis: compares the configured LCF against measured dispense events, and compares preload against 'no credit' packet data. Returns LCF gap %, preload gap, and a plain-language interpretation. Use for NRW, meter drift, revenue loss, or calibration accuracy questions.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>days</code></td><td>integer 1–180</td><td>optional (default 30)</td><td>Days of dispense history to analyse</td></tr></table>
+</div>
+
+<!-- ─── Tag & Household Tools ─── -->
+<h2>Tag &amp; Household Tools</h2>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_tag</span></p>
+  <p style="margin:0 0 6px 0">Primary entry point for any tag lookup. Returns <code>primary_asset_id</code>, <code>household_id</code>, credit balance, disbursement/top-up counts, dates, and status flags (deleted, blacklisted). Always call this first when a tag ID is mentioned.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>string</td><td>required</td><td>8-character hex tag ID, e.g. DBDA4ED2 — case-insensitive</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_tag_info</span></p>
+  <p style="margin:0 0 6px 0">Alias for <code>get_tag</code> — prefer <code>get_tag</code> for new calls.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>string</td><td>required</td><td>NFC tag ID</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">list_registered_tags</span></p>
+  <p style="margin:0 0 6px 0">All fully-registered NFC tag IDs for a water system. <code>totalCount</code> = registered user fleet size — answers 'how many registered users?' from a single call.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>waterSystemId</code></td><td>integer</td><td>required</td><td>From list_water_systems</td></tr><tr><td><code>limit</code></td><td>integer 1–500</td><td>optional (default 100)</td><td>Max tag IDs per call</td></tr><tr><td><code>offset</code></td><td>integer</td><td>optional (default 0)</td><td>Pagination offset</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_household</span></p>
+  <p style="margin:0 0 6px 0">Household name and registration details. Never guess the name — always call this when you have a <code>household_id</code>. Phone number and address omitted per data-protection policy.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>householdId</code></td><td>string (UUID)</td><td>required</td><td>From get_tag.household_id</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_household_info</span></p>
+  <p style="margin:0 0 6px 0">Alias for <code>get_household</code> — prefer <code>get_household</code> for new calls.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>householdId</code></td><td>string (UUID)</td><td>required</td><td>Household UUID</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_tag_usage</span></p>
+  <p style="margin:0 0 6px 0">Individual dispense events for an NFC tag from the asset's EWC packet log. Fields: timestamp, litres (ticks ÷ LCF), creditConsumed, eventType (Dispense | No Credit). Use to verify household activity or debug credit deductions.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>string</td><td>required</td><td>NFC tag ID</td></tr><tr><td><code>days</code></td><td>integer 1–90</td><td>optional (default 30)</td><td>Days to scan</td></tr><tr><td><code>offset</code></td><td>integer</td><td>optional (default 0)</td><td>Pagination offset</td></tr><tr><td><code>limit</code></td><td>integer 1–200</td><td>optional (default 50)</td><td>Max events</td></tr></table>
+</div>
+
+<!-- ─── Disbursement Tools ─── -->
+<h2>Disbursement Tools</h2>
+<p>Draw from the eWater Usage API (daily aggregated totals). Each day bucket: <code>estimateTotalLitres</code>,
+<code>totalTicks</code>, <code>totalSeconds</code>, <code>totalCredits</code> (null = no-credit),
+<code>readingCount</code>.</p>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_disbursements_by_tag_and_asset</span></p>
+  <p style="margin:0 0 6px 0">Per-day aggregated water use for one tag at one specific tap. 'How much water did household X collect from tap Y this month?'</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>string</td><td>required</td><td>NFC tag ID</td></tr><tr><td><code>assetId</code></td><td>string or integer</td><td>required</td><td>Asset ID of the dispenser</td></tr><tr><td><code>days</code></td><td>integer 1–365</td><td>optional (default 30)</td><td>Days to look back</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_disbursements_by_tag</span></p>
+  <p style="margin:0 0 6px 0">Per-day totals for one tag across ALL taps. Multiple-tap usage on the same day is summed into one bucket. 'Total household consumption across all visits.'</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>nfcId</code></td><td>string</td><td>required</td><td>NFC tag ID</td></tr><tr><td><code>days</code></td><td>integer 1–365</td><td>optional (default 30)</td><td>Days to look back</td></tr></table>
+</div>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_disbursements_by_asset</span></p>
+  <p style="margin:0 0 6px 0">Per-day totals from one tap across ALL tags. 'How much water was dispensed from tap X this month?' / 'How many people collected water here today?'</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>string or integer</td><td>required</td><td>Asset ID</td></tr><tr><td><code>days</code></td><td>integer 1–365</td><td>optional (default 30)</td><td>Days to look back</td></tr></table>
+</div>
+
+<!-- ─── Log Tools ─── -->
+<h2>Log Tools</h2>
+
+
+<div class="tool-block">
+  <p style="margin:0 0 6px 0"><span class="tool-name">get_asset_logs</span></p>
+  <p style="margin:0 0 6px 0">Fully-decoded device communication logs, newest first. <strong>Critical:</strong>
+  the <code>pipeline</code> field identifies direction — <code>MQTT/UDP</code> = incoming telemetry from the device;
+  <code>CmdApi</code> = outgoing command, NOT incoming data. If all visible entries are CmdApi, the device is offline.
+  Decoded fields include <code>eventName</code>, <code>eventCategory</code>, <code>batteryVolts</code>,
+  <code>flowTicks</code>, <code>litres</code>, <code>tagUid</code>, <code>vsen1-3</code> ADC (eSENSE),
+  and more. Shengda NB-IoT frames include a plain-language <code>description</code> field.</p>
+  <p style="margin:4px 0 2px 0"><strong>Inputs:</strong></p><table><tr><th>Name</th><th>In / Type</th><th>Required</th><th>Description</th></tr><tr><td><code>assetId</code></td><td>string</td><td>required</td><td>Numeric asset ID</td></tr><tr><td><code>days</code></td><td>integer 1–30</td><td>optional (default 7)</td><td>Days of logs to fetch</td></tr><tr><td><code>limit</code></td><td>integer 1–100</td><td>optional (default 25)</td><td>Max entries — use 10–25 for WhatsApp</td></tr><tr><td><code>before</code></td><td>ISO timestamp</td><td>optional</td><td>Cursor for pagination — timestamp of last entry from previous call</td></tr><tr><td><code>protocol</code></td><td>string</td><td>optional</td><td>Include only: Ewc2_5 | CommandApi_1 | 4CCv1 | Gadwall</td></tr><tr><td><code>excludeProtocols</code></td><td>string[]</td><td>optional</td><td>Protocols to exclude, e.g. [&quot;4CCv1&quot;]</td></tr></table>
+</div>
+
+<!-- ======================================================= -->
+<h1 class="page-break"><span class="section-label">APPENDIX</span> Pagination Envelope &amp; Errors</h1>
+
+<h2>Pagination Envelope</h2>
+<p>Used by all MCP list tools and the tag-usage REST endpoint:</p>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>totalCount</code></td><td>integer</td><td>True total matching records across all pages — use this to answer count questions from a single call</td></tr>
+  <tr><td><code>returnedCount</code></td><td>integer</td><td>Records returned in this response</td></tr>
+  <tr><td><code>offset</code></td><td>integer</td><td>Records skipped before the first result</td></tr>
+  <tr><td><code>limit</code></td><td>integer</td><td>Max records per call as requested</td></tr>
+  <tr><td><code>hasMore</code></td><td>boolean</td><td>True when records exist beyond this page</td></tr>
+  <tr><td><em>items / assets / tagIds…</em></td><td>array</td><td>The records for this page, under a semantically named key</td></tr>
+</table>
+<p>To iterate: increment <code>offset</code> by <code>limit</code> until <code>hasMore</code> is false.</p>
+
+<h2>Error Responses</h2>
+<table>
+  <tr><th>HTTP Code</th><th>When</th><th>Body</th></tr>
+  <tr><td><code>400</code></td><td>Invalid request body or parameters</td><td><code>{ "error": "…" }</code></td></tr>
+  <tr><td><code>401</code></td><td>No credentials configured (REST) or invalid bearer token (MCP)</td><td><code>{ "error": "…" }</code></td></tr>
+  <tr><td><code>404</code></td><td>Asset / tag / household not found</td><td><code>{ "error": "…" }</code></td></tr>
+  <tr><td><code>422</code></td><td>Cannot compute result (e.g. no sensor data for range detection)</td><td><code>{ "error": "…" }</code></td></tr>
+  <tr><td><code>502</code></td><td>eWater upstream API returned an error</td><td><code>{ "error": "eWater API error: …" }</code></td></tr>
+</table>
+
+<h2>Key Concepts</h2>
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>LCF</strong> (LitresConversion)</td><td>Ticks per litre — the primary calibration factor. Divide raw flow-meter ticks by the LCF to get litres. Stored in EWC settings.</td></tr>
+  <tr><td><strong>FCF</strong> (FlowConversion)</td><td>Ticks per credit (prepay unit). Different from LCF. The packet trailer bytes[33–34] hold the FCF, not the LCF — always read LCF from EWC settings.</td></tr>
+  <tr><td><strong>Preload</strong></td><td>Unmetered tick offset at valve-open — ticks dispensed before the meter starts counting. Must be subtracted when calculating true volume.</td></tr>
+  <tr><td><strong>pipeline</strong></td><td>Communication direction in packet logs: MQTT/UDP = device → platform (incoming telemetry); CmdApi = platform → device (outgoing command).</td></tr>
+  <tr><td><strong>VSEN1/2/3</strong></td><td>Analogue sensor ADC values (0–255) on eSENSE assets. ADC 51 ≈ 4 mA (sensor empty/off), ADC 255 ≈ 20 mA (sensor full). Convert to depth using sensor range from EWC settings.</td></tr>
+  <tr><td><strong>NRW</strong></td><td>Non-Revenue Water — water dispensed that does not generate revenue, typically due to meter drift, miscalibrated LCF, or preload offset errors.</td></tr>
+</table>
+
+</body>
+</html>
