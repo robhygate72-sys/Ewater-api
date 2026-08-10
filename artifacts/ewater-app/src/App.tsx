@@ -14,7 +14,6 @@ import Login from "@/pages/login";
 import McpDocsPage from "@/pages/mcp-docs";
 import TagsPage from "@/pages/tags";
 import TagDetailPage from "@/pages/tag-detail";
-import HhmPage from "@/pages/hhm";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
@@ -116,7 +115,6 @@ function Router() {
       <Route path="/export" component={ExportPage} />
       <Route path="/tags" component={TagsPage} />
       <Route path="/tags/:nfcId" component={TagDetailPage} />
-      <Route path="/hhm" component={HhmPage} />
       <Route component={NotFound} />
     </Switch>
   );
