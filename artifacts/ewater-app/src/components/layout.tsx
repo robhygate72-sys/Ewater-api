@@ -29,9 +29,9 @@ export function Layout({ children, title, showBack, backTo, headerActions }: Lay
     { href: "/", icon: Home, label: "Dashboard" },
     { href: "/assets", icon: Droplet, label: "Assets" },
     { href: "/tags", icon: Tag, label: "Tags" },
-    { href: "/hhm", icon: Gauge, label: "HHM" },
     { href: "/watchlist", icon: Star, label: "Watchlist" },
     { href: "/notifications", icon: Bell, label: "Alerts" },
+    { href: "/hhm", icon: Gauge, label: "HHM" },
   ];
 
   return (
