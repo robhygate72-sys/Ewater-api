@@ -116,7 +116,7 @@ function Router() {
       <Route path="/export" component={ExportPage} />
       <Route path="/tags" component={TagsPage} />
       <Route path="/tags/:nfcId" component={TagDetailPage} />
-      <Route path="/hhm" component={HhmPage} />
+      <Route path="/hhm/:id" component={HhmPage} />
       <Route component={NotFound} />
     </Switch>
   );

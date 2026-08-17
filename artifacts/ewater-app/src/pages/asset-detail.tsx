@@ -5,7 +5,7 @@ import { BatteryPanel } from "@/components/battery-panel";
 import { useGetAssetTech, getGetAssetTechQueryKey } from "@workspace/api-client-react";
 import { AssetLogs } from "@/components/asset-logs";
 import { DeviceStatusCard } from "@/components/device-status-card";
-import { useRoute } from "wouter";
+import { useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import {
   MapPin, Battery, Signal, Wifi, WifiOff, ShieldCheck,
   TrendingDown, TrendingUp, Minus, Droplet, Zap, Cpu, Radio,
   AlertTriangle, CheckCircle2, Clock, Activity, Info,
-  Bell, Lock, RefreshCw, Star, CircleDollarSign,
+  Bell, Lock, RefreshCw, Star, CircleDollarSign, Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FavouriteButton } from "@/components/FavouriteButton";
@@ -370,6 +370,7 @@ export default function AssetDetail() {
 
   const isEsense = tech.purpose?.toLowerCase() === "esense";
   const isCommunityTap = tech.purpose?.toLowerCase() === "communitytap";
+  const isHhm = tech.purpose?.toLowerCase() === "householdmeter";
   const hasDatalogCharts = isEsense || isCommunityTap;
   const hasImei = tech.imeis.length > 0;
   const tamper = hasFlag(tech.healthFlags, "tamper") || (tech.tamperSwitchState != null && tech.tamperSwitchState !== "None" && tech.tamperSwitchState !== "");
@@ -503,6 +504,16 @@ export default function AssetDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {/* HHM shortcut — shown only for HouseholdMeter assets */}
+          {isHhm && (
+            <Link href={`/hhm/${id}`}>
+              <Button className="w-full gap-2" variant="default">
+                <Gauge className="w-4 h-4" />
+                See Household Meter
+              </Button>
+            </Link>
+          )}
 
           {/* Device status (from latest GetStatus reply) */}
           <DeviceStatusCard assetId={id} />

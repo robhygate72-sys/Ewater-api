@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useRoute } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +33,6 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ASSET_ID = "2971";
 const POLL_MS = 30_000;
 const NEW_HIGHLIGHT_MS = 8_000;
 
@@ -72,9 +72,9 @@ interface LogPage {
 
 // ─── Data fetching ───────────────────────────────────────────────────────────
 
-async function fetchLogPage(before: string, limit = 50): Promise<LogPage> {
+async function fetchLogPage(assetId: string, before: string, limit = 50): Promise<LogPage> {
   const params = new URLSearchParams({ before, limit: String(limit) });
-  const res = await fetch(`/api/ewater/assets/${ASSET_ID}/logs?${params}`);
+  const res = await fetch(`/api/ewater/assets/${assetId}/logs?${params}`);
   if (!res.ok) throw new Error("Failed to fetch logs");
   return res.json() as Promise<LogPage>;
 }
@@ -271,10 +271,12 @@ function LogDetailDialog({
   entry,
   open,
   onClose,
+  assetId,
 }: {
   entry: LogEntry | null;
   open: boolean;
   onClose: () => void;
+  assetId: string;
 }) {
   if (!entry?.shengda) return null;
   const s = entry.shengda;
@@ -304,7 +306,7 @@ function LogDetailDialog({
             {s.messageFunction ?? s.messageType ?? "Shengda Packet"}
           </DialogTitle>
           <DialogDescription className="text-[11px]">
-            {formatDateTime(entry.timestamp)} · Asset {ASSET_ID}
+            {formatDateTime(entry.timestamp)} · Asset {assetId}
           </DialogDescription>
         </DialogHeader>
 
@@ -429,6 +431,9 @@ function RawDescription({ description }: { description: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function HhmPage() {
+  const [, params] = useRoute("/hhm/:id");
+  const assetId = params?.id ?? "";
+
   const [allEntries, setAllEntries] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
@@ -453,10 +458,11 @@ export default function HhmPage() {
 
   // ── Initial load ─────────────────────────────────────────────────────────
   const loadInitial = useCallback(async () => {
+    if (!assetId) return;
     setIsLoading(true);
     setIsError(false);
     try {
-      const page = await fetchLogPage(new Date().toISOString(), 100);
+      const page = await fetchLogPage(assetId, new Date().toISOString(), 100);
       setAllEntries(page.entries);
       const ids = new Set(page.entries.map((e) => e.id));
       knownIdsRef.current = ids;
@@ -466,7 +472,7 @@ export default function HhmPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [assetId]);
 
   useEffect(() => {
     void loadInitial();
@@ -479,7 +485,7 @@ export default function HhmPage() {
       setIsPolling(true);
       setCountdown(POLL_MS / 1000);
       try {
-        const page = await fetchLogPage(new Date().toISOString(), 50);
+        const page = await fetchLogPage(assetId, new Date().toISOString(), 50);
         const fresh = page.entries.filter((e) => !knownIdsRef.current.has(e.id));
         if (fresh.length > 0) {
           setAllEntries((prev) => {
@@ -584,7 +590,7 @@ export default function HhmPage() {
               <div className="flex items-center gap-2 mb-0.5">
                 <ShieldAlert className="w-4 h-4 text-primary shrink-0" />
                 <p className="text-sm font-semibold text-foreground">
-                  Household Meter – Asset {ASSET_ID}
+                  Household Meter – Asset {assetId}
                 </p>
               </div>
               <p className="text-[11px] text-muted-foreground">
@@ -717,6 +723,7 @@ export default function HhmPage() {
         entry={selectedEntry}
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
+        assetId={assetId}
       />
     </Layout>
   );
