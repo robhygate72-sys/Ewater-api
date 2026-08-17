@@ -12,6 +12,17 @@ import {
   RefreshCw,
   ShieldAlert,
   XCircle,
+  Gauge,
+  Droplets,
+  Power,
+  TrendingUp,
+  BatteryMedium,
+  Zap,
+  Signal,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
 } from "lucide-react";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -63,84 +74,164 @@ async function fetchLogPage(assetId: string, before: string, limit = 50): Promis
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function batteryColor(state: string | null): string {
-  if (!state) return "";
+function batteryColorClass(state: string | null) {
+  if (!state) return { text: "text-muted-foreground", bg: "bg-muted/50" };
   const s = state.toLowerCase();
-  if (s.includes("low") || s.includes("critical") || s.includes("damage")) return "text-destructive";
-  if (s.includes("good") || s.includes("normal") || s.includes("full")) return "text-emerald-600";
-  return "text-amber-500";
+  if (s.includes("low") || s.includes("critical") || s.includes("damage"))
+    return { text: "text-destructive", bg: "bg-destructive/10" };
+  if (s.includes("good") || s.includes("normal") || s.includes("full"))
+    return { text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" };
+  return { text: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/40" };
 }
 
-function valveColor(status: string | null): string {
-  if (!status) return "";
+function voltageColorClass(v: number | null) {
+  if (v === null) return { text: "text-muted-foreground", bg: "bg-muted/50" };
+  if (v < 3.2) return { text: "text-destructive", bg: "bg-destructive/10" };
+  if (v < 3.5) return { text: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/40" };
+  return { text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" };
+}
+
+function valveColorClass(status: string | null) {
+  if (!status) return { text: "text-muted-foreground", bg: "bg-muted/30" };
   const s = status.toLowerCase();
-  if (s.includes("open")) return "text-emerald-600";
-  if (s.includes("close") || s.includes("shut")) return "text-amber-500";
-  return "";
-}
-
-function voltageColor(v: number | null): string {
-  if (v === null) return "";
-  if (v < 3.2) return "text-destructive";
-  if (v < 3.5) return "text-amber-500";
-  return "text-emerald-600";
+  if (s.includes("open")) return { text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" };
+  if (s.includes("close") || s.includes("shut")) return { text: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/40" };
+  return { text: "text-muted-foreground", bg: "bg-muted/30" };
 }
 
 function hasError(s: ShengdaDecoded): boolean {
   return (s.errorCode !== null && s.errorCode !== 0) || s.magneticAttack === true || !s.valid;
 }
 
-/** Extract a labelled field value from the decoded description text block. */
 function parseDesc(desc: string | null, label: string): string | null {
   if (!desc) return null;
   const m = desc.match(new RegExp(`${label}\\s*:\\s*(.+?)(?:\\r?\\n|$)`, "i"));
   return m ? (m[1]?.trim() ?? null) : null;
 }
 
-// ─── InfoRow ─────────────────────────────────────────────────────────────────
+/** Format "21600 s" → "6 h" where possible, otherwise return raw */
+function formatCycle(raw: string | null): string | null {
+  if (!raw) return null;
+  const m = raw.match(/^(\d+)\s*s$/i);
+  if (m) {
+    const secs = parseInt(m[1]!, 10);
+    if (secs % 3600 === 0) return `${secs / 3600} h`;
+    if (secs % 60 === 0) return `${secs / 60} min`;
+    return `${secs} s`;
+  }
+  return raw;
+}
 
-function InfoRow({
+/** Strip the trailing "(rsrp)" / "(snr)" suffix for compact display */
+function signalNum(raw: string | null): string | null {
+  if (!raw) return null;
+  return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+// ─── BigStatCard ─────────────────────────────────────────────────────────────
+
+function BigStatCard({
+  icon: Icon,
   label,
   value,
-  mono = false,
-  valueClass,
+  unit,
+  sub,
+  textClass,
+  bgClass,
   loading = false,
+  fullWidth = false,
 }: {
+  icon: React.ElementType;
   label: string;
-  value: string | null | undefined;
-  mono?: boolean;
-  valueClass?: string;
+  value: string | number | null | undefined;
+  unit?: string;
+  sub?: string;
+  textClass?: string;
+  bgClass?: string;
   loading?: boolean;
+  fullWidth?: boolean;
 }) {
-  // Hide row entirely when not loading and no value
-  if (!loading && (value == null || value === "")) return null;
   return (
-    <div className="flex justify-between items-center py-2.5 border-b border-border/40 last:border-0 gap-4 min-h-[36px]">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      {loading && value == null ? (
-        <Skeleton className="h-3.5 w-28" />
-      ) : (
-        <span
-          className={cn(
-            "text-xs font-medium text-right break-all",
-            mono && "font-mono text-[11px]",
-            valueClass,
-          )}
-        >
-          {value}
-        </span>
+    <div
+      className={cn(
+        "rounded-2xl p-4 flex flex-col gap-1.5",
+        bgClass ?? "bg-muted/40",
+        fullWidth && "col-span-2",
       )}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {label}
+        </span>
+        <Icon className={cn("w-4 h-4 opacity-50", textClass ?? "text-muted-foreground")} />
+      </div>
+      {loading ? (
+        <Skeleton className="h-8 w-24 mt-0.5" />
+      ) : (
+        <div className="flex items-baseline gap-1">
+          <span className={cn("text-3xl font-bold tabular-nums leading-none", textClass)}>
+            {value ?? "—"}
+          </span>
+          {unit && value != null && (
+            <span className={cn("text-sm font-semibold", textClass, "opacity-70")}>{unit}</span>
+          )}
+        </div>
+      )}
+      {sub && <span className="text-[10px] text-muted-foreground leading-tight">{sub}</span>}
     </div>
   );
 }
 
-// ─── SectionHeading ──────────────────────────────────────────────────────────
+// ─── HealthPill ───────────────────────────────────────────────────────────────
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function HealthPill({
+  icon: Icon,
+  label,
+  value,
+  textClass,
+  bgClass,
+  loading = false,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | null;
+  textClass?: string;
+  bgClass?: string;
+  loading?: boolean;
+}) {
   return (
-    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-      {children}
-    </p>
+    <div
+      className={cn(
+        "flex-1 rounded-xl border border-border/50 px-2 py-2.5 flex flex-col items-center gap-1.5 min-w-0",
+        bgClass ?? "bg-card",
+      )}
+    >
+      <Icon className={cn("w-4 h-4 shrink-0", textClass ?? "text-muted-foreground")} />
+      {loading ? (
+        <Skeleton className="h-3 w-10" />
+      ) : (
+        <span className={cn("text-[11px] font-bold tabular-nums text-center leading-tight", textClass)}>
+          {value ?? "—"}
+        </span>
+      )}
+      <span className="text-[9px] text-muted-foreground text-center leading-tight uppercase tracking-wide">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─── DeviceInfoRow ────────────────────────────────────────────────────────────
+
+function DeviceInfoRow({ label, value, mono = false }: { label: string; value: string | null; mono?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="flex justify-between items-center py-2 border-b border-border/30 last:border-0 gap-3">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className={cn("text-xs font-medium text-right break-all", mono && "font-mono text-[11px]")}>
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -156,8 +247,8 @@ export default function HhmPage() {
   const [countdown, setCountdown] = useState(POLL_MS / 1000);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [deviceExpanded, setDeviceExpanded] = useState(false);
 
-  // Only Shengda entries, newest-first
   const shengdaEntries = useMemo(
     () => allEntries.filter((e) => !!e.shengda),
     [allEntries],
@@ -167,7 +258,6 @@ export default function HhmPage() {
   const latestS = latest?.shengda ?? null;
   const desc = latestS?.description ?? null;
 
-  // ── Daily consumption: diff between latest and oldest reading within 24h ──
   const dailyConsumption = useMemo(() => {
     if (!latestS?.meterReading) return null;
     const cutoff = Date.now() - 24 * 3600 * 1000;
@@ -180,7 +270,6 @@ export default function HhmPage() {
     return diff >= 0 ? diff : null;
   }, [shengdaEntries, latestS]);
 
-  // ── Initial load ─────────────────────────────────────────────────────────
   const loadInitial = useCallback(async () => {
     if (!assetId) return;
     setIsLoading(true);
@@ -196,11 +285,8 @@ export default function HhmPage() {
     }
   }, [assetId]);
 
-  useEffect(() => {
-    void loadInitial();
-  }, [loadInitial]);
+  useEffect(() => { void loadInitial(); }, [loadInitial]);
 
-  // ── Auto-poll every 30s for live status updates ──────────────────────────
   useEffect(() => {
     const poll = async () => {
       if (isPolling) return;
@@ -220,9 +306,7 @@ export default function HhmPage() {
           );
         });
         setLastPoll(new Date());
-      } catch {
-        /* transient — retry next tick */
-      } finally {
+      } catch { /* transient */ } finally {
         setIsPolling(false);
       }
     };
@@ -230,231 +314,246 @@ export default function HhmPage() {
     return () => clearInterval(interval);
   }, [isPolling, assetId]);
 
-  // ── Countdown ticker ─────────────────────────────────────────────────────
   useEffect(() => {
-    const tick = setInterval(() => {
-      setCountdown((s) => (s <= 1 ? POLL_MS / 1000 : s - 1));
-    }, 1000);
+    const tick = setInterval(() => setCountdown((s) => (s <= 1 ? POLL_MS / 1000 : s - 1)), 1000);
     return () => clearInterval(tick);
   }, []);
 
-  // ── Parsed description fields ─────────────────────────────────────────────
-  // IMEI is stored directly as entry.source by the API
+  // ── Derived values ─────────────────────────────────────────────────────────
   const imei = latest?.source ?? parseDesc(desc, "IMEI");
   const rtc = parseDesc(desc, "Current Time");
   const fwVersion = parseDesc(desc, "Software Version");
   const hwVersion = parseDesc(desc, "Hardware Version");
   const model = parseDesc(desc, "Model");
   const serialNumber = parseDesc(desc, "Serial Number");
-  const reportCycle = parseDesc(desc, "Report Cycle");
+  const reportCycle = formatCycle(parseDesc(desc, "Report Cycle"));
   const overdraftVol = parseDesc(desc, "Overdraft Volume");
   const paymentFunc = parseDesc(desc, "Payment Function");
 
-  const alarmValue = latestS
-    ? latestS.magneticAttack
-      ? "Magnetic attack"
-      : latestS.errorCode != null && latestS.errorCode !== 0
-      ? `Error ${latestS.errorCode}`
-      : "None"
+  const batteryC = batteryColorClass(latestS?.batteryState ?? null);
+  const voltageC = voltageColorClass(latestS?.supplyVoltage ?? null);
+  const valveC = valveColorClass(latestS?.valveStatus ?? null);
+
+  const hasAlarm = latestS ? hasError(latestS) : false;
+  const alarmText = latestS
+    ? latestS.magneticAttack ? "Attack!" : !latestS.valid ? "Bad CRC" : `Err ${latestS.errorCode}`
     : null;
 
-  const alarmClass =
-    latestS?.magneticAttack || (latestS?.errorCode != null && latestS.errorCode !== 0)
-      ? "text-destructive font-semibold"
-      : "text-emerald-600";
+  const prepayLow = latestS?.prepayLitres != null && latestS.prepayLitres < 20;
+
+  const rsrp = signalNum(latestS?.signalPower ?? null);
+  const snr = signalNum(latestS?.signalSnr ?? null);
 
   return (
     <Layout title="HHM Dashboard" showBack backTo={`/assets/${assetId}`}>
-      <div className="space-y-4">
+      <div className="space-y-5">
 
-        {/* ── Asset banner ─────────────────────────────────────── */}
-        <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2 mb-0.5">
-                <ShieldAlert className="w-4 h-4 text-primary shrink-0" />
-                <p className="text-sm font-semibold text-foreground">
-                  Household Meter – Asset {assetId}
-                </p>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Shengda NB-IoT · O&amp;M Management Dashboard
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
-              <div className="flex items-center gap-1.5 text-[10px] text-emerald-600">
-                <Radio className="w-3 h-3 animate-pulse" />
-                <span className="font-mono tabular-nums">{countdown}s</span>
-              </div>
-              {lastPoll && (
-                <span className="text-[10px] text-muted-foreground">
-                  Updated {formatTimeAgo(lastPoll.toISOString())}
-                </span>
-              )}
-              <button
-                onClick={loadInitial}
-                disabled={isLoading}
-                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-0.5"
-              >
-                <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} />
-                Refresh
-              </button>
+        {/* ── Compact banner ───────────────────────────────────────── */}
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <ShieldAlert className="w-4 h-4 text-primary shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">Asset {assetId}</p>
+              <p className="text-[10px] text-muted-foreground">Shengda NB-IoT</p>
             </div>
           </div>
-
-          {/* Alarm banner */}
-          {!isLoading && latestS && hasError(latestS) && (
-            <div className="mt-2 flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
-              <p className="text-[11px] text-destructive font-medium">
-                {latestS.magneticAttack
-                  ? "Magnetic attack detected on latest packet"
-                  : !latestS.valid
-                  ? "Latest packet has invalid CRC"
-                  : `Error code ${latestS.errorCode} on latest packet`}
-              </p>
+          <div className="flex items-center gap-2 shrink-0">
+            {lastPoll && (
+              <span className="text-[10px] text-muted-foreground hidden sm:block">
+                {formatTimeAgo(lastPoll.toISOString())}
+              </span>
+            )}
+            <div className="flex items-center gap-1 text-[10px] text-emerald-600">
+              <Radio className="w-3 h-3 animate-pulse" />
+              <span className="font-mono tabular-nums">{countdown}s</span>
             </div>
+            <button
+              onClick={loadInitial}
+              disabled={isLoading}
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", isLoading && "animate-spin")} />
+            </button>
+          </div>
+        </div>
+
+        {/* Error states */}
+        {isError && (
+          <div className="flex items-center gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3">
+            <XCircle className="w-4 h-4 text-destructive shrink-0" />
+            <p className="text-sm text-destructive font-medium flex-1">Failed to load</p>
+            <button onClick={loadInitial} className="text-xs text-destructive underline">Retry</button>
+          </div>
+        )}
+        {!isLoading && hasAlarm && (
+          <div className="flex items-center gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 animate-pulse" />
+            <p className="text-sm text-destructive font-medium">
+              {latestS?.magneticAttack
+                ? "Magnetic attack detected"
+                : !latestS?.valid
+                ? "Latest packet has invalid CRC"
+                : `Device error code ${latestS?.errorCode}`}
+            </p>
+          </div>
+        )}
+
+        {/* ── Meter info: 2×2 big stat grid ────────────────────────── */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2.5 px-0.5">
+            Meter Information
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <BigStatCard
+              icon={Gauge}
+              label="Meter Reading"
+              value={latestS?.meterReading?.toLocaleString() ?? null}
+              unit="L"
+              sub={latest ? `as of ${formatTimeAgo(latest.timestamp)}` : undefined}
+              textClass="text-primary"
+              bgClass="bg-primary/8 dark:bg-primary/15"
+              loading={isLoading}
+            />
+            <BigStatCard
+              icon={Droplets}
+              label="Prepay Balance"
+              value={latestS?.prepayLitres?.toLocaleString() ?? null}
+              unit="L"
+              sub={prepayLow ? "⚠ Low — top up soon" : undefined}
+              textClass={prepayLow ? "text-destructive" : "text-sky-600 dark:text-sky-400"}
+              bgClass={prepayLow ? "bg-destructive/10" : "bg-sky-50 dark:bg-sky-950/40"}
+              loading={isLoading}
+            />
+            <BigStatCard
+              icon={Power}
+              label="Valve"
+              value={latestS?.valveStatus ?? null}
+              textClass={valveC.text}
+              bgClass={valveC.bg}
+              loading={isLoading}
+            />
+            <BigStatCard
+              icon={TrendingUp}
+              label="24 h Usage"
+              value={dailyConsumption?.toLocaleString() ?? null}
+              unit={dailyConsumption != null ? "L" : undefined}
+              sub={dailyConsumption == null ? "Not enough data" : undefined}
+              textClass="text-indigo-600 dark:text-indigo-400"
+              bgClass="bg-indigo-50 dark:bg-indigo-950/40"
+              loading={isLoading}
+            />
+          </div>
+        </div>
+
+        {/* ── Device health pills ───────────────────────────────────── */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2.5 px-0.5">
+            Device Health
+          </p>
+          <div className="flex gap-2">
+            <HealthPill
+              icon={BatteryMedium}
+              label="Battery"
+              value={latestS?.batteryState ?? null}
+              textClass={batteryC.text}
+              bgClass={batteryC.bg}
+              loading={isLoading}
+            />
+            <HealthPill
+              icon={Zap}
+              label="Voltage"
+              value={latestS?.supplyVoltage != null ? `${latestS.supplyVoltage.toFixed(2)}V` : null}
+              textClass={voltageC.text}
+              bgClass={voltageC.bg}
+              loading={isLoading}
+            />
+            <HealthPill
+              icon={Signal}
+              label="RSRP"
+              value={rsrp}
+              textClass="text-foreground"
+              loading={isLoading}
+            />
+            <HealthPill
+              icon={hasAlarm ? AlertTriangle : ShieldCheck}
+              label="Alarms"
+              value={hasAlarm ? (alarmText ?? "Alarm") : (latestS ? "OK" : null)}
+              textClass={hasAlarm ? "text-destructive" : "text-emerald-600"}
+              bgClass={hasAlarm ? "bg-destructive/10" : undefined}
+              loading={isLoading}
+            />
+          </div>
+          {/* SNR sub-line */}
+          {snr && !isLoading && (
+            <p className="text-[10px] text-muted-foreground mt-1.5 px-0.5">
+              Signal SNR: {snr}
+            </p>
           )}
-
-          {/* Fetch error */}
-          {isError && (
-            <div className="mt-2 flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-1.5">
-              <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />
-              <p className="text-[11px] text-destructive font-medium">
-                Failed to load status.{" "}
-                <button onClick={loadInitial} className="underline">Retry</button>
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* ── Diagnostics ──────────────────────────────────────── */}
-        <div>
-          <SectionHeading>Diagnostics</SectionHeading>
-          <Card>
-            <CardContent className="px-4 py-0">
-              <InfoRow
-                label="Supply Voltage"
-                value={latestS?.supplyVoltage != null ? `${latestS.supplyVoltage.toFixed(2)} V` : null}
-                valueClass={voltageColor(latestS?.supplyVoltage ?? null)}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Battery"
-                value={latestS?.batteryState ?? null}
-                valueClass={batteryColor(latestS?.batteryState ?? null)}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Error / Alarms"
-                value={alarmValue}
-                valueClass={alarmClass}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Signal (RSRP)"
-                value={latestS?.signalPower ?? null}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Signal SNR"
-                value={latestS?.signalSnr ?? null}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="RTC (device time)"
-                value={rtc}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="FW Version"
-                value={fwVersion}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="HW Version"
-                value={hwVersion}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Model"
-                value={model}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Serial Number"
-                value={serialNumber}
-                mono
-                loading={isLoading}
-              />
-              <InfoRow
-                label="IMEI"
-                value={imei}
-                mono
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Report Cycle"
-                value={reportCycle}
-                loading={isLoading}
-              />
-            </CardContent>
-          </Card>
-        </div>
+        {/* ── Usage / Meter detail ─────────────────────────────────── */}
+        {(overdraftVol != null || paymentFunc != null || latest) && !isLoading && (
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2.5 px-0.5">
+              Usage Detail
+            </p>
+            <Card className="shadow-sm">
+              <CardContent className="px-4 py-1">
+                {overdraftVol != null && (
+                  <DeviceInfoRow label="Overdraft Volume" value={`${overdraftVol} L`} />
+                )}
+                {paymentFunc != null && (
+                  <DeviceInfoRow label="Payment Function" value={paymentFunc} />
+                )}
+                {latest && (
+                  <DeviceInfoRow label="Last packet" value={formatDateTime(latest.timestamp)} />
+                )}
+                {reportCycle && (
+                  <DeviceInfoRow label="Report Cycle" value={reportCycle} />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-        {/* ── Meter / Customer Detail ───────────────────────────── */}
-        <div>
-          <SectionHeading>Meter / Customer Detail</SectionHeading>
-          <Card>
-            <CardContent className="px-4 py-0">
-              <InfoRow
-                label="Meter Reading"
-                value={latestS?.meterReading != null ? `${latestS.meterReading.toLocaleString()} L` : null}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Prepay Balance"
-                value={latestS?.prepayLitres != null ? `${latestS.prepayLitres.toLocaleString()} L` : null}
-                valueClass={
-                  latestS?.prepayLitres != null && latestS.prepayLitres < 20
-                    ? "text-destructive font-semibold"
-                    : undefined
-                }
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Valve Status"
-                value={latestS?.valveStatus ?? null}
-                valueClass={valveColor(latestS?.valveStatus ?? null)}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Daily Consumption (24 h)"
-                value={dailyConsumption != null ? `${dailyConsumption.toLocaleString()} L` : null}
-              />
-              <InfoRow
-                label="Overdraft Volume"
-                value={overdraftVol}
-                loading={isLoading}
-              />
-              <InfoRow
-                label="Payment Function"
-                value={paymentFunc}
-                loading={isLoading}
-              />
-              {latest && (
-                <InfoRow
-                  label="As of"
-                  value={formatDateTime(latest.timestamp)}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* ── Device info (collapsible) ─────────────────────────────── */}
+        {(model ?? fwVersion ?? imei) && !isLoading && (
+          <div>
+            <button
+              onClick={() => setDeviceExpanded((v) => !v)}
+              className="flex items-center justify-between w-full px-0.5 mb-2.5 group"
+            >
+              <div className="flex items-center gap-2">
+                <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
+                  Device Info
+                </p>
+              </div>
+              {deviceExpanded
+                ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+            </button>
+            {deviceExpanded && (
+              <Card className="shadow-sm">
+                <CardContent className="px-4 py-1">
+                  <DeviceInfoRow label="Model" value={model} />
+                  <DeviceInfoRow label="FW Version" value={fwVersion} mono />
+                  <DeviceInfoRow label="HW Version" value={hwVersion} />
+                  <DeviceInfoRow label="Serial Number" value={serialNumber} mono />
+                  <DeviceInfoRow label="IMEI" value={imei} mono />
+                  <DeviceInfoRow label="RTC (device time)" value={rtc} mono />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
-        {/* ── Communication Log ─────────────────────────────────── */}
+        {/* ── Communication Log ─────────────────────────────────────── */}
         <div>
-          <SectionHeading>Communication Log</SectionHeading>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2.5 px-0.5">
+            Communication Log
+          </p>
           <AssetLogs assetId={assetId} />
         </div>
 
