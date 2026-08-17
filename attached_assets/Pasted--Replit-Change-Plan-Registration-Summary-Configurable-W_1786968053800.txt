@@ -1,0 +1,252 @@
+# Replit Change Plan — Registration Summary → Configurable Webhook (every 30 min)
+
+You are modifying the existing **eWater Monitor** app in this Repl (pnpm monorepo: `artifacts/api-server`,
+`artifacts/ewater-app`, `lib/db`, `lib/api-spec`). Read `replit.md` first and follow its conventions.
+
+This plan ports the behaviour of an existing Python "registrations → ntfy" notifier into this app, with
+two deliberate changes:
+
+1. **No ntfy.** The summary is HTTP-POSTed to a **webhook URL configured in the app's Settings page**
+   (stored in Postgres), not to ntfy.sh.
+2. **No new auth code.** All eWater API access MUST go through the existing
+   `artifacts/api-server/src/lib/ewater-client.ts` (`ewaterFetch`) and the credentials already
+   configured via `/api/ewater/credentials` / the Settings page. Do NOT re-implement login, do NOT
+   add `EWATER_USERNAME`/`EWATER_PASSWORD` handling, do NOT touch the token cache logic.
+
+**NEVER hard-code credentials or webhook URLs.** Webhook URLs may contain secret tokens — never log
+them in full (log host + path prefix only, e.g. `https://hooks.example.com/…`).
+
+---
+
+## 1. Mission
+
+Every `refreshMinutes` (default **30**), gather live registration and water-usage numbers for the
+configured water systems — defaults: **Kajire (waterSystemId 217)** and **Sagalla (waterSystemId 218)**
+— from the eWater State/Query APIs, and POST **one JSON payload** summarising all systems to the
+configured webhook URL.
+
+The human-readable summary text is exactly (line order = configured system order, Kajire first by default):
+
+```
+Kajire: Total = 412, 3 today, 1 in 30 mins, 5820 litres today
+Sagalla: Total = 388, 0 today, 0 in 30 mins, 4102 litres today
+```
+
+Line template (exact): `{name}: Total = {total}, {today} today, {last30} in 30 mins, {litres rounded to 0 dp} litres today`
+
+---
+
+## 2. Configuration — stored in Postgres, edited in Settings (NOT env vars)
+
+New Drizzle table in `lib/db/src/schema/webhook-settings.ts` (export from `lib/db/src/schema/index.ts`),
+single-row semantics (id = 1, upsert):
+
+| Column | Type | Default | Meaning |
+|---|---|---|---|
+| `webhookUrl` | text, nullable | null | Destination URL. Notifier is inert while null/empty. |
+| `enabled` | boolean | false | Master on/off switch. |
+| `refreshMinutes` | integer | 30 | Cycle cadence AND the "in X mins" window. Min 5, max 1440. |
+| `systems` | jsonb | `[{"id":217,"name":"Kajire"},{"id":218,"name":"Sagalla"}]` | Ordered list; order = line order in the summary. |
+| `updatedAt` | timestamptz | now, `$onUpdate` | Follow the pattern in `alert-rules.ts`. |
+
+Run `pnpm --filter @workspace/db run push` after adding the schema.
+
+Hard-code nothing about Kajire/Sagalla in the notifier module — read from settings; the defaults above
+live only in the schema/seed.
+
+```ts
+const KENYA_UTC_OFFSET_MS = 3 * 60 * 60 * 1000; // EAT = UTC+3, no DST — never use tz databases
+```
+
+---
+
+## 3. Data sources — reuse what exists
+
+All calls go via `ewaterFetch(api, path)` from `ewater-client.ts`. It already returns
+`{ status, data }`, decodes JSON vs text by content-type, and retries once on 401. Do not change it.
+
+Reuse from `artifacts/api-server/src/lib/ewater-insights.ts` where functions already exist
+(`getRegisteredTagIds`, `getTagInfo`); add any missing low-level helpers **in `ewater-insights.ts`**
+per the repo rule ("add the logic to lib/ewater-insights.ts … don't reimplement inline").
+
+Endpoints used (all GET, query-string params):
+
+**State API** (`ewaterFetch("state", …)`):
+
+| Endpoint | Params | Shape notes (match the codebase's confirmed shapes, not assumptions) |
+|---|---|---|
+| `/api/Entity/AssetsInWaterSystem` | `waterSystemId` | Either a bare JSON list, or a dict with the list under `assets` or `entities`. Each asset's id may be under `id`, `entityId`, or `assetId` — check in that order. Handle all shapes defensively. |
+| `/api/Reference/GetTagIdsByRegisteredWaterSystem` | `waterSystemId` | JSON list of **NFC ID strings** (null/empty → `[]`). Note: the tag ids are strings in this API — sort them as strings for deterministic iteration. Use the existing `getRegisteredTagIds` (pass a large limit or add an unpaged variant). |
+| `/api/Reference/GetTagInfo` | `tagId` | Use the existing `getTagInfo` → `TagInfo` (has `signUpDt`, `householdId`). May be null → skip tag. |
+| `/api/Reference/GetHouseholdInfo` | `householdId` | Dict incl. `assetId` (the household's HOME tap) and `systemId`. May be null → treat as `{}`. Add a typed helper `getHouseholdInfo(householdId)` in `ewater-insights.ts` if one doesn't exist. |
+
+**Query API** (`ewaterFetch("query", …)`):
+
+| Endpoint | Params | Shape notes |
+|---|---|---|
+| `/api/Entity/LitresDispensedPerDay` | `entityType=WaterSystem`, `entityId`, `startDt`, `endDt` | Dict with key `litresDispensedPerDay`: list of `{date, totalLitres, …}` per day, includes today-so-far. |
+
+---
+
+## 4. Metric definitions — reproduce EXACTLY
+
+New module: `artifacts/api-server/src/lib/registration-notifier.ts` (orchestration + webhook POST;
+raw eWater data access stays in `ewater-insights.ts`).
+
+### 4.1 What counts as a "registration" and which system it belongs to
+
+A registration is a signed-up NFC tag, attributed to a system **by its household's HOME tap**, not by
+where the tag was registered:
+
+1. **Candidate tags** = the UNION of `GetTagIdsByRegisteredWaterSystem` over all configured systems.
+   Deduplicate (Set); iterate in sorted order.
+2. **Asset→system map**: for each configured system, call `AssetsInWaterSystem` and record
+   `Number(assetId) → systemId` for every asset returned.
+3. For each candidate tag: `GetTagInfo(tagId)` → read `signUpDt` and `householdId`.
+   **Skip the tag entirely if `signUpDt` fails to parse OR `householdId` is missing/falsy.**
+4. `GetHouseholdInfo(householdId)` — cache household lookups in a `Map` for the run (many tags share
+   a household; do not refetch).
+5. Attribution: `homeSystem = assetToSystem.get(Number(household.assetId))`. If that misses AND
+   `Number(household.systemId)` is one of the configured system ids, use it as fallback. If still
+   unresolved, the tag counts for neither system.
+
+Accepted, documented limitation (keep this note in a doc comment): a tag registered under some THIRD
+system but whose home tap is in a configured system will be missed, because candidate enumeration only
+covers the configured systems.
+
+### 4.2 Timestamp parsing
+
+`signUpDt` values are **UTC, naive, mixed second/microsecond precision**, sometimes with a trailing
+`Z`. Parse as: strip any trailing `Z`, then `new Date(ts + "Z")` (i.e. force-interpret as UTC);
+if the result is `NaN`, return `null` (tag is skipped). Compare everything as UTC epoch millis.
+
+### 4.3 The four numbers per system
+
+Let `nowUtcMs = Date.now()`.
+
+- **total** — count of tags attributed to the system (all time).
+- **today** — tags with `signUpMs >= kenyaMidnightUtcMs`, where the EAT date is
+  `new Date(nowUtcMs + KENYA_UTC_OFFSET_MS)` taken as a UTC calendar date, and
+  `kenyaMidnightUtcMs = Date.UTC(eatYear, eatMonth, eatDay) - KENYA_UTC_OFFSET_MS`.
+- **in 30 mins** — tags with `signUpMs >= nowUtcMs - refreshMinutes * 60_000`.
+  (The label in the text stays literally `in {refreshMinutes} mins`, so `in 30 mins` at the default.)
+- **litres today** — call `LitresDispensedPerDay` with `entityType=WaterSystem`,
+  `entityId=<system>`, `startDt = "{eatDate}T00:00:00"`, `endDt = "{eatDate}T23:59:59"`
+  (EAT date `YYYY-MM-DD`, no timezone suffix). Sum `Number(totalLitres ?? 0)` over returned rows
+  whose `date` string **starts with** the EAT date string. Missing/null list → 0.
+
+---
+
+## 5. Webhook publishing spec (replaces ntfy)
+
+POST to the configured `webhookUrl` with `Content-Type: application/json`, 30 s timeout
+(`AbortSignal.timeout(30_000)`), treat non-2xx as failure.
+
+**Success payload** (one per cycle, covering all systems):
+
+```json
+{
+  "event": "ewater.registrations.summary",
+  "title": "eWATER Registrations 14:30 EAT",
+  "text": "Kajire: Total = 412, 3 today, 1 in 30 mins, 5820 litres today\nSagalla: Total = 388, 0 today, 0 in 30 mins, 4102 litres today",
+  "generatedAt": "2026-08-17T11:30:04.000Z",
+  "refreshMinutes": 30,
+  "systems": [
+    { "waterSystemId": 217, "name": "Kajire",  "total": 412, "today": 3, "lastWindow": 1, "litresToday": 5820 },
+    { "waterSystemId": 218, "name": "Sagalla", "total": 388, "today": 0, "lastWindow": 0, "litresToday": 4102 }
+  ]
+}
+```
+
+- `title`: `eWATER Registrations {HH:MM} EAT` — current time in EAT (UTC+3), 24-h.
+- `text`: the exact lines from §1 joined with `\n` (kept for consumers that just want a message body,
+  e.g. Slack/n8n → WhatsApp).
+- `litresToday` in JSON is the rounded integer, matching the text.
+
+**Failure payload** (any exception during a refresh cycle): log the full error/stack first, then
+best-effort POST (swallow any error from this POST):
+
+```json
+{ "event": "ewater.registrations.error", "title": "eWATER Registrations - error", "text": "Registrations refresh FAILED - see log", "generatedAt": "…" }
+```
+
+A failed cycle must NOT kill the scheduler — it runs again next tick.
+
+If `enabled` is false or `webhookUrl` is empty, the tick is a silent no-op (debug-level log only).
+If eWater credentials are not configured (`getCredentials()` returns null), skip the cycle and log a
+warning — do not send the error webhook for this case.
+
+---
+
+## 6. Scheduler & runtime
+
+Follow the existing alert-checker pattern exactly:
+
+- New state module `artifacts/api-server/src/lib/notifier-state.ts` (mirror `check-state.ts`):
+  `lastRunAt`, `lastResult` (`"sent" | "failed" | "skipped"`), `lastError` (string, sanitised).
+- In `artifacts/api-server/src/index.ts`, alongside the existing alert `setInterval`, add a
+  **1-minute tick** that reads settings from the DB and runs the notifier when
+  `now - lastRunAt >= refreshMinutes` (this makes cadence changes in Settings take effect without a
+  restart, unlike a fixed `setInterval(refreshMinutes)`). Guard with an in-flight flag so a slow run
+  (hundreds of sequential tag calls) never overlaps the next tick.
+- Startup: log one line — enabled state, cadence, masked webhook host.
+
+---
+
+## 7. REST API routes
+
+Add to a new `artifacts/api-server/src/routes/notifier.ts`, mounted from `routes/index.ts`
+(same style as `monitor.ts`), with Zod-validated bodies:
+
+| Route | Behaviour |
+|---|---|
+| `GET /api/notifier/settings` | Returns settings row (create-with-defaults if absent) + `lastRunAt`/`lastResult` from notifier-state. Never echo full webhook URL back? — DO echo it (the UI needs to show/edit it); this app has no per-user auth separation, consistent with how credentials status works. |
+| `PUT /api/notifier/settings` | Upsert. Validate: `webhookUrl` is `http(s)://` URL or empty; `refreshMinutes` 5–1440; `systems` non-empty array of `{id:int, name:string}`. |
+| `POST /api/notifier/test` | Runs one full gather+send immediately (even if `enabled` is false, provided a URL is set), returns `{ ok, text }` or `{ ok:false, error }`. |
+
+Then update the OpenAPI spec in `lib/api-spec` and run
+`pnpm --filter @workspace/api-spec run codegen` so typed hooks exist for the frontend.
+
+---
+
+## 8. Frontend — Settings page
+
+Extend `artifacts/ewater-app/src/pages/settings.tsx` with a new **"Registration Webhook"** card below
+the eWater credentials card, using the generated hooks and the existing form/toast patterns:
+
+- Enable toggle, Webhook URL input, Refresh minutes input.
+- Systems editor: simple list of `{ id, name }` rows with add/remove (defaults pre-filled).
+- **"Send test"** button → `POST /api/notifier/test`, toast with the summary text on success.
+- Status line: last run time + result (e.g. "Last sent 14:30 · OK").
+
+---
+
+## 9. Logging & etiquette
+
+- Use the existing `logger`. After each successful send, log `sent: ` + the text with newlines
+  replaced by ` | `. On failure log the error with stack. Never log credentials, tokens, or the full
+  webhook URL.
+- The tag loop is one `GetTagInfo` per tag plus one `GetHouseholdInfo` per unique household — several
+  hundred **sequential** HTTP calls per cycle. That is expected and fine at a 30-minute cadence; do
+  NOT parallelise aggressively against the eWater APIs. If you optimise, cap concurrency at ~4 and
+  keep the household cache. `ewaterFetch` reuses `fetch` per call — that's acceptable; do not add a
+  new HTTP client.
+
+---
+
+## 10. Acceptance checks (do these before calling it done)
+
+1. `pnpm run typecheck` and `pnpm run build` pass.
+2. With credentials configured and a test webhook URL (e.g. a webhook.site URL entered in Settings),
+   `POST /api/notifier/test` → exactly one JSON payload arrives; `text` matches the §1 template with
+   plausible numbers (totals in the hundreds; litres are whole numbers); `title` reads
+   `eWATER Registrations HH:MM EAT`; Kajire line before Sagalla.
+3. Enable the notifier with `refreshMinutes=5` temporarily → two consecutive automatic sends arrive
+   ~5 min apart; restore to 30 afterwards.
+4. Temporarily break the eWater password → next cycle logs a failure and (if a URL is set) the error
+   payload arrives; the server does not crash and the following cycle runs.
+5. `enabled=false` or empty URL → no outbound POSTs occur.
+6. `grep -ri password .` in new/changed files shows only env-var/settings reads — zero hard-coded
+   secrets; no full webhook URLs in logs.
+7. `total >= today >= 0` and `today >= last30` will USUALLY hold — but `last30 <= today` is not
+   guaranteed just after Kenya midnight; don't assert relationships in code.

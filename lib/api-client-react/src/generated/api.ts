@@ -37,6 +37,9 @@ import type {
   GetESenseChartsParams,
   HealthStatus,
   MeterReadingResult,
+  NotifierSettings,
+  NotifierSettingsInput,
+  NotifierTestResult,
   ProxyInput,
   ProxyResponse,
   RawPacketLog,
@@ -1444,5 +1447,223 @@ export const useProxyRequest = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getProxyRequestMutationOptions(options));
+    }
+
+export const getGetNotifierSettingsUrl = () => {
+
+
+
+
+  return `/api/notifier/settings`
+}
+
+/**
+ * @summary Get registration webhook notifier settings and last run status
+ */
+export const getNotifierSettings = async ( options?: RequestInit): Promise<NotifierSettings> => {
+
+  return customFetch<NotifierSettings>(getGetNotifierSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotifierSettingsQueryKey = () => {
+    return [
+    `/api/notifier/settings`
+    ] as const;
+    }
+
+
+export const getGetNotifierSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getNotifierSettings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotifierSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotifierSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotifierSettings>>> = ({ signal }) => getNotifierSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotifierSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotifierSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getNotifierSettings>>>
+export type GetNotifierSettingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get registration webhook notifier settings and last run status
+ */
+
+export function useGetNotifierSettings<TData = Awaited<ReturnType<typeof getNotifierSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotifierSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotifierSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateNotifierSettingsUrl = () => {
+
+
+
+
+  return `/api/notifier/settings`
+}
+
+/**
+ * @summary Update registration webhook notifier settings
+ */
+export const updateNotifierSettings = async (notifierSettingsInput: NotifierSettingsInput, options?: RequestInit): Promise<NotifierSettings> => {
+
+  return customFetch<NotifierSettings>(getUpdateNotifierSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      notifierSettingsInput,)
+  }
+);}
+
+
+
+
+export const getUpdateNotifierSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNotifierSettings>>, TError,{data: BodyType<NotifierSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateNotifierSettings>>, TError,{data: BodyType<NotifierSettingsInput>}, TContext> => {
+
+const mutationKey = ['updateNotifierSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateNotifierSettings>>, {data: BodyType<NotifierSettingsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateNotifierSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateNotifierSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateNotifierSettings>>>
+    export type UpdateNotifierSettingsMutationBody = BodyType<NotifierSettingsInput>
+    export type UpdateNotifierSettingsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update registration webhook notifier settings
+ */
+export const useUpdateNotifierSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNotifierSettings>>, TError,{data: BodyType<NotifierSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateNotifierSettings>>,
+        TError,
+        {data: BodyType<NotifierSettingsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateNotifierSettingsMutationOptions(options));
+    }
+
+export const getTestNotifierUrl = () => {
+
+
+
+
+  return `/api/notifier/test`
+}
+
+/**
+ * @summary Run one registration gather-and-send cycle immediately (ignores enabled flag)
+ */
+export const testNotifier = async ( options?: RequestInit): Promise<NotifierTestResult> => {
+
+  return customFetch<NotifierTestResult>(getTestNotifierUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getTestNotifierMutationOptions = <TError = ErrorType<ErrorResponse | NotifierTestResult>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testNotifier>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testNotifier>>, TError,void, TContext> => {
+
+const mutationKey = ['testNotifier'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testNotifier>>, void> = () => {
+
+
+          return  testNotifier(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestNotifierMutationResult = NonNullable<Awaited<ReturnType<typeof testNotifier>>>
+
+    export type TestNotifierMutationError = ErrorType<ErrorResponse | NotifierTestResult>
+
+    /**
+ * @summary Run one registration gather-and-send cycle immediately (ignores enabled flag)
+ */
+export const useTestNotifier = <TError = ErrorType<ErrorResponse | NotifierTestResult>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testNotifier>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testNotifier>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestNotifierMutationOptions(options));
     }
 

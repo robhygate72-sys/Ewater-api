@@ -488,6 +488,52 @@ export interface ProxyResponse {
   data?: ProxyResponseData;
 }
 
+export interface NotifierSystemConfig {
+  id: number;
+  name: string;
+}
+
+export interface NotifierSettings {
+  /** @nullable */
+  webhookUrl?: string | null;
+  enabled: boolean;
+  /**
+     * @minimum 5
+     * @maximum 1440
+     */
+  refreshMinutes: number;
+  systems: NotifierSystemConfig[];
+  /** @nullable */
+  updatedAt?: string | null;
+  /** @nullable */
+  lastRunAt?: string | null;
+  /** @nullable */
+  lastResult?: string | null;
+  /** @nullable */
+  lastError?: string | null;
+}
+
+export interface NotifierSettingsInput {
+  /** http(s):// URL or empty string to clear */
+  webhookUrl?: string;
+  enabled?: boolean;
+  /**
+     * @minimum 5
+     * @maximum 1440
+     */
+  refreshMinutes?: number;
+  /** @minItems 1 */
+  systems?: NotifierSystemConfig[];
+}
+
+export interface NotifierTestResult {
+  ok: boolean;
+  /** Summary text on success */
+  text?: string;
+  /** Error message on failure */
+  error?: string;
+}
+
 export type GetDashboardParams = {
 lifecycleState?: GetDashboardLifecycleState;
 };

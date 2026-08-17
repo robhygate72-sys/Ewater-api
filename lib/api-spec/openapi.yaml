@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: ewater
     description: eWater API proxy operations
+  - name: notifier
+    description: Registration webhook notifier
 paths:
   /healthz:
     get:
@@ -497,6 +499,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /notifier/settings:
+    get:
+      operationId: getNotifierSettings
+      tags: [notifier]
+      summary: Get registration webhook notifier settings and last run status
+      responses:
+        "200":
+          description: Notifier settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifierSettings"
+
+    put:
+      operationId: updateNotifierSettings
+      tags: [notifier]
+      summary: Update registration webhook notifier settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifierSettingsInput"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifierSettings"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifier/test:
+    post:
+      operationId: testNotifier
+      tags: [notifier]
+      summary: Run one registration gather-and-send cycle immediately (ignores enabled flag)
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifierTestResult"
+        "400":
+          description: No webhook URL configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Gather or send failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifierTestResult"
 
 components:
   schemas:
@@ -1152,3 +1216,68 @@ components:
         data:
           type: object
           additionalProperties: true
+
+    NotifierSystemConfig:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+
+    NotifierSettings:
+      type: object
+      required: [enabled, refreshMinutes, systems]
+      properties:
+        webhookUrl:
+          type: ["string", "null"]
+        enabled:
+          type: boolean
+        refreshMinutes:
+          type: integer
+          minimum: 5
+          maximum: 1440
+        systems:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotifierSystemConfig"
+        updatedAt:
+          type: ["string", "null"]
+        lastRunAt:
+          type: ["string", "null"]
+        lastResult:
+          type: ["string", "null"]
+        lastError:
+          type: ["string", "null"]
+
+    NotifierSettingsInput:
+      type: object
+      properties:
+        webhookUrl:
+          type: string
+          description: "http(s):// URL or empty string to clear"
+        enabled:
+          type: boolean
+        refreshMinutes:
+          type: integer
+          minimum: 5
+          maximum: 1440
+        systems:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotifierSystemConfig"
+          minItems: 1
+
+    NotifierTestResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        text:
+          type: string
+          description: Summary text on success
+        error:
+          type: string
+          description: Error message on failure

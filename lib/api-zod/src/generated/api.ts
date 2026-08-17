@@ -463,3 +463,75 @@ export const ProxyRequestResponse = zod.object({
 })
 
 
+/**
+ * @summary Get registration webhook notifier settings and last run status
+ */
+export const getNotifierSettingsResponseRefreshMinutesMin = 5;
+export const getNotifierSettingsResponseRefreshMinutesMax = 1440;
+
+
+
+export const GetNotifierSettingsResponse = zod.object({
+  "webhookUrl": zod.string().nullish(),
+  "enabled": zod.boolean(),
+  "refreshMinutes": zod.number().min(getNotifierSettingsResponseRefreshMinutesMin).max(getNotifierSettingsResponseRefreshMinutesMax),
+  "systems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
+  "updatedAt": zod.string().nullish(),
+  "lastRunAt": zod.string().nullish(),
+  "lastResult": zod.string().nullish(),
+  "lastError": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update registration webhook notifier settings
+ */
+export const updateNotifierSettingsBodyRefreshMinutesMin = 5;
+export const updateNotifierSettingsBodyRefreshMinutesMax = 1440;
+
+
+
+
+export const UpdateNotifierSettingsBody = zod.object({
+  "webhookUrl": zod.string().optional().describe('http(s):\/\/ URL or empty string to clear'),
+  "enabled": zod.boolean().optional(),
+  "refreshMinutes": zod.number().min(updateNotifierSettingsBodyRefreshMinutesMin).max(updateNotifierSettingsBodyRefreshMinutesMax).optional(),
+  "systems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})).min(1).optional()
+})
+
+export const updateNotifierSettingsResponseRefreshMinutesMin = 5;
+export const updateNotifierSettingsResponseRefreshMinutesMax = 1440;
+
+
+
+export const UpdateNotifierSettingsResponse = zod.object({
+  "webhookUrl": zod.string().nullish(),
+  "enabled": zod.boolean(),
+  "refreshMinutes": zod.number().min(updateNotifierSettingsResponseRefreshMinutesMin).max(updateNotifierSettingsResponseRefreshMinutesMax),
+  "systems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
+  "updatedAt": zod.string().nullish(),
+  "lastRunAt": zod.string().nullish(),
+  "lastResult": zod.string().nullish(),
+  "lastError": zod.string().nullish()
+})
+
+
+/**
+ * @summary Run one registration gather-and-send cycle immediately (ignores enabled flag)
+ */
+export const TestNotifierResponse = zod.object({
+  "ok": zod.boolean(),
+  "text": zod.string().optional().describe('Summary text on success'),
+  "error": zod.string().optional().describe('Error message on failure')
+})
+
+

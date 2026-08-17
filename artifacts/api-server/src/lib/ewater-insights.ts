@@ -2113,3 +2113,78 @@ export async function getDisbursementsByAsset(
   if (result.status !== 200) throw new Error(`eWater Usage API returned ${result.status}`);
   return parseDisbursementsResponse(result.data as Record<string, unknown>);
 }
+
+// ---------------------------------------------------------------------------
+// Water-system helpers for the registration notifier
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns numeric asset IDs for every asset in the given water system.
+ * Handles multiple response shapes defensively:
+ *  – bare JSON array
+ *  – dict with the array under "assets" or "entities"
+ * Each asset's id is read from "id", "entityId", or "assetId" (in that order).
+ */
+export async function getAssetsInWaterSystem(waterSystemId: number): Promise<number[]> {
+  try {
+    const result = await ewaterFetch(
+      "state",
+      `/api/Entity/AssetsInWaterSystem?waterSystemId=${encodeURIComponent(waterSystemId)}`,
+    );
+    if (result.status !== 200 || result.data == null) return [];
+
+    let list: unknown[] = [];
+    if (Array.isArray(result.data)) {
+      list = result.data;
+    } else if (typeof result.data === "object") {
+      const d = result.data as Record<string, unknown>;
+      if (Array.isArray(d["assets"])) list = d["assets"] as unknown[];
+      else if (Array.isArray(d["entities"])) list = d["entities"] as unknown[];
+    }
+
+    const ids: number[] = [];
+    for (const item of list) {
+      if (item == null || typeof item !== "object") continue;
+      const obj = item as Record<string, unknown>;
+      const raw = obj["id"] ?? obj["entityId"] ?? obj["assetId"];
+      const n = Number(raw);
+      if (!isNaN(n) && n > 0) ids.push(n);
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns total litres dispensed today (EAT date string YYYY-MM-DD) for a
+ * water system, rounded to the nearest integer.
+ * Sums rows from LitresDispensedPerDay whose "date" field starts with eatDateStr.
+ */
+export async function getLitresDispensedToday(
+  waterSystemId: number,
+  eatDateStr: string,
+): Promise<number> {
+  try {
+    const startDt = `${eatDateStr}T00:00:00`;
+    const endDt = `${eatDateStr}T23:59:59`;
+    const result = await ewaterFetch(
+      "query",
+      `/api/Entity/LitresDispensedPerDay?entityType=WaterSystem&entityId=${encodeURIComponent(waterSystemId)}&startDt=${encodeURIComponent(startDt)}&endDt=${encodeURIComponent(endDt)}`,
+    );
+    if (result.status !== 200 || result.data == null) return 0;
+    const d = result.data as Record<string, unknown>;
+    const rows = Array.isArray(d["litresDispensedPerDay"])
+      ? (d["litresDispensedPerDay"] as Record<string, unknown>[])
+      : [];
+    let total = 0;
+    for (const row of rows) {
+      const date = strOrNull(row["date"]);
+      if (!date || !date.startsWith(eatDateStr)) continue;
+      total += Number(row["totalLitres"] ?? 0) || 0;
+    }
+    return Math.round(total);
+  } catch {
+    return 0;
+  }
+}
