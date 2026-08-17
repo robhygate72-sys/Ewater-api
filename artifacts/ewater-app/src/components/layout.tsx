@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Droplet, ChevronLeft, LogOut, RefreshCw, Star, Bell, Tag, Gauge } from "lucide-react";
+import { Home, Droplet, ChevronLeft, LogOut, RefreshCw, Star, Bell, Tag } from "lucide-react";
 import { ReactNode, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useLogout } from "@/App";
@@ -31,7 +31,6 @@ export function Layout({ children, title, showBack, backTo, headerActions }: Lay
     { href: "/tags", icon: Tag, label: "Tags" },
     { href: "/watchlist", icon: Star, label: "Watchlist" },
     { href: "/notifications", icon: Bell, label: "Alerts" },
-    { href: "/hhm", icon: Gauge, label: "HHM" },
   ];
 
   return (
