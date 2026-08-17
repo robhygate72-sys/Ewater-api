@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AssetLogs } from "@/components/asset-logs";
 import { formatDateTime, formatTimeAgo } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import { useGetAssetTech } from "@workspace/api-client-react";
 import {
   AlertTriangle,
   Radio,
@@ -319,6 +320,11 @@ export default function HhmPage() {
     return () => clearInterval(tick);
   }, []);
 
+  // ── Asset meta (name + type from tech endpoint) ────────────────────────────
+  const { data: assetMeta } = useGetAssetTech(assetId);
+  const assetName = assetMeta?.name ?? null;
+  const assetType = assetMeta?.purpose ?? null;
+
   // ── Derived values ─────────────────────────────────────────────────────────
   const imei = latest?.source ?? parseDesc(desc, "IMEI");
   const rtc = parseDesc(desc, "Current Time");
@@ -353,8 +359,24 @@ export default function HhmPage() {
           <div className="flex items-center gap-2 min-w-0">
             <ShieldAlert className="w-4 h-4 text-primary shrink-0" />
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">Asset {assetId}</p>
-              <p className="text-[10px] text-muted-foreground">Shengda NB-IoT</p>
+              <p className="text-sm font-semibold text-foreground truncate">
+                {assetName ?? `Asset ${assetId}`}
+              </p>
+              <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                {serialNumber && (
+                  <>
+                    <span className="text-[10px] font-mono text-muted-foreground">{serialNumber}</span>
+                    <span className="text-[10px] text-border">·</span>
+                  </>
+                )}
+                <span className="text-[10px] text-muted-foreground">#{assetId}</span>
+                {assetType && (
+                  <>
+                    <span className="text-[10px] text-border">·</span>
+                    <span className="text-[10px] text-muted-foreground capitalize">{assetType}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
