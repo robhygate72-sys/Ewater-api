@@ -4,7 +4,6 @@ import {
   listHouseholdMeters,
   useGetHhcConfig,
   useUpdateHhcConfig,
-  useHhcOperatorLogin,
   getGetHhcConfigQueryKey,
   type HouseholdMeterSummary,
   type HhcConfigurationUpdate,
@@ -14,19 +13,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings2, UserCircle2, Search } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/date";
 import { useMeterStates } from "./use-meter-states";
 import { obsStr, connectivityColor, StatusBadge } from "./shared";
 import { CommissioningPanel } from "./commissioning-detail";
-import { getSession, useOperatorSession, saveSession, clearSession, getOperator, isAdminRole, operatorHeaders, type OperatorSessionInfo } from "./operator";
+import { getSession, useOperatorSession, getOperator, isAdminRole, operatorHeaders } from "./operator";
 
-const QUEUE_LIFECYCLES = ["PreInstallation", "Staged", "Active"] as const;
+const QUEUE_LIFECYCLES = ["PreInstallation", "Staged", "Active", "Test"] as const;
 const STAGE_LABEL: Record<string, string> = {
   PreInstallation: "Pre-install",
   Staged: "Staged",
   Active: "Active",
+  Test: "Test",
 };
 const API_PAGE_SIZE = 100;
 const UI_PAGE_SIZE = 25;
@@ -45,87 +45,6 @@ export async function fetchAllMeters(status: string): Promise<HouseholdMeterSumm
     if (!res.hasMore) return all;
   }
   throw new Error(`Commissioning queue for ${status} exceeds ${MAX_API_PAGES * API_PAGE_SIZE} meters; refusing to show a truncated queue`);
-}
-
-// ── Operator sign-in bar ─────────────────────────────────────────────────────
-// The access key is verified server-side; the returned token carries the
-// operator's verified identity and role.
-
-export function OperatorBar() {
-  const session = useOperatorSession();
-  const [name, setName] = useState("");
-  const [key, setKey] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const login = useHhcOperatorLogin({
-    mutation: {
-      onSuccess: (data) => {
-        saveSession(data as OperatorSessionInfo);
-        setKey("");
-        setError(null);
-      },
-      onError: (err) => setError(err instanceof Error ? err.message : "Sign-in failed"),
-    },
-  });
-  return (
-    <div className="flex items-center gap-2 flex-wrap rounded-xl border border-border bg-card px-3 py-2">
-      <UserCircle2 className="w-4 h-4 text-muted-foreground shrink-0" />
-      {session ? (
-        <>
-          <span className="text-[11px]" data-testid="text-operator-signed-in">
-            Signed in as <span className="font-semibold">{session.operator}</span>
-          </span>
-          <StatusBadge
-            label={session.role}
-            className={session.role === "admin"
-              ? "text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25"
-              : "text-sky-600 dark:text-sky-400 bg-sky-500/10 border-sky-500/25"}
-            testId="badge-operator-role"
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-[11px] ml-auto"
-            data-testid="button-operator-signout"
-            onClick={() => clearSession()}
-          >
-            Sign out
-          </Button>
-        </>
-      ) : (
-        <>
-          <span className="text-[11px] text-muted-foreground">Operator sign-in</span>
-          <Input
-            data-testid="input-operator-name"
-            className="h-7 text-[11px] w-40"
-            placeholder="Your name / ID"
-            value={name}
-            onChange={(e) => { setName(e.target.value); setError(null); }}
-          />
-          <Input
-            data-testid="input-operator-key"
-            className="h-7 text-[11px] w-40"
-            type="password"
-            placeholder="Access key"
-            value={key}
-            onChange={(e) => { setKey(e.target.value); setError(null); }}
-          />
-          <Button
-            size="sm"
-            className="h-7 text-[11px]"
-            disabled={login.isPending || !name.trim() || !key}
-            data-testid="button-operator-login"
-            onClick={() => login.mutate({ data: { operatorName: name.trim(), accessKey: key } })}
-          >
-            Sign in
-          </Button>
-          {error && <span className="text-[10px] text-destructive">{error}</span>}
-          <span className="text-[10px] text-muted-foreground ml-auto">
-            Commissioning actions require a verified operator token
-          </span>
-        </>
-      )}
-    </div>
-  );
 }
 
 // ── HHC configuration settings panel ────────────────────────────────────────
@@ -243,7 +162,7 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
   const allMeters: HouseholdMeterSummary[] = useMemo(
     () => lifecycleQueries.flatMap((q) => q.data ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lifecycleQueries[0]?.data, lifecycleQueries[1]?.data, lifecycleQueries[2]?.data],
+    [lifecycleQueries[0]?.data, lifecycleQueries[1]?.data, lifecycleQueries[2]?.data, lifecycleQueries[3]?.data],
   );
 
   // Dropdown options come from the full queue (all lifecycles), so a filter
@@ -277,7 +196,6 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
 
   return (
     <div className="space-y-4">
-      <OperatorBar />
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex gap-1.5">
           <button

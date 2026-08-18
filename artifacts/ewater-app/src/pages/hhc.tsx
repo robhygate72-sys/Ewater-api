@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { FleetTab } from "@/components/hhc/fleet-tab";
 import { OperationsTab } from "@/components/hhc/operations-tab";
 import { CommissioningTab } from "@/components/hhc/commissioning-tab";
+import { OperatorHeader } from "@/components/hhc/operator-header";
 
 type HhcTab = "overview" | "commissioning" | "operations";
 
@@ -119,7 +120,7 @@ export default function HhcPage() {
   );
 
   return (
-    <Layout title="HHC Dashboard" wide>
+    <Layout title="HHC Dashboard" wide headerActions={<OperatorHeader />}>
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border -mx-1 px-1 overflow-x-auto">
