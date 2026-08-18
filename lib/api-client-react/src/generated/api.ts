@@ -46,6 +46,7 @@ import type {
   HhcActionAuditPage,
   HhcConfiguration,
   HhcConfigurationUpdate,
+  HhcFilterOptions,
   HhcFleetAlarms,
   HhcMeterAlarms,
   HouseholdMeterCommunicationsPage,
@@ -1697,6 +1698,83 @@ export const useTestNotifier = <TError = ErrorType<ErrorResponse | NotifierTestR
       > => {
       return useMutation(getTestNotifierMutationOptions(options));
     }
+
+export const getGetHhcFilterOptionsUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/filter-options`
+}
+
+/**
+ * @summary Distinct water system names and countries across all HouseholdMeters
+ */
+export const getHhcFilterOptions = async ( options?: RequestInit): Promise<HhcFilterOptions> => {
+
+  return customFetch<HhcFilterOptions>(getGetHhcFilterOptionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcFilterOptionsQueryKey = () => {
+    return [
+    `/api/ewater/hhc/filter-options`
+    ] as const;
+    }
+
+
+export const getGetHhcFilterOptionsQueryOptions = <TData = Awaited<ReturnType<typeof getHhcFilterOptions>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcFilterOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcFilterOptionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcFilterOptions>>> = ({ signal }) => getHhcFilterOptions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcFilterOptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcFilterOptionsQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcFilterOptions>>>
+export type GetHhcFilterOptionsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Distinct water system names and countries across all HouseholdMeters
+ */
+
+export function useGetHhcFilterOptions<TData = Awaited<ReturnType<typeof getHhcFilterOptions>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcFilterOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcFilterOptionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListHouseholdMetersUrl = (params?: ListHouseholdMetersParams,) => {
   const normalizedParams = new URLSearchParams();

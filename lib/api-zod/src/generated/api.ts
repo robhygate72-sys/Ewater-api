@@ -536,6 +536,16 @@ export const TestNotifierResponse = zod.object({
 
 
 /**
+ * @summary Distinct water system names and countries across all HouseholdMeters
+ */
+export const GetHhcFilterOptionsResponse = zod.object({
+  "waterSystems": zod.array(zod.string()),
+  "countries": zod.array(zod.string()),
+  "fetchedAt": zod.string()
+})
+
+
+/**
  * @summary List household meters (paginated, filterable)
  */
 export const listHouseholdMetersQueryLimitDefault = 50;
@@ -549,6 +559,8 @@ export const listHouseholdMetersQueryOffsetMin = 0;
 export const ListHouseholdMetersQueryParams = zod.object({
   "status": zod.coerce.string().optional().describe('Filter by asset lifecycle state (case-insensitive)'),
   "waterSystemId": zod.coerce.number().optional(),
+  "waterSystem": zod.coerce.string().optional().describe('Case-insensitive substring match on water system name'),
+  "country": zod.coerce.string().optional().describe('Case-insensitive exact match on country name'),
   "search": zod.coerce.string().optional().describe('Substring match on meter name or asset ID'),
   "limit": zod.coerce.number().min(1).max(listHouseholdMetersQueryLimitMax).default(listHouseholdMetersQueryLimitDefault),
   "offset": zod.coerce.number().min(listHouseholdMetersQueryOffsetMin).default(listHouseholdMetersQueryOffsetDefault)

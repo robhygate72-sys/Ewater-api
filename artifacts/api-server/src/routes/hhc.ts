@@ -13,6 +13,7 @@ import { z } from "zod";
 import { getCredentials, pulseFetch } from "../lib/ewater-client";
 import {
   listHouseholdMeters,
+  getFleetFilterOptions,
   getHouseholdMeter,
   getHouseholdMeterState,
   getHouseholdMeterHistory,
@@ -119,6 +120,8 @@ router.get(
     const options = {
       status: strQ(req.query["status"]),
       waterSystemId: numQ(req.query["waterSystemId"]),
+      waterSystem: strQ(req.query["waterSystem"]),
+      country: strQ(req.query["country"]),
       search: strQ(req.query["search"]),
       limit: numQ(req.query["limit"]),
       offset: numQ(req.query["offset"]),
@@ -126,6 +129,17 @@ router.get(
     const key = `meters:${JSON.stringify(options)}`;
     const page = await cached(key, () => listHouseholdMeters(options));
     res.json({ ...page, fetchedAt: new Date().toISOString() });
+  }),
+);
+
+// ── GET /api/ewater/hhc/filter-options ──────────────────────────────────────
+
+router.get(
+  "/ewater/hhc/filter-options",
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const opts = await cached("filter-options", () => getFleetFilterOptions());
+    res.json({ ...opts, fetchedAt: new Date().toISOString() });
   }),
 );
 

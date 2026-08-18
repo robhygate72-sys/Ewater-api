@@ -1216,6 +1216,12 @@ export interface HhcMeterAlarms {
   fetchedAt?: string;
 }
 
+export interface HhcFilterOptions {
+  waterSystems: string[];
+  countries: string[];
+  fetchedAt: string;
+}
+
 export interface HhcFleetAlarms {
   alarms: HhcAlarm[];
   pulseCount: number;
@@ -1376,6 +1382,14 @@ export type ListHouseholdMetersParams = {
  */
 status?: string;
 waterSystemId?: number;
+/**
+ * Case-insensitive substring match on water system name
+ */
+waterSystem?: string;
+/**
+ * Case-insensitive exact match on country name
+ */
+country?: string;
 /**
  * Substring match on meter name or asset ID
  */

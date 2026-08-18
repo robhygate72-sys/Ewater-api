@@ -141,6 +141,10 @@ function toMeterSummary(a: AssetSummary): HouseholdMeterSummary {
 export interface ListHouseholdMetersOptions {
   status?: string;
   waterSystemId?: number;
+  /** Case-insensitive substring match on waterSystemName. */
+  waterSystem?: string;
+  /** Case-insensitive exact match on countryName. */
+  country?: string;
   search?: string;
   limit?: number;
   offset?: number;
@@ -159,6 +163,14 @@ export async function listHouseholdMeters(
   if (options.waterSystemId != null) {
     meters = meters.filter((m) => m.parentId === options.waterSystemId);
   }
+  if (options.waterSystem) {
+    const needle = options.waterSystem.toLowerCase();
+    meters = meters.filter((m) => (m.waterSystemName ?? "").toLowerCase().includes(needle));
+  }
+  if (options.country) {
+    const needle = options.country.toLowerCase();
+    meters = meters.filter((m) => (m.countryName ?? "").toLowerCase() === needle);
+  }
   if (options.search) {
     const needle = options.search.toLowerCase();
     meters = meters.filter(
@@ -169,6 +181,23 @@ export async function listHouseholdMeters(
   meters.sort((a, b) => a.name.localeCompare(b.name));
   const page = paginateArray(meters, options.limit, options.offset);
   return { ...page, items: page.items.map(toMeterSummary) };
+}
+
+export interface FleetFilterOptions {
+  waterSystems: string[];
+  countries: string[];
+}
+
+export async function getFleetFilterOptions(): Promise<FleetFilterOptions> {
+  const assets = await listAssets();
+  const meters = assets.filter(isHouseholdMeter);
+  const waterSystems = Array.from(
+    new Set(meters.map((m) => m.waterSystemName).filter((n): n is string => n != null)),
+  ).sort((a, b) => a.localeCompare(b));
+  const countries = Array.from(
+    new Set(meters.map((m) => m.countryName).filter((n): n is string => n != null)),
+  ).sort((a, b) => a.localeCompare(b));
+  return { waterSystems, countries };
 }
 
 export async function getHouseholdMeter(assetId: string): Promise<HouseholdMeterSummary | null> {

@@ -4,6 +4,7 @@ import {
   getListHouseholdMetersQueryKey,
   useGetHhcFleetAlarms,
   getGetHhcFleetAlarmsQueryKey,
+  useGetHhcFilterOptions,
   type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
 import {
@@ -16,6 +17,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RefreshCw, Search, ChevronLeft, ChevronRight, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo, formatDateTime } from "@/lib/date";
@@ -83,6 +91,8 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [lifecycle, setLifecycle] = useState<string | null>(null);
+  const [waterSystem, setWaterSystem] = useState<string | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
   useEffect(() => {
@@ -90,8 +100,14 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
     return () => clearTimeout(t);
   }, [search]);
 
+  // Fetch distinct filter options from the server (water systems + countries).
+  const filterOptionsQuery = useGetHhcFilterOptions({ query: { staleTime: 300_000, queryKey: ["hhc-filter-options"] } });
+  const filterOptions = filterOptionsQuery.data;
+
   const listParams = {
     ...(lifecycle ? { status: lifecycle } : {}),
+    ...(waterSystem ? { waterSystem } : {}),
+    ...(country ? { country } : {}),
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
@@ -327,10 +343,11 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
         {coverage}. Communication, alarm and battery counts cover only meters whose device state has loaded.
       </p>
 
-      {/* Search + lifecycle filter */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      {/* Search + filters */}
+      <div className="flex flex-col gap-2">
+        {/* Search bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input
             data-testid="input-fleet-search"
             placeholder="Search by name or asset ID…"
@@ -339,30 +356,77 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
             className="pl-9 h-9 text-sm"
           />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <button
-            data-testid="filter-lifecycle-all"
-            onClick={() => { setLifecycle(null); setPage(0); }}
-            className={cn(
-              "text-xs px-3 py-1.5 rounded-lg border transition-colors",
-              lifecycle == null ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
-            )}
-          >
-            All
-          </button>
-          {LIFECYCLES.map((lc) => (
+
+        {/* Filter row */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Lifecycle pills */}
+          <div className="flex gap-1 flex-wrap">
             <button
-              key={lc}
-              data-testid={`filter-lifecycle-${lc.toLowerCase()}`}
-              onClick={() => { setLifecycle(lc); setPage(0); }}
+              data-testid="filter-lifecycle-all"
+              onClick={() => { setLifecycle(null); setPage(0); }}
               className={cn(
-                "text-xs px-3 py-1.5 rounded-lg border transition-colors",
-                lifecycle === lc ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
+                "text-xs px-2.5 py-1 rounded-lg border transition-colors",
+                lifecycle == null ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
               )}
             >
-              {LIFECYCLE_LABELS[lc]}
+              All
             </button>
-          ))}
+            {LIFECYCLES.map((lc) => (
+              <button
+                key={lc}
+                data-testid={`filter-lifecycle-${lc.toLowerCase()}`}
+                onClick={() => { setLifecycle(lc); setPage(0); }}
+                className={cn(
+                  "text-xs px-2.5 py-1 rounded-lg border transition-colors",
+                  lifecycle === lc ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
+                )}
+              >
+                {LIFECYCLE_LABELS[lc]}
+              </button>
+            ))}
+          </div>
+
+          {/* Water system dropdown */}
+          <Select
+            value={waterSystem ?? "__all__"}
+            onValueChange={(v) => { setWaterSystem(v === "__all__" ? null : v); setPage(0); }}
+          >
+            <SelectTrigger className="h-8 text-xs w-[160px]" data-testid="filter-water-system">
+              <SelectValue placeholder="Water system" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All water systems</SelectItem>
+              {(filterOptions?.waterSystems ?? []).map((ws) => (
+                <SelectItem key={ws} value={ws}>{ws}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Country dropdown */}
+          <Select
+            value={country ?? "__all__"}
+            onValueChange={(v) => { setCountry(v === "__all__" ? null : v); setPage(0); }}
+          >
+            <SelectTrigger className="h-8 text-xs w-[130px]" data-testid="filter-country">
+              <SelectValue placeholder="Country" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All countries</SelectItem>
+              {(filterOptions?.countries ?? []).map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Clear filters */}
+          {(lifecycle || waterSystem || country || debouncedSearch) && (
+            <button
+              onClick={() => { setLifecycle(null); setWaterSystem(null); setCountry(null); setSearch(""); setDebouncedSearch(""); setPage(0); }}
+              className="text-xs px-2.5 py-1 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       </div>
 

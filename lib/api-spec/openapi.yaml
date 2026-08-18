@@ -562,6 +562,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotifierTestResult"
 
+  /ewater/hhc/filter-options:
+    get:
+      operationId: getHhcFilterOptions
+      tags: [ewater]
+      summary: Distinct water system names and countries across all HouseholdMeters
+      responses:
+        "200":
+          description: Filter option lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HhcFilterOptions"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/hhc/meters:
     get:
       operationId: listHouseholdMeters
@@ -579,6 +598,18 @@ paths:
           required: false
           schema:
             type: integer
+        - name: waterSystem
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Case-insensitive substring match on water system name
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Case-insensitive exact match on country name
         - name: search
           in: query
           required: false
@@ -2913,6 +2944,21 @@ components:
         pulseError:
           type: ["string", "null"]
           description: Non-null when the Pulse fault source failed (Shengda alarms still shown)
+        fetchedAt:
+          type: string
+
+    HhcFilterOptions:
+      type: object
+      required: [waterSystems, countries, fetchedAt]
+      properties:
+        waterSystems:
+          type: array
+          items:
+            type: string
+        countries:
+          type: array
+          items:
+            type: string
         fetchedAt:
           type: string
 
