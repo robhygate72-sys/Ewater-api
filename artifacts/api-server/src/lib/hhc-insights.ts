@@ -96,16 +96,79 @@ async function fetchPacketsForImei(imei: string, startDate: Date, endDate: Date)
   });
 }
 
-/** Fetches all packets for every IMEI known for the asset, newest first. */
+// Primary packet source: asset-scoped log fetch. The per-IMEI endpoint
+// (`GetLogsInDateRangeByImei`) returns 403 for this account on at least some
+// devices (observed 2026-08-18 on Shengda NB-IoT meters), while
+// `GetLogsForAssetByReceivedDate` returns the same UDP/Shengda packets fine —
+// so asset-scoped is the authoritative path and per-IMEI is only a fallback.
+async function fetchPacketsForAsset(assetId: string, startDate: Date, endDate: Date): Promise<HhcPacket[]> {
+  const result = await ewaterFetch("state", "/api/Asset/GetLogsForAssetByReceivedDate", {
+    method: "POST",
+    body: JSON.stringify({
+      assetId: Number(assetId),
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      pipeline: null,
+    }),
+  });
+  if (result.status !== 200) return [];
+
+  const raw = result.data as Record<string, unknown>;
+  const logLines = Array.isArray(raw?.["logLines"]) ? (raw["logLines"] as Record<string, unknown>[]) : [];
+
+  return logLines.map((entry) => {
+    const payload = strOrNull(entry["payload"]);
+    const decoded = payload ? tryDecodeShengdaLwm2m(payload) : null;
+    return {
+      id: String(entry["id"] ?? ""),
+      timestamp: strOrNull(entry["timeReceived"]) ?? "",
+      imei: extractImeiFromLogSource(strOrNull(entry["source"])),
+      pipeline: strOrNull(entry["pipeline"]),
+      protocol: strOrNull(entry["protocol"]),
+      valid: decoded ? decoded.valid : null,
+      messageType: decoded?.messageType ?? null,
+      messageFunction: decoded?.messageFunction ?? null,
+      description: decoded?.description ?? null,
+      decoded,
+    };
+  });
+}
+
+/**
+ * Fetches all packets for the asset, newest first. Both sources are queried
+ * and merged (deduplicated by log id): the asset-scoped fetch is
+ * authoritative, and the per-IMEI fetch adds any logs recorded before the
+ * device was linked to the asset. Each source failing (403, network error)
+ * degrades gracefully to whatever the other returned.
+ */
 export async function fetchHhcPackets(assetId: string, hours: number): Promise<HhcPacket[]> {
-  const imeis = await fetchAllKnownImeis(assetId);
-  if (imeis.length === 0) return [];
   const endDate = new Date();
   const startDate = new Date(endDate.getTime() - hours * 3600 * 1000);
-  const perImei = await Promise.all(imeis.map((imei) => fetchPacketsForImei(imei, startDate, endDate)));
-  return perImei
-    .flat()
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const [byAsset, byImei] = await Promise.all([
+    fetchPacketsForAsset(assetId, startDate, endDate).catch(() => [] as HhcPacket[]),
+    (async () => {
+      try {
+        const imeis = await fetchAllKnownImeis(assetId);
+        const perImei = await Promise.all(
+          imeis.map((imei) => fetchPacketsForImei(imei, startDate, endDate).catch(() => [] as HhcPacket[])),
+        );
+        return perImei.flat();
+      } catch {
+        return [] as HhcPacket[];
+      }
+    })(),
+  ]);
+
+  const seen = new Set<string>();
+  const merged: HhcPacket[] = [];
+  for (const p of [...byAsset, ...byImei]) {
+    const key = p.id || `${p.timestamp}:${p.imei ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(p);
+  }
+  return merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
 // ---------------------------------------------------------------------------

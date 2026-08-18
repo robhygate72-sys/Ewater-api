@@ -149,6 +149,14 @@ keyed by a single IMEI. For a command needing exactly one IMEI (e.g. reset-meter
 the most recently registered one (last in the identifiers list) since that's the module
 actually in service — don't just take `idList[0]`.
 
+## Per-IMEI log endpoint can 403 — asset-scoped fetch is authoritative
+`/api/Logs/GetLogsInDateRangeByImei` (state base) returns **403** for this account on at
+least some devices (observed 2026-08-18, Shengda NB-IoT meter IMEIs), while
+`/api/Asset/GetLogsForAssetByReceivedDate` returns the same UDP/Shengda packets fine.
+**How to apply:** fetch packets asset-scoped first; use the per-IMEI endpoint only as a
+fallback (e.g. logs recorded before device↔asset linkage). A silent 403 there manifests
+as "Not reported"/zero valid packets in HHC state despite logs visibly arriving.
+
 ## Multiple wire protocols share one packet log stream
 `GetLogsInDateRangeByImei` returns packets from several concrete protocols mixed together
 (seen: `Ewc2_5`, `CommandApi_1`, `Gadwall`, `CommandApi_Gadwall_1`, plus CBOR/LwM2M-based
