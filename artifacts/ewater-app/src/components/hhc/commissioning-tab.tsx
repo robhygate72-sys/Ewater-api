@@ -13,7 +13,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RefreshCw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings2, UserCircle2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RefreshCw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings2, UserCircle2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/date";
 import { useMeterStates } from "./use-meter-states";
@@ -215,6 +216,9 @@ function ConfigPanel() {
 
 export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string) => void }) {
   const [stage, setStage] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [waterSystem, setWaterSystem] = useState<string | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [showConfig, setShowConfig] = useState(false);
@@ -236,12 +240,33 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
   const isFetching = lifecycleQueries.some((q) => q.isFetching);
   const refetchAll = () => lifecycleQueries.forEach((q) => void q.refetch());
 
-  const meters: HouseholdMeterSummary[] = useMemo(() => {
-    const all = lifecycleQueries.flatMap((q) => q.data ?? []);
-    const filtered = stage ? all.filter((m) => m.status === stage) : all;
-    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  const allMeters: HouseholdMeterSummary[] = useMemo(
+    () => lifecycleQueries.flatMap((q) => q.data ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lifecycleQueries[0]?.data, lifecycleQueries[1]?.data, lifecycleQueries[2]?.data, stage]);
+    [lifecycleQueries[0]?.data, lifecycleQueries[1]?.data, lifecycleQueries[2]?.data],
+  );
+
+  // Dropdown options come from the full queue (all lifecycles), so a filter
+  // never hides its own options.
+  const waterSystemOptions = useMemo(
+    () => [...new Set(allMeters.map((m) => m.waterSystemName).filter((v): v is string => !!v))].sort(),
+    [allMeters],
+  );
+  const countryOptions = useMemo(
+    () => [...new Set(allMeters.map((m) => m.countryName).filter((v): v is string => !!v))].sort(),
+    [allMeters],
+  );
+
+  const meters: HouseholdMeterSummary[] = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = allMeters.filter((m) =>
+      (!stage || m.status === stage) &&
+      (!waterSystem || m.waterSystemName === waterSystem) &&
+      (!country || m.countryName === country) &&
+      (!q || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)),
+    );
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allMeters, stage, search, waterSystem, country]);
 
   const pageCount = Math.max(1, Math.ceil(meters.length / UI_PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -299,6 +324,58 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
         </div>
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            data-testid="input-commissioning-search"
+            className="h-8 pl-8 text-xs"
+            placeholder="Search by name or asset ID"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          />
+        </div>
+        <Select
+          value={waterSystem ?? "__all__"}
+          onValueChange={(v) => { setWaterSystem(v === "__all__" ? null : v); setPage(0); }}
+        >
+          <SelectTrigger data-testid="filter-commissioning-water-system" className="h-8 w-[180px] text-xs">
+            <SelectValue placeholder="Water system" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All water systems</SelectItem>
+            {waterSystemOptions.map((o) => (
+              <SelectItem key={o} value={o}>{o}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={country ?? "__all__"}
+          onValueChange={(v) => { setCountry(v === "__all__" ? null : v); setPage(0); }}
+        >
+          <SelectTrigger data-testid="filter-commissioning-country" className="h-8 w-[150px] text-xs">
+            <SelectValue placeholder="Country" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All countries</SelectItem>
+            {countryOptions.map((o) => (
+              <SelectItem key={o} value={o}>{o}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {(search || waterSystem || country) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
+            data-testid="button-clear-commissioning-filters"
+            onClick={() => { setSearch(""); setWaterSystem(null); setCountry(null); setPage(0); }}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
       {showConfig && <ConfigPanel />}
 
       {isLoading ? (
@@ -319,8 +396,22 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
           <Button size="sm" variant="outline" data-testid="button-retry-commissioning" onClick={refetchAll}>Retry</Button>
         </div>
       ) : meters.length === 0 ? (
-        <div className="text-center p-10 bg-card border border-dashed rounded-xl">
-          <p className="text-sm text-muted-foreground">No HouseholdMeter assets returned by eWater for the selected stage</p>
+        <div className="text-center p-10 bg-card border border-dashed rounded-xl space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {search || waterSystem || country || stage
+              ? "No meters match the current filters"
+              : "No HouseholdMeter assets returned by eWater"}
+          </p>
+          {(search || waterSystem || country || stage) && (
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="button-clear-filters-empty"
+              onClick={() => { setSearch(""); setWaterSystem(null); setCountry(null); setStage(null); setPage(0); }}
+            >
+              Clear filters
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
