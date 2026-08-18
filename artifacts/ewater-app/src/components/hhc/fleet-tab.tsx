@@ -10,8 +10,21 @@ class FleetErrorBoundary extends Component<{ children: ReactNode }, { error: Err
     return { error };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Surfaces in browser console logs so we can diagnose.
+    // Surfaces in browser console AND relays to server logs so we can diagnose.
     console.error("[FleetTab] Render error:", error.message, error.stack, info.componentStack);
+    try {
+      const reporter = (window as unknown as Record<string, unknown>).__reportCrash as
+        | ((p: { source: string; message: string; stack?: string; componentStack?: string }) => void)
+        | undefined;
+      reporter?.({
+        source: "FleetErrorBoundary.componentDidCatch",
+        message: error.message,
+        stack: error.stack,
+        componentStack: info.componentStack ?? undefined,
+      });
+    } catch {
+      // never throw from the error reporter
+    }
   }
   render() {
     if (this.state.error) {

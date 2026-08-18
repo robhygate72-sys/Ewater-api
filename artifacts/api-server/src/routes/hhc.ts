@@ -791,4 +791,19 @@ router.get(
   }),
 );
 
+// ── POST /api/ewater/hhc/debug-error — client-side crash reporter ─────────────
+// No auth required — errors need to be captured before auth state is known.
+// Body: { message, stack, source, componentStack? }
+router.post(
+  "/ewater/hhc/debug-error",
+  handle(async (req, res) => {
+    const { message, stack, source, componentStack } = (req.body ?? {}) as Record<string, unknown>;
+    req.log.error(
+      { clientError: { message, source, stack, componentStack } },
+      "[CLIENT CRASH] Frontend error reported",
+    );
+    res.status(204).end();
+  }),
+);
+
 export default router;
