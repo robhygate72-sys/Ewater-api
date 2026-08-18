@@ -1,0 +1,2626 @@
+Worked for 4m 23s
+
+The key design rule is: reads must come from the live eWater APIs, and writes must only be enabled where a genuine eWater command endpoint has been verified. The uploaded code proves the Shengda read path very well, but it does not yet prove every Shengda write operation discussed in the meeting. The prompt below explicitly prevents Replit from inventing those APIs or simulating successful commands.
+
+eWATER Household Meter Commissioning & O&M Dashboard
+
+Build instruction
+
+Extend the existing uploaded eWater Monitor Replit codebase into a production-quality Household Meter Commissioning, Operations and Maintenance Dashboard.
+
+Do not build a separate disconnected prototype. Reuse and extend the existing eWater authentication, API proxying, server-side insight logic, Shengda NB-IoT decoding, React application, OpenAPI generation, PostgreSQL/Drizzle infrastructure and UI component library.
+
+The household water meters covered by this application are Shengda NB-IoT household meters.
+
+Within the eWater asset hierarchy, household meters are identified as assets where:
+
+purpose == "HouseholdMeter"
+
+or, after normalization:
+
+asset.type.toLowerCase() == "householdmeter"
+
+The Shengda protocol is then detected from actual incoming packet payloads using the existing "tryDecodeShengdaLwm2m()" decoder.
+
+Do not identify a Shengda meter purely from a hardcoded asset ID, name, IMEI range or protocol string.
+
+---
+
+1. ABSOLUTE NON-NEGOTIABLE RULE: NO FAKE DATA
+
+This application must use real data from ewater.io APIs.
+
+There must be:
+
+- no mock assets;
+- no sample customers;
+- no example meter serial numbers;
+- no fabricated ICCIDs or IMEIs;
+- no fixed fleet counts;
+- no fabricated battery values;
+- no sample consumption;
+- no placeholder balances;
+- no fake alarms;
+- no randomised data;
+- no hardcoded dashboard KPI values;
+- no fake commissioning percentages;
+- no fake command success;
+- no locally simulated valve position;
+- no locally simulated water credit.
+
+Runtime arrays containing made-up meters are prohibited.
+
+Do not fall back to example data if an API request fails.
+
+If no live data is available, render an honest state such as:
+
+No HouseholdMeter assets returned by eWater.
+
+or:
+
+This value has not yet been reported by the meter.
+
+or:
+
+The required eWater control API has not yet been integrated.
+
+Loading states must use skeletons/spinners, not fake numbers.
+
+Unit-test fixtures are permitted inside tests only. They must never be imported into production/runtime code.
+
+---
+
+2. EXISTING CODEBASE TO BUILD ON
+
+Preserve the existing pnpm monorepo architecture.
+
+Important existing components include:
+
+artifacts/api-server
+artifacts/ewater-app
+lib/api-spec
+lib/api-zod
+lib/api-client-react
+lib/db
+
+The important existing files are:
+
+artifacts/api-server/src/lib/ewater-client.ts
+artifacts/api-server/src/lib/ewater-insights.ts
+artifacts/api-server/src/lib/shengda-nbiot-decoder.ts
+artifacts/api-server/src/routes/ewater.ts
+
+artifacts/ewater-app/src/pages/hhm.tsx
+artifacts/ewater-app/src/pages/asset-detail.tsx
+artifacts/ewater-app/src/components/asset-logs.tsx
+
+lib/api-spec/openapi.yaml
+
+Do not duplicate eWater integration logic inside React components.
+
+Continue the existing architectural rule:
+
+«eWater business/data logic belongs on the server, preferably in shared insight/domain modules. REST routes should be thin wrappers around that logic.»
+
+---
+
+3. EWATER AUTHENTICATION
+
+Reuse the existing server-side eWater authentication flow in:
+
+artifacts/api-server/src/lib/ewater-client.ts
+
+The live API bases are:
+
+https://auth.ewater.io
+https://state.ewater.io
+https://query.ewater.io
+https://command.ewater.io
+
+Authentication currently works by:
+
+1. requesting the eWater authentication page;
+2. obtaining the ASP.NET antiforgery cookie and CSRF form token;
+3. posting credentials to:
+
+/User/LoginViaForm
+
+4. reading the "access_token" cookie;
+5. sending that token as a Bearer token to state/query/command APIs;
+6. caching the token;
+7. retrying once after a 401.
+
+Reuse this mechanism.
+
+Never send the eWater username/password to the browser after login.
+
+Never call "state.ewater.io", "query.ewater.io" or "command.ewater.io" directly from React.
+
+Browser:
+
+React -> local /api/ewater/... endpoint
+
+Server:
+
+local API -> ewaterFetch() -> ewater.io API
+
+For production, prefer Replit Secrets/environment variables for service credentials rather than storing clear-text credentials in the repository.
+
+---
+
+4. HOUSEHOLD METER DISCOVERY
+
+Use the existing asset discovery logic.
+
+Primary upstream call:
+
+POST https://state.ewater.io/api/Entity/Assets
+
+with the existing lifecycle-state request:
+
+{
+  "assetLifecycleStates": [
+    "PreInstallation",
+    "Active",
+    "Staged",
+    "Demo",
+    "Test",
+    "Suspended"
+  ]
+}
+
+Use the existing "listAssets()" / "normaliseAssetDto()" implementation.
+
+Filter the returned assets to:
+
+purpose == HouseholdMeter
+
+case-insensitively.
+
+Do not require the asset to have communicated before showing it.
+
+A newly registered HouseholdMeter might legitimately have:
+
+- no Shengda packet yet;
+- no discovered IMEI;
+- no ICCID;
+- no signal reading;
+- no battery reading.
+
+It must still be visible in the commissioning queue.
+
+Display those values as Not reported, never as zero.
+
+Use:
+
+GET https://state.ewater.io/api/Entity/List
+
+to resolve:
+
+- country;
+- organisation;
+- water system;
+- parent hierarchy.
+
+---
+
+5. CRITICAL SHENGDA DEVICE RULE
+
+A HouseholdMeter asset can have a Shengda device IMEI that is not present in eWater's normal identifier registry.
+
+The existing code correctly handles this.
+
+Preserve and reuse:
+
+fetchAssetImeis()
+discoverImeisFromLogs()
+fetchAllKnownImeis()
+extractImeiFromLogSource()
+
+"fetchAllKnownImeis(assetId)" must remain the authoritative way of finding all device IMEIs associated with a household meter.
+
+It must combine:
+
+1. registered IMEIs from:
+
+GET /api/Asset/GetIdentifiersByAssetId
+
+and:
+
+2. IMEIs discovered from actual recent log traffic.
+
+Shengda log "source" can be either:
+
+a JSON structure containing IMEI
+
+or:
+
+a bare IMEI string
+
+Continue supporting both.
+
+Do not assume the last registered EWC IMEI is the Shengda meter IMEI.
+
+---
+
+6. SHENGDA PACKET SOURCE
+
+Use real asset logs through:
+
+POST https://state.ewater.io/api/Asset/GetLogsForAssetByReceivedDate
+
+with:
+
+assetId
+startDate
+endDate
+pipeline = null
+
+For IMEI-specific raw history, reuse:
+
+POST https://state.ewater.io/api/Logs/GetLogsInDateRangeByImei
+
+The existing application route:
+
+GET /api/ewater/assets/:assetId/logs
+
+already runs the payload through:
+
+tryDecodeShengdaLwm2m()
+
+Continue using server-side decoding.
+
+Do not attempt to implement a second Shengda decoder in React.
+
+---
+
+7. SHENGDA PROTOCOL DECODER
+
+Build on:
+
+artifacts/api-server/src/lib/shengda-nbiot-decoder.ts
+
+The existing decoder already verifies:
+
+Version = 0x01 0x01
+Data field format = 0x3C
+CBOR payload
+CRC-16/AUG-CCITT checksum
+
+It already understands the major Shengda LwM2M objects:
+
+/3/0   Device Info
+/70/0  Protocol Queue
+/80/0  Meter Basic
+/81/0  Valve Control
+/82/0  Abnormal Alarm
+/84/0  Reporting Config
+/99/0  NB Delivery
+
+Do not replace this with string scraping.
+
+Instead, extend the decoder.
+
+At present, useful fields such as ICCID, IMEI, RTC, report cycle and overdraft often have to be extracted from the human-readable "description".
+
+That is acceptable for debugging but not for a production dashboard.
+
+Create a richer structured Shengda model.
+
+---
+
+8. REQUIRED STRUCTURED SHENGDA STATE
+
+Expand the decoder return type so the application receives structured objects approximately following this conceptual structure:
+
+ShengdaState
+    valid
+    messageType
+    messageFunction
+    observedAt
+
+    device
+        manufacturer
+        model
+        serialNumber
+        firmwareVersion
+        softwareVersion
+        hardwareVersion
+        currentTime
+        deviceType
+        supplyVoltage
+        batteryState
+        batteryLevel
+        errorCode
+        workingHours
+
+    meter
+        meterType
+        measurementModel
+        pulseConstant
+        dnSize
+        commonFlow
+        minimumFlow
+        meterStatusWord
+        instantaneousFlow
+        forwardFlow
+        reverseFlow
+        cumulativeReading
+        readingTime
+        waterMeterNumber
+        availableWaterAllowance
+        allowanceAlarmValue
+        overdraftVolume
+        paymentFunction
+        batteryVoltage
+
+    valve
+        requestedControl
+        reportedStatus
+        failureStatus
+        valveType
+        dredgeCycle
+        magneticAttackCloseEnabled
+        forcedControl
+        timeoutSeconds
+        openingAngle
+
+    alarms
+        magneticAttack
+        historicalMagneticAttack
+        antiDemolition
+        historicalAntiDemolition
+        leak
+        overflow
+        stop
+        waterErrorCode
+        reverseFlow
+        availableWaterAlarm
+
+    reporting
+        reportCycleSeconds
+        reportTimeSlotSeconds
+        retransmissionTimes
+        retransmissionCycleSeconds
+        reportInterval
+        workingMode
+        workingChannelGroup
+
+    network
+        moduleVersion
+        imei
+        imsi
+        iccid
+        ipPort
+        apn
+        plmn
+        band
+        earfcn
+        cellId
+        pci
+        rsrp
+        rsrq
+        rssi
+        snr
+        ecl
+        txPower
+        txTime
+        rxTime
+        csq
+        psmEnabled
+        networkProtocol
+
+Only populate fields actually present in the packet.
+
+Missing fields must be "null".
+
+Do not invent values.
+
+---
+
+9. IMPORTANT SHENGDA FIELD MAPPINGS
+
+Use the existing vendor mappings already encoded in "shengda-nbiot-decoder.ts".
+
+Important examples include:
+
+"/80/0" Meter Basic
+
+16 = cumulative meter reading, litres
+23 = available prepaid water allowance, litres
+24 = available water alarm threshold
+26 = overdraft volume, litres
+31 = payment function
+37 = battery voltage / 100
+
+"/81/0" Valve
+
+0 = valve control word
+1 = reported valve status
+2 = valve failure status
+3 = valve type
+4 = valve dredge/exercise cycle
+5 = magnetic-attack valve-close enable
+6 = forced valve control
+7 = valve timeout
+8 = opening angle
+
+"/82/0" Alarm
+
+0 = current magnetic attack
+1 = historical magnetic attack
+2 = anti-demolition
+3 = historical anti-demolition
+4 = leak
+5 = overflow
+6 = stop
+7 = water error code
+10 = reverse-flow status
+11 = insufficient-water alarm
+
+"/84/0" Reporting
+
+0 = report cycle in seconds
+1 = report time slot
+2 = retransmission times
+3 = retransmission cycle
+5 = report interval
+10 = RF working mode
+
+"/99/0" NB-IoT
+
+0  = NB module version
+1  = IMEI
+2  = IMSI
+3  = ICCID
+5  = APN
+7  = band
+8  = EARFCN
+9  = cell ID
+10 = PCI
+11 = RSRP
+12 = RSRQ
+13 = RSSI
+14 = SNR
+15 = ECL
+16 = TX power
+19 = CSQ
+21 = PSM enable
+23 = network protocol
+
+Important: the vendor documentation represented RSRP/SNR as raw values without a confirmed unit.
+
+Do not label them "dBm" or "dB" unless the eWater/backend/vendor contract explicitly confirms the units.
+
+Display, for example:
+
+RSRP: -91 raw
+
+rather than inventing a unit.
+
+---
+
+10. CREATE A SHENGDA STATE REDUCER
+
+Do not simply treat the newest packet as a complete representation of the meter.
+
+Different Shengda messages may contain different subsets of fields.
+
+Create something similar to:
+
+buildShengdaCurrentState(logEntries)
+
+It must:
+
+1. sort decoded Shengda packets newest first;
+2. ignore corrupt packets when establishing authoritative state;
+3. walk backwards through recent packets;
+4. take the newest known value for each field;
+5. retain the timestamp associated with each value;
+6. expose the latest valid packet timestamp;
+7. separately retain invalid/corrupt packets for alarm/debugging purposes.
+
+Conceptually:
+
+battery.value
+battery.observedAt
+
+valve.status
+valve.observedAt
+
+network.rsrp
+network.rsrpObservedAt
+
+This prevents a partial newer packet from incorrectly making previously known data disappear.
+
+---
+
+11. CRC AND INVALID PACKETS
+
+If:
+
+decoded.valid == false
+
+the packet must:
+
+- remain visible in the communications/debug log;
+- create a device/data-integrity warning;
+- not silently replace trusted meter state.
+
+Display:
+
+Invalid CRC
+
+with packet timestamp and source IMEI.
+
+---
+
+12. CURRENT STATE EWATER APIS
+
+In addition to Shengda packets, reuse existing eWater state/query endpoints.
+
+For each selected asset, the existing "/tech" implementation already combines:
+
+GET state /api/Asset/GetAssetBasicInfoByAssetID
+GET state /api/Asset/GetStatusValuesForAsset
+GET state /api/Asset/GetFirmwareStatusByAssetId
+GET state /api/Asset/GetIdentifiersByAssetId
+GET state /api/Asset/GetCommandsForAsset
+GET state /api/Asset/GetSettingsMapForAsset
+
+GET query /api/Asset/AssetConnectivityStatus
+GET query /api/Asset/AssetPowerStatus
+GET query /api/Asset/AssetFlowStatus
+GET query /api/Asset/AssetUsageStatus
+
+Reuse those calls where appropriate.
+
+But for HouseholdMeter-specific operational values, the decoded Shengda device state is authoritative where that meter directly reports the value.
+
+For example:
+
+Household meter prepaid balance -> Shengda availableWaterAllowance
+Household meter cumulative litres -> Shengda cumulativeReading
+Household meter valve status -> Shengda reported valve state
+Household meter signal -> Shengda NB delivery fields
+
+Do not substitute generic community-tap EWC metrics when Shengda reports the household-meter value directly.
+
+---
+
+13. NEW SERVER DOMAIN MODULE
+
+Create:
+
+artifacts/api-server/src/lib/hhc-insights.ts
+
+or an equivalently named domain module.
+
+This module should own the Household Meter business logic.
+
+Suggested responsibilities:
+
+listHouseholdMeters()
+getHouseholdMeterState(assetId)
+getHouseholdMeterHistory(assetId, period)
+getHouseholdMeterCommunications(assetId)
+getHouseholdMeterCommissioningStatus(assetId)
+calculateHouseholdMeterHealth(state)
+calculateHouseholdMeterUsage(...)
+evaluateCommissioningChecks(...)
+
+Do not bury these calculations inside React.
+
+---
+
+14. NEW APPLICATION API SURFACE
+
+Create specific local REST endpoints.
+
+These are application endpoints, not invented eWater upstream endpoints.
+
+For example:
+
+GET /api/ewater/hhc/meters
+
+GET /api/ewater/hhc/meters/:assetId
+
+GET /api/ewater/hhc/meters/:assetId/state
+
+GET /api/ewater/hhc/meters/:assetId/history
+
+GET /api/ewater/hhc/meters/:assetId/communications
+
+GET /api/ewater/hhc/meters/:assetId/commissioning
+PUT /api/ewater/hhc/meters/:assetId/commissioning
+
+GET /api/ewater/hhc/meters/:assetId/maintenance
+
+Add any verified command endpoints under a clearly separate namespace:
+
+POST /api/ewater/hhc/meters/:assetId/actions/...
+
+Do not expose an unrestricted arbitrary eWater proxy to normal dashboard users for control operations.
+
+---
+
+15. THREE PRIMARY DASHBOARD TABS
+
+The main Household Meter dashboard must have exactly three high-level operational tabs:
+
+1. Fleet Overview
+2. Commissioning
+3. Operations & Maintenance
+
+Use the existing React/Tailwind/shadcn visual language.
+
+The interface should feel like an operational control system, not a marketing dashboard.
+
+---
+
+16. TAB 1 — FLEET OVERVIEW
+
+The Overview tab must show the real HouseholdMeter estate returned by eWater.
+
+Do not display a metric unless the denominator/data coverage is known.
+
+Required top-level metrics should be derived from real data:
+
+Total HouseholdMeter assets
+PreInstallation count
+Staged count
+Active count
+Meters with recent Shengda communication
+Meters with critical alarms
+Meters with low battery
+Meters with magnetic/tamper alarms
+Meters with valve faults
+Meters with insufficient prepaid allowance
+Commissioning incomplete count
+
+If a KPI requires detailed per-meter packet inspection and the full fleet has not been loaded, do not falsely imply full-fleet coverage.
+
+Show the coverage, for example conceptually:
+
+Device state loaded for X of Y HouseholdMeters
+
+If it is not possible to calculate a fleet-wide health percentage accurately, omit the percentage.
+
+---
+
+17. FLEET TABLE
+
+Provide a searchable, filterable, paginated table.
+
+Required columns:
+
+Asset name
+Asset ID
+Lifecycle state
+Water system
+Country
+Shengda detected
+Meter serial
+Shengda IMEI
+ICCID
+Last valid communication
+Expected report interval
+Communication health
+Battery voltage
+Battery state
+RSRP
+SNR
+Valve status
+Prepaid balance
+Cumulative reading
+Error status
+Magnetic/tamper status
+Commissioning status
+O&M status
+
+Fields that have not been reported display:
+
+Not reported
+
+not zero.
+
+Filters:
+
+Country
+Organisation
+Water system
+Lifecycle state
+Commissioning stage
+Online / stale / unknown
+Battery health
+Signal health
+Valve state
+Alarm state
+Tamper state
+
+Search across:
+
+asset name
+asset ID
+meter serial
+IMEI
+ICCID
+household ID where available
+household name where available
+
+Clicking a row opens the meter within Operations & Maintenance.
+
+---
+
+18. CONNECTIVITY STATUS
+
+Do not define HouseholdMeter online/offline using a blind universal 48-hour rule.
+
+The Shengda meter reports its configured reporting cycle.
+
+Use:
+
+reportCycleSeconds
+
+where available.
+
+Derive expected-next-communication from the actual configured cycle.
+
+A recommended model is:
+
+Healthy:
+last valid device report is inside expected reporting window
+
+Late:
+one scheduled delivery appears to have been missed
+
+Offline:
+multiple expected delivery windows have elapsed
+
+Unknown:
+report cycle or valid history is not available
+
+Make the tolerance configurable.
+
+Do not classify a commissioning meter with no established report cycle as "offline".
+
+---
+
+19. DEVICE HEALTH
+
+Health must be transparent.
+
+Do not produce a mysterious black-box health score.
+
+Surface underlying reasons.
+
+Examples:
+
+Low battery
+Battery damaged
+Invalid packet CRC
+Meter error code
+Magnetic attack
+Historical magnetic attack
+Valve failure
+Valve state mismatch
+No communications
+Insufficient prepaid allowance
+Unexpected overdraft
+RTC drift
+Weak signal
+
+Battery thresholds must be configuration rather than buried inside UI code.
+
+The existing HHM code currently treats approximately:
+
+below 3.2 V -> critical
+3.2 to 3.5 V -> warning
+3.5 V and above -> healthy
+
+and the QC requirement targets approximately 3.6 V.
+
+Put thresholds in HHC configuration so operations can alter them without changing code.
+
+---
+
+20. TAB 2 — COMMISSIONING
+
+This tab is the most important initial workflow.
+
+It must guide staff from an eWater HouseholdMeter asset through:
+
+Identity
+QC
+Connectivity
+Commercial configuration
+Household/customer assignment
+Field commissioning
+Final approval
+
+Do not require staff to jump between unrelated technical pages.
+
+---
+
+21. COMMISSIONING QUEUE
+
+Populate the queue from real HouseholdMeter assets.
+
+Typical candidates include:
+
+PreInstallation
+Staged
+Active but commissioning workflow incomplete
+
+Do not populate it from static data.
+
+Show:
+
+Asset ID
+asset name
+water system
+lifecycle
+meter serial
+IMEI
+ICCID
+latest packet
+current commissioning stage
+QC completion
+blocking issue
+assigned technician
+
+The assigned technician and workflow progress may be application-owned data, but device and asset identity must remain sourced from eWater.
+
+---
+
+22. COMMISSIONING GATES
+
+Implement three quality gates.
+
+Gate 1 — Manufacturer
+
+Capture/verify:
+
+manufacturer QC complete
+factory calibration evidence
+housing assembled correctly
+waterproofing
+serial identity
+meter type
+meter size
+factory accuracy result
+
+Gate 2 — Gearbox
+
+Capture/verify:
+
+configuration
+SIM preparation where applicable
+air-flow bench test
+mechanism operation
+valve operation
+electronics
+firmware
+battery
+communications
+automated bench test results
+
+Gate 3 — eWATER Kenya
+
+Perform independent acceptance including:
+
+sample wet testing
+live NB-IoT communication
+real-water flow
+leaks
+meter reading accuracy
+prepayment behaviour
+valve operation
+database state
+customer commissioning
+
+The operational requirement from the meeting is for eWATER to wet-test approximately 10% at Gate 3.
+
+Do not hardcode a fixed number of meters.
+
+Calculate the required sample from the actual batch size.
+
+Sampling configuration must be stored as a percentage.
+
+---
+
+23. FULL QC CHECKLIST
+
+Implement the uploaded QC requirements as structured checklist items rather than a single text box.
+
+Organise them into these sections.
+
+Physical inspection
+
+physical damage
+housing assembly
+tamper seal
+inlet/outlet threads
+meter number consistency
+barcode/QR readability where applicable
+
+Mechanical
+
+meter size
+flow mechanism movement
+valve opens fully
+valve closes fully
+abnormal valve noise
+leak test
+
+Electrical
+
+NB-IoT SIM correctly installed where physical SIM is used
+battery voltage
+battery connector
+error codes
+RTC
+
+Communication
+
+NB-IoT communication confirmed
+SIM is communicating
+signal recorded
+meter exists in eWater
+dashboard identity matches physical meter
+three successful communications
+timestamps update
+valve state updates
+
+Functional
+
+remote valve opening
+remote valve closing
+reported valve state matches physical position
+prepaid operation
+zero overdraft behaviour
+flow detection
+water assignment
+zero-flow validation
+consumption increments during flow
+
+Calibration/accuracy
+
+wet-test setup
+known-volume test
+accuracy result
+calibration evidence
+leak check
+
+Do not assume that the meter needs field recalibration.
+
+The manufacturer is expected to calibrate it.
+
+Gate 3 is primarily an accuracy verification/acceptance test.
+
+The acceptable accuracy tolerance must be configurable/confirmed rather than invented.
+
+Software/configuration
+
+firmware version
+firmware approval
+reporting frequency
+database balance vs physical meter balance
+database valve status vs actual meter
+required logging
+prepaid mode
+zero overdraft
+tariff
+settings persisted
+top-up received
+top-up litres correct
+
+Customer assignment
+
+meter assigned to correct household
+meter serial recorded
+ICCID recorded
+IMEI recorded
+battery recorded
+household details verified
+assignment verified
+SMS reminder configured where API supports it
+SMS reminder tested where API supports it
+
+Final approval
+
+meter photograph
+serial visible in photograph
+checklist complete
+all mandatory tests pass
+inspector
+inspection date
+remarks
+ready for installation
+
+---
+
+24. AUTO CHECKS VS MANUAL CHECKS
+
+Each QC item must have a "source":
+
+AUTO
+MANUAL
+
+AUTO checks must be calculated from live eWater/Shengda data.
+
+Examples:
+
+battery voltage
+firmware
+IMEI
+ICCID
+meter serial
+RTC
+communication count
+packet CRC
+last communication
+signal
+reported valve state
+prepaid allowance
+overdraft
+payment function
+report cycle
+error code
+magnetic alarm
+
+MANUAL checks include:
+
+physical damage
+thread condition
+water leaks
+physical valve observation
+photographs
+known-volume wet test
+installation pressure
+customer training
+
+An auto check must show its evidence.
+
+For example:
+
+Battery voltage
+PASS
+3.61 V
+Observed: 2026-08-18 10:04 EAT
+Source: Shengda /80/0 field 37
+
+Never show a green tick simply because the operator clicked a box for an auto-verifiable item.
+
+---
+
+25. THREE-COMMUNICATION COMMISSIONING TEST
+
+Implement this rigorously.
+
+When commissioning starts, record:
+
+commissioningTestStartedAt
+
+The "three communications" check only passes when three distinct valid Shengda reports from the meter after that time have been received.
+
+Show:
+
+Delivery 1
+server received time
+device time
+CRC valid
+
+Delivery 2
+...
+
+Delivery 3
+...
+
+Do not count arbitrary old historical packets.
+
+Do not count corrupt packets.
+
+---
+
+26. RTC CHECK
+
+Use Shengda device current time from "/3/0".
+
+Compare:
+
+device RTC
+
+against:
+
+server received timestamp
+
+Show:
+
+Device time
+Server received time
+Calculated drift
+
+Do not simply say "RTC OK".
+
+Pass/fail tolerance must be configuration.
+
+If no tolerance has been configured, show the measured drift without automatically passing it.
+
+---
+
+27. SIM STATUS
+
+The Shengda packet can report:
+
+IMEI
+IMSI
+ICCID
+APN
+network parameters
+
+A successfully received NB-IoT packet demonstrates that the device/SIM is communicating.
+
+However:
+
+do not claim carrier SIM activation status unless an actual carrier/eWater API reports activation status.
+
+Use language such as:
+
+NB-IoT communication confirmed
+
+rather than:
+
+SIM active
+
+unless activation is actually known.
+
+---
+
+28. COMMERCIAL CONFIGURATION
+
+Required target operating configuration includes:
+
+Prepaid mode
+No overdraft
+Current HHC tariff
+Reporting cycle
+Low-water alert threshold
+Valve behaviour
+
+The current operational tariff requirement is:
+
+KES 250 per 1,000 litres
+
+Store this as HHC configuration, not as a random UI constant.
+
+Display:
+
+Required value
+Reported value
+Status
+
+For example:
+
+Overdraft
+Required: 0 L
+Reported: value from Shengda
+
+---
+
+29. REPORTING FREQUENCY
+
+The device reports a canonical report cycle in seconds.
+
+Store and transmit reporting frequency as seconds.
+
+The UI can derive:
+
+Every X hours
+Y expected reports/day
+
+Do not store vague strings such as "3 times".
+
+For example, the UI must calculate the display from the actual "reportCycleSeconds".
+
+---
+
+30. HOUSEHOLD ASSIGNMENT
+
+The conceptual eWater data model is:
+
+Household
+    ↕
+Meter asset
+
+The meter is assigned to a household.
+
+Do not model the phone number as an intrinsic Shengda meter property.
+
+The uploaded API code currently proves a read endpoint for:
+
+GET state /api/Reference/GetHouseholdInfo?householdId=...
+
+which returns approximately:
+
+householdId
+name
+assetId
+systemId
+createdDt
+lastActiveDt
+
+The current eWater API deliberately omits customer phone/address from this read surface.
+
+Therefore:
+
+- do not invent customer phone data;
+- do not populate fake phone fields;
+- do not assume customer phone is available from GetHouseholdInfo.
+
+If the live eWater API exposes an approved HouseholdMeter assignment/create/update endpoint, integrate it server-side.
+
+If not, display the integration as unavailable rather than pretending a local form modified eWater.
+
+---
+
+31. TAB 3 — OPERATIONS & MAINTENANCE
+
+This tab is the operational control centre for commissioned HouseholdMeter assets.
+
+Selecting a meter should immediately expose:
+
+identity
+household
+current meter state
+prepaid state
+communications
+alarms
+settings
+controls
+usage
+maintenance activity
+audit history
+
+---
+
+32. METER HEADER
+
+Always show:
+
+eWater asset name
+asset ID
+lifecycle state
+water system
+country
+meter serial
+Shengda IMEI
+ICCID
+last valid communication
+communication state
+
+Every status value needs an observed timestamp where possible.
+
+---
+
+33. PRIMARY OPERATIONAL METRICS
+
+Use actual Shengda data.
+
+Show:
+
+Current prepaid allowance, litres
+Cumulative meter reading, litres
+Consumption over last 24 hours
+Valve state
+Supply/battery voltage
+Battery state
+RSRP
+SNR
+Latest error
+Magnetic attack state
+Report interval
+
+Do not derive prepaid balance from a made-up financial calculation when the Shengda meter directly reports available litres.
+
+---
+
+34. DAILY CONSUMPTION
+
+The existing HHM page calculates 24-hour usage correctly from the cumulative meter reading.
+
+Retain the principle:
+
+latest cumulative reading
+minus
+oldest valid cumulative reading around 24 hours earlier
+
+Do this server-side for reusable history calculations.
+
+Do not calculate negative consumption.
+
+If the cumulative register falls backwards:
+
+mark reading discontinuity/reset
+
+and do not present the negative number as water consumption.
+
+---
+
+35. HISTORICAL USAGE
+
+Provide real charts for:
+
+24 hours
+7 days
+30 days
+90 days where API/log coverage permits
+
+Build them from actual Shengda cumulative meter readings.
+
+For each time bucket:
+
+1. identify the closest trustworthy reading at the beginning;
+2. identify the closest trustworthy reading at the end;
+3. subtract;
+4. handle gaps;
+5. handle counter resets;
+6. expose data coverage.
+
+Never interpolate huge gaps without clearly identifying that the result is estimated.
+
+---
+
+36. PREPAID STATE
+
+Show separately:
+
+available water allowance
+configured overdraft
+payment function
+low-water alarm threshold
+valve state
+
+Required operating state:
+
+prepaid
+overdraft = 0
+
+Flag exceptions prominently.
+
+---
+
+37. VALVE CONTROL
+
+Operations requires:
+
+Open valve
+Close valve
+
+However, do not invent the upstream command endpoint.
+
+The uploaded code proves these eWater command endpoints:
+
+POST command /api/Ewc/RequestSettingChange
+POST command /api/Ewc/ResetTickAccumulator
+
+Those are existing EWC command paths.
+
+They are not automatically proof that they are the correct Shengda valve-control API.
+
+Before implementing a Shengda valve command:
+
+1. inspect the live eWater command Swagger/API contract;
+2. identify the genuine HouseholdMeter/Shengda control endpoint;
+3. validate its payload;
+4. create a narrowly scoped server wrapper;
+5. add Zod validation;
+6. add RBAC;
+7. add audit logging.
+
+If no verified endpoint exists, show:
+
+Valve control API not yet available
+
+and keep the control disabled.
+
+---
+
+38. COMMAND STATE MUST NOT BE OPTIMISTIC
+
+When a command is sent:
+
+do not immediately alter the reported valve state.
+
+Use:
+
+Requested state
+Command state
+Reported device state
+
+Example lifecycle:
+
+Open requested
+→ eWater command accepted
+→ Awaiting device communication
+→ Shengda reports valve open
+→ Confirmed
+
+If no confirming packet arrives, display:
+
+Command accepted but not yet confirmed by meter
+
+The same pattern applies to:
+
+report cycle
+prepaid settings
+overdraft
+valve dredge cycle
+other remote settings
+
+---
+
+39. VALVE EXERCISE / DREDGE CYCLE
+
+The Shengda protocol exposes:
+
+/81/0 field 4
+Valve Dredge Cycle
+
+Display the current reported setting.
+
+Operationally this exists to periodically move the valve and reduce sticking/mineral build-up.
+
+Do not create the write action until the real upstream setting command is confirmed.
+
+---
+
+40. MANUAL WATER ALLOCATION
+
+Operations requires the ability to allocate water for:
+
+commissioning test
+payment taken but water not delivered
+customer-service recovery
+approved goodwill
+other authorised adjustment
+
+This is a financial/operational control.
+
+Never implement it as:
+
+balance += litres
+
+inside React or the local database.
+
+That would only create a fake balance.
+
+The transaction must be executed through the real eWater backend credit/water-allocation API.
+
+If no verified HouseholdMeter credit endpoint is available, disable the action and say so.
+
+When implemented, require:
+
+litres
+reason
+external/payment/ticket reference
+accounting category
+operator identity
+timestamp
+
+Free/goodwill water must be identifiable for accounting/reporting.
+
+---
+
+41. TOP-UPS AND PAYMENT HISTORY
+
+Do not reuse the NFC tag top-up APIs simply because they already exist.
+
+The current repository contains APIs for NFC tag registration and usage, but a Shengda HouseholdMeter is a different commercial/device workflow.
+
+Only show HouseholdMeter payment/top-up history if there is an actual eWater API relationship identifying those top-ups with the HouseholdMeter/household.
+
+If the upstream API is not available:
+
+Household-meter payment history integration unavailable
+
+is preferable to showing unrelated tag transactions.
+
+---
+
+42. SMS
+
+The operations requirements include:
+
+low-balance reminder SMS
+purchase confirmation
+SMS testing
+
+Do not simulate SMS delivery.
+
+Only enable SMS controls after identifying the real eWater messaging endpoint.
+
+Where actual delivery-state information exists, show:
+
+queued
+sent
+delivered
+failed
+
+Do not treat "API accepted request" as proof of handset delivery.
+
+---
+
+43. ALARMS
+
+Create a HouseholdMeter-specific alarm engine.
+
+At minimum support:
+
+No communication
+Low battery
+Battery damaged
+Invalid CRC
+Meter error code
+Magnetic attack
+Historical magnetic attack
+Valve failure
+Valve-state mismatch
+Unexpected overdraft
+Prepaid disabled
+Low prepaid allowance
+RTC drift
+Weak signal
+Reading discontinuity
+
+Every alarm must show:
+
+type
+severity
+asset
+observed value
+threshold/expected value
+first observed
+last observed
+status
+
+Do not hide alarm logic behind unexplained colours.
+
+---
+
+44. PREVENTATIVE MAINTENANCE
+
+Create a genuine O&M workflow rather than only showing telemetry.
+
+Allow a real HouseholdMeter to have maintenance cases:
+
+New
+Assigned
+In progress
+Waiting
+Resolved
+Closed
+
+Issue categories:
+
+battery
+communications
+SIM/network
+valve
+meter reading
+leak
+tamper
+credit/payment
+configuration
+installation
+scheduled preventative maintenance
+other
+
+Store the O&M workflow locally if eWater does not provide an O&M case API.
+
+This local data must always reference the real:
+
+eWater assetId
+
+Do not create fake assets in the maintenance database.
+
+Provide a future field for:
+
+Pulse reference / maintenance system reference
+
+because operational issues may ultimately need integration into Pulse.
+
+---
+
+45. APPLICATION-OWNED DATABASE DATA
+
+It is acceptable to use PostgreSQL for data that eWater does not itself represent, particularly workflow state.
+
+Create Drizzle tables approximately equivalent to:
+
+hhc_commissioning_sessions
+hhc_qc_results
+hhc_maintenance_cases
+hhc_action_audit
+hhc_configuration
+
+Commissioning session
+
+Store:
+
+assetId
+stage
+startedAt
+completedAt
+assignedTo
+finalApprovalBy
+finalApprovalAt
+notes
+
+QC result
+
+Store:
+
+assetId
+checkCode
+gate
+result
+source AUTO/MANUAL
+observedValue
+expectedValue
+evidence JSON
+checkedBy
+checkedAt
+
+Action audit
+
+Store:
+
+assetId
+action
+requestedBy
+role
+requestedAt
+request payload
+upstream API
+upstream status
+upstream correlationId
+commandState
+confirmedAt
+confirmationPacketId
+error
+
+Do not put eWater passwords or Bearer tokens in the audit table.
+
+---
+
+46. SOURCE-OF-TRUTH RULE
+
+Maintain a strict separation.
+
+eWater source of truth
+
+asset
+lifecycle
+water system
+country
+household where exposed
+device identity
+telemetry
+meter reading
+prepaid allowance
+valve state
+network
+firmware
+commands
+payment data where exposed
+
+Application source of truth
+
+QC checklist completion
+manual inspection evidence
+commissioning workflow
+staff assignment
+internal O&M cases
+local alarm configuration
+local command audit
+
+Never create a second locally editable version of a meter's reported balance or valve state.
+
+---
+
+47. USER PERMISSIONS
+
+The meeting requirement is that most eWater employees may view data while control operations are heavily restricted.
+
+Implement server-enforced roles.
+
+At minimum:
+
+Viewer
+Technician
+Operations Manager
+Administrator
+
+Suggested permissions:
+
+Viewer
+
+view fleet
+view state
+view usage
+view alarms
+view communication logs
+
+Technician
+
+all Viewer permissions
+complete manual QC
+record field evidence
+create/update maintenance cases
+perform approved diagnostic tests
+
+Operations Manager
+
+all Technician permissions
+approve commissioning
+issue verified valve commands
+change verified device settings
+allocate water through verified backend API
+
+Administrator
+
+all permissions
+system configuration
+threshold configuration
+integration administration
+role administration
+
+Permission enforcement must occur on the API server.
+
+Hiding a button in React is not security.
+
+---
+
+48. APPLICATION USER IDENTITY
+
+The existing eWater service credentials are not sufficient to identify the person pressing a control button.
+
+Do not enable high-risk writes for anonymous/shared users.
+
+If the application does not already have end-user authentication, add an appropriate Replit-supported authentication mechanism before enabling control APIs.
+
+Every write must identify the real authenticated application user.
+
+---
+
+49. HIGH-RISK ACTION CONFIRMATION
+
+Require explicit confirmation for:
+
+closing valve
+changing prepaid/overdraft settings
+changing tariff
+allocating free water
+resetting meter values
+factory/reset-like commands
+
+Confirmation dialogs should show:
+
+meter
+household where known
+existing value
+requested value
+consequence
+
+---
+
+50. NO GENERIC CONTROL PROXY IN UI
+
+The existing:
+
+POST /api/ewater/proxy
+
+is useful as a developer integration tool.
+
+Do not expose it as a general user-facing way of sending arbitrary command API calls.
+
+Production writes must have dedicated strongly validated endpoints.
+
+Example:
+
+POST /api/ewater/hhc/meters/:id/actions/valve
+
+is preferable to allowing the browser to supply:
+
+api
+path
+method
+body
+
+arbitrarily.
+
+---
+
+51. SCALABILITY
+
+This dashboard is intended ultimately to support a very large HouseholdMeter estate.
+
+Do not design the fleet page around:
+
+for every meter:
+    make 10 upstream API requests
+
+That will collapse at scale.
+
+Initial fleet discovery should come from the bulk asset APIs.
+
+Use:
+
+pagination
+server-side caching
+bounded concurrency
+progressive enrichment
+visible-row data loading
+
+If detailed Shengda state is needed for table rows, enrich only the requested page rather than the entire estate.
+
+Use a short server-side cache for device state, including:
+
+fetchedAt
+sourceObservedAt
+
+A cache is allowed.
+
+Fake fallback data is not.
+
+---
+
+52. LARGE-FLEET METRICS
+
+Never calculate:
+
+91% healthy
+
+from only the first page of assets.
+
+For a global KPI, one of the following must be true:
+
+1. a genuine bulk eWater endpoint supplies the full state;
+2. the server has processed the full HouseholdMeter fleet;
+3. the UI clearly identifies the calculation as partial coverage.
+
+Accuracy beats decorative KPIs.
+
+---
+
+53. POLLING
+
+The existing HHM page polls approximately every 30 seconds.
+
+Keep approximately that behaviour for an actively selected HouseholdMeter.
+
+For the fleet table use a slower cadence and caching.
+
+Suggested approach:
+
+Selected meter state: ~30 seconds
+Fleet list metadata: ~60–120 seconds
+Historical charts: refresh manually or at much lower frequency
+
+Pause unnecessary polling when the page/tab is not active.
+
+Do not hammer eWater APIs.
+
+---
+
+54. COMMUNICATION LOG
+
+Retain a detailed communications view.
+
+Show real packets:
+
+server receive time
+source IMEI
+pipeline
+protocol
+message function
+CRC
+decoded state
+raw payload expandable
+human-readable decoder description expandable
+
+Provide filters:
+
+valid/invalid
+device report
+setting response
+alarm
+IMEI
+date range
+
+This is important for commissioning and support debugging.
+
+---
+
+55. HOUSEHOLD METER DETAIL DESIGN
+
+On Operations & Maintenance, arrange information in this hierarchy:
+
+Row 1
+
+Prepaid balance
+24h usage
+Cumulative reading
+Last communication
+
+Row 2 — Device health
+
+Battery
+Voltage
+Signal
+Valve
+Alarm
+
+Meter identity
+
+Asset
+Meter serial
+IMEI
+ICCID
+Firmware
+Hardware
+Model
+DN
+Measurement model
+
+Network
+
+APN
+PLMN
+Band
+EARFCN
+Cell ID
+PCI
+RSRP
+RSRQ
+RSSI
+SNR
+ECL
+PSM
+
+Commercial
+
+Payment function
+Prepaid balance
+Overdraft
+Allowance alarm threshold
+Tariff if available
+
+Control
+
+Valve
+Report cycle
+Dredge cycle
+Other verified settings
+
+Activity
+
+Consumption history
+Top-ups where genuine API exists
+Commands
+Maintenance
+Communications
+Audit
+
+---
+
+56. UI STYLE
+
+Use the existing eWater application style rather than creating another visual system.
+
+Continue using:
+
+React
+TypeScript
+Tailwind
+shadcn/Radix components
+TanStack Query
+Lucide icons
+Recharts where a graph genuinely helps
+
+The application should work at:
+
+desktop
+tablet
+mobile
+
+but optimise the operational tables and commissioning workflow for desktop/tablet.
+
+Use compact status indicators.
+
+Avoid giant decorative cards.
+
+Use colour as a secondary signal, never the only signal.
+
+For example:
+
+Critical · Low battery · 3.08 V
+
+rather than only a red dot.
+
+---
+
+57. DATA FRESHNESS
+
+Every key device value should expose freshness.
+
+Display a consistent pattern:
+
+Value
+Observed 12 min ago
+
+If values within the same panel were observed at different times, preserve their individual timestamps internally and expose them on hover/detail.
+
+The dashboard must make the difference between:
+
+API fetched now
+
+and:
+
+device reported 9 hours ago
+
+clear.
+
+---
+
+58. ERROR HANDLING
+
+Distinguish:
+
+No data reported
+Asset not found
+eWater authentication failed
+eWater API unavailable
+API timeout
+Device has not communicated
+Invalid packet
+Control endpoint not integrated
+Command rejected
+Command accepted but not confirmed
+
+Do not collapse every failure into:
+
+Error
+
+---
+
+59. HOUSEHOLD CUSTOMER PRIVACY
+
+Do not expose data that the eWater API intentionally withholds.
+
+In particular, current household read data does not expose phone/address.
+
+Do not work around that by scraping or storing hidden personal data without an approved source.
+
+Only display personal information supplied through an authorised eWater API/integration.
+
+---
+
+60. OPENAPI
+
+Document every new local endpoint in:
+
+lib/api-spec/openapi.yaml
+
+Define proper schemas for:
+
+HouseholdMeterSummary
+HouseholdMeterState
+ShengdaDeviceInfo
+ShengdaMeterState
+ShengdaValveState
+ShengdaAlarmState
+ShengdaReportingState
+ShengdaNetworkState
+HouseholdMeterHistory
+CommissioningSession
+QcResult
+MaintenanceCase
+HhcCommandResult
+
+Then regenerate:
+
+@workspace/api-zod
+@workspace/api-client-react
+
+using the existing Orval/code-generation workflow.
+
+Prefer generated hooks in React rather than hand-written fetch functions for new APIs.
+
+---
+
+61. REUSE EXISTING HHM PAGE
+
+Do not throw away:
+
+artifacts/ewater-app/src/pages/hhm.tsx
+
+Refactor its useful behaviour into the new Household Meter domain.
+
+In particular reuse:
+
+30-second polling concept
+daily usage calculation concept
+battery presentation
+valve presentation
+communication log
+Shengda decoder integration
+asset technical metadata
+
+The existing "/hhm/:id" route can either:
+
+1. redirect into the new dashboard with the meter preselected; or
+2. become a focused detail route using the same HHC state hooks.
+
+There must not be two different implementations calculating Shengda state differently.
+
+---
+
+62. FLEET ROUTING
+
+Add a clear application route such as:
+
+/hhc
+
+Potential deep links:
+
+/hhc?tab=overview
+/hhc?tab=commissioning
+/hhc?tab=operations&assetId=...
+
+or equivalent route structure.
+
+A copied URL should reopen the selected HouseholdMeter where practical.
+
+---
+
+63. COMMISSIONING BLOCKERS
+
+A meter cannot be marked Ready/Commissioned if mandatory checks are failing.
+
+Examples of blockers:
+
+no valid Shengda communication
+fewer than 3 commissioning communications
+invalid CRC on latest trustworthy exchange without later recovery
+meter serial unavailable
+IMEI unavailable after connectivity stage
+battery below required threshold
+meter error code
+valve failure
+prepaid mode incorrect
+overdraft not zero
+commercial settings unverified
+mandatory wet/sample test failed where applicable
+mandatory manual QC incomplete
+household assignment incomplete where required
+
+Allow authorised override only if:
+
+reason
+operator
+timestamp
+
+are stored in the audit.
+
+---
+
+64. AUTOMATIC COMMISSIONING EVIDENCE
+
+An auto-check result should have machine-readable evidence.
+
+Example conceptual structure:
+
+{
+  "checkCode": "NETWORK_THREE_VALID_DELIVERIES",
+  "result": "PASS",
+  "source": "AUTO",
+  "observations": [
+    {
+      "packetId": "...",
+      "receivedAt": "...",
+      "imei": "...",
+      "crcValid": true
+    }
+  ]
+}
+
+Do not merely save:
+
+passed = true
+
+without evidence.
+
+---
+
+65. COMMAND AUDITING
+
+Every genuine remote command must capture:
+
+authenticated user
+user role
+assetId
+meter serial if known
+IMEI if relevant
+action
+old/report state
+desired state
+time requested
+upstream endpoint
+upstream response
+correlation ID
+time confirmed
+packet that confirmed it
+
+This is essential for:
+
+valve actions
+settings
+water allocation
+tariff changes
+meter resets
+
+---
+
+66. VERIFIED EWATER WRITE ENDPOINTS VS UNVERIFIED SHENGDA WRITES
+
+The current repository explicitly proves these command API calls:
+
+POST command.ewater.io/api/Ewc/RequestSettingChange
+POST command.ewater.io/api/Ewc/ResetTickAccumulator
+
+They are used for EWC calibration/settings.
+
+Do not automatically map them to Shengda household-meter commands.
+
+The Shengda protocol itself clearly contains control/configuration concepts such as:
+
+platform setting instruction
+valve control
+report cycle
+available allowance
+overdraft
+dredge cycle
+
+but that does not prove the server-side eWater command API endpoint.
+
+For every requested HouseholdMeter write:
+
+OPEN_VALVE
+CLOSE_VALVE
+SET_REPORT_CYCLE
+SET_PREPAID_MODE
+SET_OVERDRAFT
+SET_ALLOWANCE
+SET_LOW_BALANCE_THRESHOLD
+SET_DREDGE_CYCLE
+ALLOCATE_WATER
+SEND_SMS
+ASSIGN_HOUSEHOLD
+
+classify integration status as:
+
+VERIFIED
+NOT YET VERIFIED
+NOT AVAILABLE
+
+Only "VERIFIED" actions may execute.
+
+---
+
+67. DEVELOPMENT INTEGRATION DISCOVERY
+
+During development, inspect the authenticated live eWater Swagger/API definitions to locate missing HouseholdMeter operations.
+
+Do not guess endpoint names from the Shengda vendor protocol.
+
+Once discovered:
+
+1. document upstream path;
+2. document request payload;
+3. document response;
+4. create a dedicated server wrapper;
+5. add validation;
+6. add permissions;
+7. add tests;
+8. add audit;
+9. then expose the control.
+
+---
+
+68. TESTS
+
+Add meaningful tests.
+
+At minimum test:
+
+Asset filtering
+
+Only purpose=HouseholdMeter appears in HHC fleet.
+
+Shengda decoding
+
+correct frame detected
+invalid frame rejected
+CRC validation
+CBOR object parsing
+meter reading
+prepaid allowance
+battery voltage
+valve
+ICCID
+IMEI
+report cycle
+alarm fields
+
+State reduction
+
+newer partial packets do not erase older still-current values
+invalid CRC does not become authoritative
+observed timestamps preserved
+
+Usage calculation
+
+normal cumulative increase
+missing data
+counter reset
+negative difference rejected
+
+Commissioning
+
+three packets before test start do not pass
+three packets after test start pass
+invalid packets do not count
+mandatory failure blocks approval
+
+Permissions
+
+viewer cannot write
+technician cannot perform manager-only financial controls
+manager can access verified control route
+backend returns 403 regardless of frontend state
+
+No fake fallback
+
+Simulate eWater API returning an empty list.
+
+Expected UI:
+
+No HouseholdMeter assets returned.
+
+not mock data.
+
+---
+
+69. PERFORMANCE REQUIREMENTS
+
+Do not block initial page rendering while downloading weeks of logs for every meter.
+
+Recommended flow:
+
+Overview initial load
+
+asset hierarchy
+HouseholdMeter list
+commissioning workflow metadata
+
+Then progressively enrich visible meters.
+
+Selected meter
+
+Immediately fetch:
+
+asset tech metadata
+latest Shengda packets
+current state
+
+Then fetch historical data separately.
+
+Use React Query caching.
+
+Avoid duplicate requests when switching between tabs for the same meter.
+
+---
+
+70. OBSERVABILITY
+
+Server logs should record:
+
+ewater API endpoint
+response status
+duration
+assetId where relevant
+retry
+command correlation
+
+Never log:
+
+password
+access token
+full credentials
+
+For write failures include enough context to diagnose the problem without exposing secrets.
+
+---
+
+71. CONFIGURATION SCREEN
+
+Add HouseholdMeter operational configuration for authorised administrators.
+
+Store things such as:
+
+target battery voltage
+warning battery voltage
+critical battery voltage
+offline multiplier/tolerance
+RTC tolerance
+Gate 3 sample percentage
+required tariff
+required overdraft
+low-water threshold
+commissioning test volume
+default/reporting policy
+
+These are business rules.
+
+Device-reported values remain live eWater data.
+
+---
+
+72. EMPTY STATE QUALITY
+
+A new installation with no HouseholdMeter assets should still look deliberate.
+
+Show:
+
+No HouseholdMeter assets are currently visible to this eWater account.
+
+Provide:
+
+Refresh
+API connection status
+Current asset filter
+
+Do not populate the page with demo meters.
+
+---
+
+73. API CONNECTION STATUS
+
+Show an unobtrusive live eWater connection indicator:
+
+Connected
+Authentication required
+API degraded
+Last successful sync
+
+This should reflect the real service state.
+
+Do not display a fake "Live" badge solely because the application loaded.
+
+---
+
+74. DEFINITION OF DONE
+
+The feature is complete when all of the following are true:
+
+- "/hhc" exists.
+- The page contains Overview, Commissioning and Operations & Maintenance.
+- Every displayed meter comes from the live eWater HouseholdMeter asset list.
+- No runtime mock/sample meter data exists.
+- Shengda data is decoded server-side.
+- ICCID and IMEI are structured fields, not dependent on description-string scraping.
+- Meter reading comes from Shengda.
+- Prepaid allowance comes from Shengda.
+- Battery and battery state come from Shengda where reported.
+- Valve state comes from Shengda.
+- RSRP/SNR come from Shengda.
+- RTC comes from Shengda.
+- Report cycle comes from Shengda.
+- Error/magnetic states come from Shengda.
+- Data freshness is visible.
+- Three-communication commissioning validation works.
+- QC workflow is persisted.
+- Gate 1, Gate 2 and Gate 3 are represented.
+- Gate 3 sampling is configurable as a percentage.
+- No generic arbitrary command proxy is used by normal users.
+- No unsupported Shengda write endpoint is invented.
+- Unsupported controls remain disabled and clearly labelled.
+- Verified writes are server-side, permissioned and audited.
+- Accepted commands remain pending until device state confirms them.
+- Manual water allocation never changes the balance locally.
+- Missing API data renders as missing, not zero.
+- OpenAPI schemas are updated.
+- Generated API client/hooks are regenerated.
+- TypeScript passes.
+- Production build passes.
+- Existing eWater monitoring features continue working.
+
+---
+
+75. IMPLEMENTATION ORDER
+
+Implement in this sequence.
+
+Phase 1 — Domain/data
+
+1. Preserve existing "ewater-client.ts".
+2. Extend "shengda-nbiot-decoder.ts".
+3. Add structured Shengda field output.
+4. Add Shengda state reducer.
+5. Create "hhc-insights.ts".
+6. Add HouseholdMeter list/state/history endpoints.
+7. Add OpenAPI definitions and generated hooks.
+
+Phase 2 — Read-only operational dashboard
+
+1. Build Overview.
+2. Build real HouseholdMeter table.
+3. Build selected meter O&M state.
+4. Build usage.
+5. Build alarms.
+6. Build communications.
+7. Refactor existing HHM page to share the same domain logic.
+
+At the end of Phase 2 the application must already be genuinely useful using only live eWater data.
+
+Phase 3 — Commissioning workflow
+
+1. Add workflow database tables.
+2. Add commissioning queue.
+3. Add gate model.
+4. Add manual checklist.
+5. Add automatic checks.
+6. Add three-communication validation.
+7. Add final approval.
+
+Phase 4 — O&M workflows
+
+1. Maintenance cases.
+2. preventative maintenance.
+3. configurable alert thresholds.
+4. local action audit.
+
+Phase 5 — Restricted controls
+
+Only after identifying the real upstream APIs:
+
+1. valve control;
+2. report-cycle changes;
+3. prepaid configuration;
+4. overdraft;
+5. valve dredge cycle;
+6. water allocation;
+7. SMS;
+8. household assignment.
+
+Do not allow Phase 5 requirements to cause fake functionality in Phases 1–4.
+
+---
+
+FINAL IMPLEMENTATION PRINCIPLE
+
+This must become an eWater operational application, not a visual mock-up sitting on top of invented state.
+
+Whenever there is a choice between:
+
+a polished number that might be wrong
+
+and:
+
+an honest "not available from the current API"
+
+choose the latter.
+
+The application should make the real Shengda HouseholdMeter estate visible, commissionable, diagnosable and eventually controllable through properly authenticated and audited eWater APIs.
