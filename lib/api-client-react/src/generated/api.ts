@@ -25,7 +25,7 @@ import type {
   Asset,
   AssetEwcSettings,
   AssetTechStatus,
-  CommissioningStatus,
+  CommissioningDetail,
   CredentialsInput,
   CredentialsStatus,
   DashboardSummary,
@@ -39,22 +39,30 @@ import type {
   GetHouseholdMeterCommunicationsParams,
   GetHouseholdMeterHistoryParams,
   HealthStatus,
+  HhcConfiguration,
+  HhcConfigurationUpdate,
   HouseholdMeterCommunicationsPage,
   HouseholdMeterHistory,
   HouseholdMeterListPage,
   HouseholdMeterState,
   HouseholdMeterSummary,
+  JobTypesResult,
   ListHouseholdMetersParams,
   MeterReadingResult,
+  ModemIccidBody,
+  ModemIccidResult,
   NotifierSettings,
   NotifierSettingsInput,
   NotifierTestResult,
+  OperatorLoginBody,
+  OperatorSession,
   ProxyInput,
   ProxyResponse,
   RawPacketLog,
   ResetMeterBody,
   ResetMeterResult,
-  TelemetryEntry
+  TelemetryEntry,
+  UpdateCommissioningBody
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -2101,11 +2109,11 @@ export const getGetHouseholdMeterCommissioningUrl = (assetId: string,) => {
 }
 
 /**
- * @summary Get commissioning status and auto-check results
+ * @summary Get the full commissioning session, three-gate QC checklist, blockers, comms test and RTC drift
  */
-export const getHouseholdMeterCommissioning = async (assetId: string, options?: RequestInit): Promise<CommissioningStatus> => {
+export const getHouseholdMeterCommissioning = async (assetId: string, options?: RequestInit): Promise<CommissioningDetail> => {
 
-  return customFetch<CommissioningStatus>(getGetHouseholdMeterCommissioningUrl(assetId),
+  return customFetch<CommissioningDetail>(getGetHouseholdMeterCommissioningUrl(assetId),
   {
     ...options,
     method: 'GET'
@@ -2148,7 +2156,7 @@ export type GetHouseholdMeterCommissioningQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get commissioning status and auto-check results
+ * @summary Get the full commissioning session, three-gate QC checklist, blockers, comms test and RTC drift
  */
 
 export function useGetHouseholdMeterCommissioning<TData = Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>, TError = ErrorType<ErrorResponse>>(
@@ -2157,6 +2165,447 @@ export function useGetHouseholdMeterCommissioning<TData = Awaited<ReturnType<typ
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetHouseholdMeterCommissioningQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateHouseholdMeterCommissioningUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/commissioning`
+}
+
+/**
+ * Requires a Bearer operator token from /ewater/hhc/auth/login; identity and role are taken from the verified token.
+ * @summary Update commissioning session stage, start comms test, set batch size, record a manual QC result, or approve
+ */
+export const updateHouseholdMeterCommissioning = async (assetId: string,
+    updateCommissioningBody: UpdateCommissioningBody, options?: RequestInit): Promise<CommissioningDetail> => {
+
+  return customFetch<CommissioningDetail>(getUpdateHouseholdMeterCommissioningUrl(assetId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateCommissioningBody,)
+  }
+);}
+
+
+
+
+export const getUpdateHouseholdMeterCommissioningMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHouseholdMeterCommissioning>>, TError,{assetId: string;data: BodyType<UpdateCommissioningBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateHouseholdMeterCommissioning>>, TError,{assetId: string;data: BodyType<UpdateCommissioningBody>}, TContext> => {
+
+const mutationKey = ['updateHouseholdMeterCommissioning'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateHouseholdMeterCommissioning>>, {assetId: string;data: BodyType<UpdateCommissioningBody>}> = (props) => {
+          const {assetId,data} = props ?? {};
+
+          return  updateHouseholdMeterCommissioning(assetId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateHouseholdMeterCommissioningMutationResult = NonNullable<Awaited<ReturnType<typeof updateHouseholdMeterCommissioning>>>
+    export type UpdateHouseholdMeterCommissioningMutationBody = BodyType<UpdateCommissioningBody>
+    export type UpdateHouseholdMeterCommissioningMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update commissioning session stage, start comms test, set batch size, record a manual QC result, or approve
+ */
+export const useUpdateHouseholdMeterCommissioning = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHouseholdMeterCommissioning>>, TError,{assetId: string;data: BodyType<UpdateCommissioningBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateHouseholdMeterCommissioning>>,
+        TError,
+        {assetId: string;data: BodyType<UpdateCommissioningBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateHouseholdMeterCommissioningMutationOptions(options));
+    }
+
+export const getHhcOperatorLoginUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/auth/login`
+}
+
+/**
+ * @summary Exchange an operator access key for a signed operator token (identity and role are server-verified)
+ */
+export const hhcOperatorLogin = async (operatorLoginBody: OperatorLoginBody, options?: RequestInit): Promise<OperatorSession> => {
+
+  return customFetch<OperatorSession>(getHhcOperatorLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      operatorLoginBody,)
+  }
+);}
+
+
+
+
+export const getHhcOperatorLoginMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof hhcOperatorLogin>>, TError,{data: BodyType<OperatorLoginBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof hhcOperatorLogin>>, TError,{data: BodyType<OperatorLoginBody>}, TContext> => {
+
+const mutationKey = ['hhcOperatorLogin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof hhcOperatorLogin>>, {data: BodyType<OperatorLoginBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  hhcOperatorLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HhcOperatorLoginMutationResult = NonNullable<Awaited<ReturnType<typeof hhcOperatorLogin>>>
+    export type HhcOperatorLoginMutationBody = BodyType<OperatorLoginBody>
+    export type HhcOperatorLoginMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Exchange an operator access key for a signed operator token (identity and role are server-verified)
+ */
+export const useHhcOperatorLogin = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof hhcOperatorLogin>>, TError,{data: BodyType<OperatorLoginBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof hhcOperatorLogin>>,
+        TError,
+        {data: BodyType<OperatorLoginBody>},
+        TContext
+      > => {
+      return useMutation(getHhcOperatorLoginMutationOptions(options));
+    }
+
+export const getGetHhcConfigUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/config`
+}
+
+/**
+ * @summary Read HHC configuration (battery thresholds, Gate 3 sample %, RTC tolerance, tariff)
+ */
+export const getHhcConfig = async ( options?: RequestInit): Promise<HhcConfiguration> => {
+
+  return customFetch<HhcConfiguration>(getGetHhcConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcConfigQueryKey = () => {
+    return [
+    `/api/ewater/hhc/config`
+    ] as const;
+    }
+
+
+export const getGetHhcConfigQueryOptions = <TData = Awaited<ReturnType<typeof getHhcConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcConfig>>> = ({ signal }) => getHhcConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcConfig>>>
+export type GetHhcConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read HHC configuration (battery thresholds, Gate 3 sample %, RTC tolerance, tariff)
+ */
+
+export function useGetHhcConfig<TData = Awaited<ReturnType<typeof getHhcConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateHhcConfigUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/config`
+}
+
+/**
+ * @summary Update HHC configuration (admin only — requires a Bearer operator token with the admin role)
+ */
+export const updateHhcConfig = async (hhcConfigurationUpdate: HhcConfigurationUpdate, options?: RequestInit): Promise<HhcConfiguration> => {
+
+  return customFetch<HhcConfiguration>(getUpdateHhcConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hhcConfigurationUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateHhcConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHhcConfig>>, TError,{data: BodyType<HhcConfigurationUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateHhcConfig>>, TError,{data: BodyType<HhcConfigurationUpdate>}, TContext> => {
+
+const mutationKey = ['updateHhcConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateHhcConfig>>, {data: BodyType<HhcConfigurationUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateHhcConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateHhcConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateHhcConfig>>>
+    export type UpdateHhcConfigMutationBody = BodyType<HhcConfigurationUpdate>
+    export type UpdateHhcConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update HHC configuration (admin only — requires a Bearer operator token with the admin role)
+ */
+export const useUpdateHhcConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHhcConfig>>, TError,{data: BodyType<HhcConfigurationUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateHhcConfig>>,
+        TError,
+        {data: BodyType<HhcConfigurationUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateHhcConfigMutationOptions(options));
+    }
+
+export const getRecordModemIccidUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/parts/modem-iccid`
+}
+
+/**
+ * @summary Record/verify a modem ICCID during commissioning (syncs the Pulse parts inventory)
+ */
+export const recordModemIccid = async (assetId: string,
+    modemIccidBody: ModemIccidBody, options?: RequestInit): Promise<ModemIccidResult> => {
+
+  return customFetch<ModemIccidResult>(getRecordModemIccidUrl(assetId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      modemIccidBody,)
+  }
+);}
+
+
+
+
+export const getRecordModemIccidMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordModemIccid>>, TError,{assetId: string;data: BodyType<ModemIccidBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordModemIccid>>, TError,{assetId: string;data: BodyType<ModemIccidBody>}, TContext> => {
+
+const mutationKey = ['recordModemIccid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordModemIccid>>, {assetId: string;data: BodyType<ModemIccidBody>}> = (props) => {
+          const {assetId,data} = props ?? {};
+
+          return  recordModemIccid(assetId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordModemIccidMutationResult = NonNullable<Awaited<ReturnType<typeof recordModemIccid>>>
+    export type RecordModemIccidMutationBody = BodyType<ModemIccidBody>
+    export type RecordModemIccidMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record/verify a modem ICCID during commissioning (syncs the Pulse parts inventory)
+ */
+export const useRecordModemIccid = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordModemIccid>>, TError,{assetId: string;data: BodyType<ModemIccidBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordModemIccid>>,
+        TError,
+        {assetId: string;data: BodyType<ModemIccidBody>},
+        TContext
+      > => {
+      return useMutation(getRecordModemIccidMutationOptions(options));
+    }
+
+export const getGetHhcJobTypesUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/parts/job-types`
+}
+
+/**
+ * @summary List Pulse job types (thin proxy to Pulse GET /api/jobs/JobTypes)
+ */
+export const getHhcJobTypes = async ( options?: RequestInit): Promise<JobTypesResult> => {
+
+  return customFetch<JobTypesResult>(getGetHhcJobTypesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcJobTypesQueryKey = () => {
+    return [
+    `/api/ewater/hhc/parts/job-types`
+    ] as const;
+    }
+
+
+export const getGetHhcJobTypesQueryOptions = <TData = Awaited<ReturnType<typeof getHhcJobTypes>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcJobTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcJobTypesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcJobTypes>>> = ({ signal }) => getHhcJobTypes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcJobTypes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcJobTypesQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcJobTypes>>>
+export type GetHhcJobTypesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List Pulse job types (thin proxy to Pulse GET /api/jobs/JobTypes)
+ */
+
+export function useGetHhcJobTypes<TData = Awaited<ReturnType<typeof getHhcJobTypes>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcJobTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcJobTypesQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

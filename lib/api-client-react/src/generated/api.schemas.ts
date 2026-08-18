@@ -757,42 +757,289 @@ export interface HouseholdMeterCommunicationsPage {
   fetchedAt: string;
 }
 
-export type CommissioningCheckStatus = typeof CommissioningCheckStatus[keyof typeof CommissioningCheckStatus];
+export type CommissioningSessionStage = typeof CommissioningSessionStage[keyof typeof CommissioningSessionStage];
 
 
-export const CommissioningCheckStatus = {
-  pass: 'pass',
-  fail: 'fail',
-  unknown: 'unknown',
+export const CommissioningSessionStage = {
+  gate1: 'gate1',
+  gate2: 'gate2',
+  gate3: 'gate3',
+  approved: 'approved',
 } as const;
 
-export interface CommissioningCheck {
-  id: string;
-  label: string;
-  status: CommissioningCheckStatus;
-  detail: string;
+export interface CommissioningSession {
+  assetId: string;
+  stage: CommissioningSessionStage;
   /** @nullable */
-  observedAt?: string | null;
+  commissioningTestStartedAt?: string | null;
+  /** @nullable */
+  batchSize?: number | null;
+  /** @nullable */
+  approvedAt?: string | null;
+  /** @nullable */
+  approvedBy?: string | null;
+  /** @nullable */
+  overrideReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  updatedBy?: string | null;
 }
 
-export type CommissioningStatusOverall = typeof CommissioningStatusOverall[keyof typeof CommissioningStatusOverall];
+/**
+ * Machine-readable evidence for a QC result (source field reference, observed/expected values, packet provenance)
+ */
+export interface QcEvidence {
+  /** e.g. "Shengda /80/0 field 37" */
+  sourceField?: string;
+  observedValue?: unknown;
+  expectedValue?: unknown;
+  /** @nullable */
+  observedAt?: string | null;
+  /** @nullable */
+  packetId?: string | null;
+  /** @nullable */
+  imei?: string | null;
+  /** @nullable */
+  receivedAt?: string | null;
+  [key: string]: unknown;
+ }
+
+export type QcResultSource = typeof QcResultSource[keyof typeof QcResultSource];
 
 
-export const CommissioningStatusOverall = {
-  ready: 'ready',
-  attention: 'attention',
-  'insufficient-data': 'insufficient-data',
+export const QcResultSource = {
+  AUTO: 'AUTO',
+  MANUAL: 'MANUAL',
 } as const;
 
-export interface CommissioningStatus {
+export type QcResultResult = typeof QcResultResult[keyof typeof QcResultResult];
+
+
+export const QcResultResult = {
+  PASS: 'PASS',
+  FAIL: 'FAIL',
+  PENDING: 'PENDING',
+} as const;
+
+export interface QcResult {
+  checkCode: string;
+  gate: number;
+  source: QcResultSource;
+  label: string;
+  mandatory: boolean;
+  result: QcResultResult;
+  detail: string;
+  evidence?: QcEvidence | null;
+  /** @nullable */
+  operator?: string | null;
+  /** @nullable */
+  recordedAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface CommissioningBlocker {
+  checkCode: string;
+  label: string;
+  detail: string;
+}
+
+export interface CommsDelivery {
+  packetId: string;
+  receivedAt: string;
+  /** @nullable */
+  deviceTime?: string | null;
+  crcValid: boolean;
+  /** True when the delivery counts towards the three-communication test (CRC-valid, received after test start) */
+  counted: boolean;
+}
+
+export interface CommsTestStatus {
+  /** @nullable */
+  startedAt?: string | null;
+  requiredCount: number;
+  validCount: number;
+  deliveries: CommsDelivery[];
+}
+
+export interface RtcDriftStatus {
+  /** @nullable */
+  deviceTime?: string | null;
+  /** @nullable */
+  serverReceivedAt?: string | null;
+  /** @nullable */
+  driftSeconds?: number | null;
+  /** @nullable */
+  toleranceSeconds?: number | null;
+  /** @nullable */
+  packetId?: string | null;
+}
+
+/**
+ * Informational Gate 3 acceptance-sampling guidance for the batch this meter belongs to. Batch membership tracking and enforcement of sample completion as an approval gate arrive with the O&M phase; per-meter approval is gated on the QC checklist, not on sampling.
+ */
+export interface Gate3Sampling {
+  /** @nullable */
+  batchSize?: number | null;
+  samplePct: number;
+  /**
+     * ceil(batchSize × samplePct / 100)
+     * @nullable
+     */
+  requiredSampleSize?: number | null;
+}
+
+export interface OperatorLoginBody {
+  operatorName: string;
+  accessKey: string;
+}
+
+export type OperatorSessionRole = typeof OperatorSessionRole[keyof typeof OperatorSessionRole];
+
+
+export const OperatorSessionRole = {
+  operator: 'operator',
+  admin: 'admin',
+} as const;
+
+export interface OperatorSession {
+  token: string;
+  operator: string;
+  role: OperatorSessionRole;
+  expiresAt: string;
+}
+
+export interface HhcConfiguration {
+  batteryCriticalVoltage: number;
+  batteryWarningVoltage: number;
+  gate3SamplePct: number;
+  /** @nullable */
+  rtcToleranceSeconds?: number | null;
+  requiredOverdraftLitres: number;
+  tariffKesPer1000L: number;
+  /** @nullable */
+  updatedAt?: string | null;
+  /** @nullable */
+  updatedBy?: string | null;
+  fetchedAt?: string;
+}
+
+export interface CommissioningDetail {
   assetId: string;
-  overall: CommissioningStatusOverall;
-  checks: CommissioningCheck[];
+  session: CommissioningSession;
+  checks: QcResult[];
+  blockers: CommissioningBlocker[];
+  canApprove: boolean;
+  commsTest: CommsTestStatus;
+  rtcDrift: RtcDriftStatus;
+  sampling: Gate3Sampling;
   connectivity: ConnectivityEvaluation;
+  config: HhcConfiguration;
   evaluatedAt: string;
   fetchedAt?: string;
   /** @nullable */
   sourceObservedAt?: string | null;
+}
+
+export type UpdateCommissioningBodyAction = typeof UpdateCommissioningBodyAction[keyof typeof UpdateCommissioningBodyAction];
+
+
+export const UpdateCommissioningBodyAction = {
+  setStage: 'setStage',
+  startCommsTest: 'startCommsTest',
+  setBatchSize: 'setBatchSize',
+  recordManualCheck: 'recordManualCheck',
+  approve: 'approve',
+} as const;
+
+/**
+ * Required for setStage
+ */
+export type UpdateCommissioningBodyStage = typeof UpdateCommissioningBodyStage[keyof typeof UpdateCommissioningBodyStage];
+
+
+export const UpdateCommissioningBodyStage = {
+  gate1: 'gate1',
+  gate2: 'gate2',
+  gate3: 'gate3',
+} as const;
+
+/**
+ * Required for recordManualCheck
+ */
+export type UpdateCommissioningBodyResult = typeof UpdateCommissioningBodyResult[keyof typeof UpdateCommissioningBodyResult];
+
+
+export const UpdateCommissioningBodyResult = {
+  PASS: 'PASS',
+  FAIL: 'FAIL',
+  PENDING: 'PENDING',
+} as const;
+
+/**
+ * @nullable
+ */
+export type UpdateCommissioningBodyEvidence = { [key: string]: unknown } | null;
+
+export interface UpdateCommissioningBody {
+  action: UpdateCommissioningBodyAction;
+  /** Required for setStage */
+  stage?: UpdateCommissioningBodyStage;
+  /**
+     * Required for setBatchSize
+     * @minimum 1
+     */
+  batchSize?: number;
+  /** Required for recordManualCheck (MANUAL checks only) */
+  checkCode?: string;
+  /** Required for recordManualCheck */
+  result?: UpdateCommissioningBodyResult;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  evidence?: UpdateCommissioningBodyEvidence;
+  /**
+     * For approve — authorised override reason when blockers exist
+     * @nullable
+     */
+  overrideReason?: string | null;
+}
+
+export interface HhcConfigurationUpdate {
+  batteryCriticalVoltage?: number;
+  batteryWarningVoltage?: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  gate3SamplePct?: number;
+  /** @nullable */
+  rtcToleranceSeconds?: number | null;
+  requiredOverdraftLitres?: number;
+  tariffKesPer1000L?: number;
+}
+
+export interface ModemIccidBody {
+  /**
+     * @minLength 10
+     * @maxLength 30
+     */
+  iccid: string;
+}
+
+export interface ModemIccidResult {
+  ok: boolean;
+  iccid: string;
+  pulseStatus: number;
+  pulseResponse?: unknown;
+  fetchedAt?: string;
+}
+
+export interface JobTypesResult {
+  /** Raw job type list from Pulse */
+  jobTypes: unknown[];
+  fetchedAt?: string;
 }
 
 export type GetDashboardParams = {

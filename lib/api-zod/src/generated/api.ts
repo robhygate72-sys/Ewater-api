@@ -747,7 +747,7 @@ export const GetHouseholdMeterCommunicationsResponse = zod.object({
 
 
 /**
- * @summary Get commissioning status and auto-check results
+ * @summary Get the full commissioning session, three-gate QC checklist, blockers, comms test and RTC drift
  */
 export const GetHouseholdMeterCommissioningParams = zod.object({
   "assetId": zod.coerce.string()
@@ -755,14 +755,69 @@ export const GetHouseholdMeterCommissioningParams = zod.object({
 
 export const GetHouseholdMeterCommissioningResponse = zod.object({
   "assetId": zod.string(),
-  "overall": zod.enum(['ready', 'attention', 'insufficient-data']),
+  "session": zod.object({
+  "assetId": zod.string(),
+  "stage": zod.enum(['gate1', 'gate2', 'gate3', 'approved']),
+  "commissioningTestStartedAt": zod.string().nullish(),
+  "batchSize": zod.number().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "approvedBy": zod.string().nullish(),
+  "overrideReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "updatedBy": zod.string().nullish()
+}),
   "checks": zod.array(zod.object({
-  "id": zod.string(),
+  "checkCode": zod.string(),
+  "gate": zod.number(),
+  "source": zod.enum(['AUTO', 'MANUAL']),
   "label": zod.string(),
-  "status": zod.enum(['pass', 'fail', 'unknown']),
+  "mandatory": zod.boolean(),
+  "result": zod.enum(['PASS', 'FAIL', 'PENDING']),
   "detail": zod.string(),
-  "observedAt": zod.string().nullish()
+  "evidence": zod.union([zod.object({
+  "sourceField": zod.string().optional().describe('e.g. \"Shengda \/80\/0 field 37\"'),
+  "observedValue": zod.unknown().optional(),
+  "expectedValue": zod.unknown().optional(),
+  "observedAt": zod.string().nullish(),
+  "packetId": zod.string().nullish(),
+  "imei": zod.string().nullish(),
+  "receivedAt": zod.string().nullish()
+}).describe('Machine-readable evidence for a QC result (source field reference, observed\/expected values, packet provenance)'),zod.null()]).optional(),
+  "operator": zod.string().nullish(),
+  "recordedAt": zod.string().nullish(),
+  "notes": zod.string().nullish()
 })),
+  "blockers": zod.array(zod.object({
+  "checkCode": zod.string(),
+  "label": zod.string(),
+  "detail": zod.string()
+})),
+  "canApprove": zod.boolean(),
+  "commsTest": zod.object({
+  "startedAt": zod.string().nullish(),
+  "requiredCount": zod.number(),
+  "validCount": zod.number(),
+  "deliveries": zod.array(zod.object({
+  "packetId": zod.string(),
+  "receivedAt": zod.string(),
+  "deviceTime": zod.string().nullish(),
+  "crcValid": zod.boolean(),
+  "counted": zod.boolean().describe('True when the delivery counts towards the three-communication test (CRC-valid, received after test start)')
+}))
+}),
+  "rtcDrift": zod.object({
+  "deviceTime": zod.string().nullish(),
+  "serverReceivedAt": zod.string().nullish(),
+  "driftSeconds": zod.number().nullish(),
+  "toleranceSeconds": zod.number().nullish(),
+  "packetId": zod.string().nullish()
+}),
+  "sampling": zod.object({
+  "batchSize": zod.number().nullish(),
+  "samplePct": zod.number(),
+  "requiredSampleSize": zod.number().nullish().describe('ceil(batchSize × samplePct \/ 100)')
+}).describe('Informational Gate 3 acceptance-sampling guidance for the batch this meter belongs to. Batch membership tracking and enforcement of sample completion as an approval gate arrive with the O&M phase; per-meter approval is gated on the QC checklist, not on sampling.'),
   "connectivity": zod.object({
   "status": zod.enum(['healthy', 'late', 'offline', 'unknown']),
   "lastValidPacketAt": zod.string().nullish(),
@@ -770,9 +825,227 @@ export const GetHouseholdMeterCommissioningResponse = zod.object({
   "silenceSeconds": zod.number().nullish(),
   "reason": zod.string()
 }),
+  "config": zod.object({
+  "batteryCriticalVoltage": zod.number(),
+  "batteryWarningVoltage": zod.number(),
+  "gate3SamplePct": zod.number(),
+  "rtcToleranceSeconds": zod.number().nullish(),
+  "requiredOverdraftLitres": zod.number(),
+  "tariffKesPer1000L": zod.number(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
+  "fetchedAt": zod.string().optional()
+}),
   "evaluatedAt": zod.string(),
   "fetchedAt": zod.string().optional(),
   "sourceObservedAt": zod.string().nullish()
+})
+
+
+/**
+ * Requires a Bearer operator token from /ewater/hhc/auth/login; identity and role are taken from the verified token.
+ * @summary Update commissioning session stage, start comms test, set batch size, record a manual QC result, or approve
+ */
+export const UpdateHouseholdMeterCommissioningParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+
+
+
+export const UpdateHouseholdMeterCommissioningBody = zod.object({
+  "action": zod.enum(['setStage', 'startCommsTest', 'setBatchSize', 'recordManualCheck', 'approve']),
+  "stage": zod.enum(['gate1', 'gate2', 'gate3']).optional().describe('Required for setStage'),
+  "batchSize": zod.number().min(1).optional().describe('Required for setBatchSize'),
+  "checkCode": zod.string().optional().describe('Required for recordManualCheck (MANUAL checks only)'),
+  "result": zod.enum(['PASS', 'FAIL', 'PENDING']).optional().describe('Required for recordManualCheck'),
+  "notes": zod.string().nullish(),
+  "evidence": zod.record(zod.string(), zod.unknown()).nullish(),
+  "overrideReason": zod.string().nullish().describe('For approve — authorised override reason when blockers exist')
+})
+
+export const UpdateHouseholdMeterCommissioningResponse = zod.object({
+  "assetId": zod.string(),
+  "session": zod.object({
+  "assetId": zod.string(),
+  "stage": zod.enum(['gate1', 'gate2', 'gate3', 'approved']),
+  "commissioningTestStartedAt": zod.string().nullish(),
+  "batchSize": zod.number().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "approvedBy": zod.string().nullish(),
+  "overrideReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "updatedBy": zod.string().nullish()
+}),
+  "checks": zod.array(zod.object({
+  "checkCode": zod.string(),
+  "gate": zod.number(),
+  "source": zod.enum(['AUTO', 'MANUAL']),
+  "label": zod.string(),
+  "mandatory": zod.boolean(),
+  "result": zod.enum(['PASS', 'FAIL', 'PENDING']),
+  "detail": zod.string(),
+  "evidence": zod.union([zod.object({
+  "sourceField": zod.string().optional().describe('e.g. \"Shengda \/80\/0 field 37\"'),
+  "observedValue": zod.unknown().optional(),
+  "expectedValue": zod.unknown().optional(),
+  "observedAt": zod.string().nullish(),
+  "packetId": zod.string().nullish(),
+  "imei": zod.string().nullish(),
+  "receivedAt": zod.string().nullish()
+}).describe('Machine-readable evidence for a QC result (source field reference, observed\/expected values, packet provenance)'),zod.null()]).optional(),
+  "operator": zod.string().nullish(),
+  "recordedAt": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})),
+  "blockers": zod.array(zod.object({
+  "checkCode": zod.string(),
+  "label": zod.string(),
+  "detail": zod.string()
+})),
+  "canApprove": zod.boolean(),
+  "commsTest": zod.object({
+  "startedAt": zod.string().nullish(),
+  "requiredCount": zod.number(),
+  "validCount": zod.number(),
+  "deliveries": zod.array(zod.object({
+  "packetId": zod.string(),
+  "receivedAt": zod.string(),
+  "deviceTime": zod.string().nullish(),
+  "crcValid": zod.boolean(),
+  "counted": zod.boolean().describe('True when the delivery counts towards the three-communication test (CRC-valid, received after test start)')
+}))
+}),
+  "rtcDrift": zod.object({
+  "deviceTime": zod.string().nullish(),
+  "serverReceivedAt": zod.string().nullish(),
+  "driftSeconds": zod.number().nullish(),
+  "toleranceSeconds": zod.number().nullish(),
+  "packetId": zod.string().nullish()
+}),
+  "sampling": zod.object({
+  "batchSize": zod.number().nullish(),
+  "samplePct": zod.number(),
+  "requiredSampleSize": zod.number().nullish().describe('ceil(batchSize × samplePct \/ 100)')
+}).describe('Informational Gate 3 acceptance-sampling guidance for the batch this meter belongs to. Batch membership tracking and enforcement of sample completion as an approval gate arrive with the O&M phase; per-meter approval is gated on the QC checklist, not on sampling.'),
+  "connectivity": zod.object({
+  "status": zod.enum(['healthy', 'late', 'offline', 'unknown']),
+  "lastValidPacketAt": zod.string().nullish(),
+  "reportCycleSeconds": zod.number().nullish(),
+  "silenceSeconds": zod.number().nullish(),
+  "reason": zod.string()
+}),
+  "config": zod.object({
+  "batteryCriticalVoltage": zod.number(),
+  "batteryWarningVoltage": zod.number(),
+  "gate3SamplePct": zod.number(),
+  "rtcToleranceSeconds": zod.number().nullish(),
+  "requiredOverdraftLitres": zod.number(),
+  "tariffKesPer1000L": zod.number(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
+  "fetchedAt": zod.string().optional()
+}),
+  "evaluatedAt": zod.string(),
+  "fetchedAt": zod.string().optional(),
+  "sourceObservedAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Exchange an operator access key for a signed operator token (identity and role are server-verified)
+ */
+export const HhcOperatorLoginBody = zod.object({
+  "operatorName": zod.string(),
+  "accessKey": zod.string()
+})
+
+export const HhcOperatorLoginResponse = zod.object({
+  "token": zod.string(),
+  "operator": zod.string(),
+  "role": zod.enum(['operator', 'admin']),
+  "expiresAt": zod.string()
+})
+
+
+/**
+ * @summary Read HHC configuration (battery thresholds, Gate 3 sample %, RTC tolerance, tariff)
+ */
+export const GetHhcConfigResponse = zod.object({
+  "batteryCriticalVoltage": zod.number(),
+  "batteryWarningVoltage": zod.number(),
+  "gate3SamplePct": zod.number(),
+  "rtcToleranceSeconds": zod.number().nullish(),
+  "requiredOverdraftLitres": zod.number(),
+  "tariffKesPer1000L": zod.number(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Update HHC configuration (admin only — requires a Bearer operator token with the admin role)
+ */
+export const updateHhcConfigBodyGate3SamplePctMin = 0;
+export const updateHhcConfigBodyGate3SamplePctMax = 100;
+
+
+
+export const UpdateHhcConfigBody = zod.object({
+  "batteryCriticalVoltage": zod.number().optional(),
+  "batteryWarningVoltage": zod.number().optional(),
+  "gate3SamplePct": zod.number().min(updateHhcConfigBodyGate3SamplePctMin).max(updateHhcConfigBodyGate3SamplePctMax).optional(),
+  "rtcToleranceSeconds": zod.number().nullish(),
+  "requiredOverdraftLitres": zod.number().optional(),
+  "tariffKesPer1000L": zod.number().optional()
+})
+
+export const UpdateHhcConfigResponse = zod.object({
+  "batteryCriticalVoltage": zod.number(),
+  "batteryWarningVoltage": zod.number(),
+  "gate3SamplePct": zod.number(),
+  "rtcToleranceSeconds": zod.number().nullish(),
+  "requiredOverdraftLitres": zod.number(),
+  "tariffKesPer1000L": zod.number(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Record/verify a modem ICCID during commissioning (syncs the Pulse parts inventory)
+ */
+export const RecordModemIccidParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const recordModemIccidBodyIccidMin = 10;
+export const recordModemIccidBodyIccidMax = 30;
+
+
+
+export const RecordModemIccidBody = zod.object({
+  "iccid": zod.string().min(recordModemIccidBodyIccidMin).max(recordModemIccidBodyIccidMax)
+})
+
+export const RecordModemIccidResponse = zod.object({
+  "ok": zod.boolean(),
+  "iccid": zod.string(),
+  "pulseStatus": zod.number(),
+  "pulseResponse": zod.unknown().optional(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary List Pulse job types (thin proxy to Pulse GET /api/jobs/JobTypes)
+ */
+export const GetHhcJobTypesResponse = zod.object({
+  "jobTypes": zod.array(zod.unknown()).describe('Raw job type list from Pulse'),
+  "fetchedAt": zod.string().optional()
 })
 
 

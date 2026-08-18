@@ -2,17 +2,24 @@ import { useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import {
   listHouseholdMeters,
-  useGetHouseholdMeterCommissioning,
-  getGetHouseholdMeterCommissioningQueryKey,
+  useGetHhcConfig,
+  useUpdateHhcConfig,
+  useHhcOperatorLogin,
+  getGetHhcConfigQueryKey,
   type HouseholdMeterSummary,
+  type HhcConfigurationUpdate,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, CheckCircle2, XCircle, HelpCircle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { RefreshCw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings2, UserCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo, formatDateTime } from "@/lib/date";
+import { formatTimeAgo } from "@/lib/date";
 import { useMeterStates } from "./use-meter-states";
 import { obsStr, connectivityColor, StatusBadge } from "./shared";
+import { CommissioningPanel } from "./commissioning-detail";
+import { getSession, saveSession, clearSession, getOperator, isAdminRole, operatorHeaders, type OperatorSessionInfo } from "./operator";
 
 const QUEUE_LIFECYCLES = ["PreInstallation", "Staged", "Active"] as const;
 const STAGE_LABEL: Record<string, string> = {
@@ -39,66 +46,167 @@ async function fetchAllMeters(status: string): Promise<HouseholdMeterSummary[]> 
   throw new Error(`Commissioning queue for ${status} exceeds ${MAX_API_PAGES * API_PAGE_SIZE} meters; refusing to show a truncated queue`);
 }
 
-function overallBadge(overall: string) {
-  switch (overall) {
-    case "ready": return "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25";
-    case "attention": return "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25";
-    default: return "text-muted-foreground bg-muted/40 border-border";
-  }
+// ── Operator sign-in bar ─────────────────────────────────────────────────────
+// The access key is verified server-side; the returned token carries the
+// operator's verified identity and role.
+
+function OperatorBar() {
+  const [session, setSession] = useState(getSession());
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const login = useHhcOperatorLogin({
+    mutation: {
+      onSuccess: (data) => {
+        saveSession(data as OperatorSessionInfo);
+        setSession(getSession());
+        setKey("");
+        setError(null);
+      },
+      onError: (err) => setError(err instanceof Error ? err.message : "Sign-in failed"),
+    },
+  });
+  return (
+    <div className="flex items-center gap-2 flex-wrap rounded-xl border border-border bg-card px-3 py-2">
+      <UserCircle2 className="w-4 h-4 text-muted-foreground shrink-0" />
+      {session ? (
+        <>
+          <span className="text-[11px]" data-testid="text-operator-signed-in">
+            Signed in as <span className="font-semibold">{session.operator}</span>
+          </span>
+          <StatusBadge
+            label={session.role}
+            className={session.role === "admin"
+              ? "text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25"
+              : "text-sky-600 dark:text-sky-400 bg-sky-500/10 border-sky-500/25"}
+            testId="badge-operator-role"
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-[11px] ml-auto"
+            data-testid="button-operator-signout"
+            onClick={() => { clearSession(); setSession(null); }}
+          >
+            Sign out
+          </Button>
+        </>
+      ) : (
+        <>
+          <span className="text-[11px] text-muted-foreground">Operator sign-in</span>
+          <Input
+            data-testid="input-operator-name"
+            className="h-7 text-[11px] w-40"
+            placeholder="Your name / ID"
+            value={name}
+            onChange={(e) => { setName(e.target.value); setError(null); }}
+          />
+          <Input
+            data-testid="input-operator-key"
+            className="h-7 text-[11px] w-40"
+            type="password"
+            placeholder="Access key"
+            value={key}
+            onChange={(e) => { setKey(e.target.value); setError(null); }}
+          />
+          <Button
+            size="sm"
+            className="h-7 text-[11px]"
+            disabled={login.isPending || !name.trim() || !key}
+            data-testid="button-operator-login"
+            onClick={() => login.mutate({ data: { operatorName: name.trim(), accessKey: key } })}
+          >
+            Sign in
+          </Button>
+          {error && <span className="text-[10px] text-destructive">{error}</span>}
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            Commissioning actions require a verified operator token
+          </span>
+        </>
+      )}
+    </div>
+  );
 }
 
-function CheckIcon({ status }: { status: string }) {
-  if (status === "pass") return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
-  if (status === "fail") return <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />;
-  return <HelpCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
-}
+// ── HHC configuration settings panel ────────────────────────────────────────
 
-// ── Expandable checks row (read-only checklist — Phase 3 adds persistence) ──
+const CONFIG_FIELDS: { key: keyof HhcConfigurationUpdate; label: string; unit: string; nullable?: boolean }[] = [
+  { key: "batteryCriticalVoltage", label: "Battery critical", unit: "V" },
+  { key: "batteryWarningVoltage", label: "Battery warning", unit: "V" },
+  { key: "gate3SamplePct", label: "Gate 3 sample", unit: "%" },
+  { key: "rtcToleranceSeconds", label: "RTC tolerance", unit: "s", nullable: true },
+  { key: "requiredOverdraftLitres", label: "Required overdraft", unit: "L" },
+  { key: "tariffKesPer1000L", label: "Tariff", unit: "KES/1000L" },
+];
 
-function ChecksPanel({ assetId }: { assetId: string }) {
-  const query = useGetHouseholdMeterCommissioning(assetId, {
-    query: { queryKey: getGetHouseholdMeterCommissioningQueryKey(assetId), staleTime: 30_000, refetchInterval: 90_000 },
+function ConfigPanel() {
+  const queryClient = useQueryClient();
+  const queryKey = getGetHhcConfigQueryKey();
+  const query = useGetHhcConfig({ query: { queryKey, staleTime: 60_000 } });
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState<string | null>(null);
+  const mutation = useUpdateHhcConfig({
+    mutation: {
+      onSuccess: (data) => {
+        setMessage("Configuration saved");
+        setDraft({});
+        queryClient.setQueryData(queryKey, data);
+      },
+      onError: (err) => setMessage(err instanceof Error ? err.message : "Save failed"),
+    },
+    request: { headers: operatorHeaders() },
   });
 
-  if (query.isLoading) {
-    return (
-      <div className="space-y-1.5 p-3">
-        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}
-      </div>
-    );
-  }
-  if (query.isError || !query.data) {
-    return <p className="text-[11px] text-destructive p-3">Failed to load commissioning status</p>;
-  }
-  const d = query.data;
+  if (query.isLoading) return <Skeleton className="h-16 w-full rounded-xl" />;
+  if (query.isError || !query.data) return <p className="text-[11px] text-destructive">Failed to load HHC configuration</p>;
+  const cfg = query.data as unknown as Record<string, number | null>;
+
+  const save = () => {
+    const update: HhcConfigurationUpdate = {};
+    for (const f of CONFIG_FIELDS) {
+      const raw = draft[f.key];
+      if (raw === undefined) continue;
+      if (raw === "" && f.nullable) (update as Record<string, unknown>)[f.key] = null;
+      else if (raw !== "" && !isNaN(Number(raw))) (update as Record<string, unknown>)[f.key] = Number(raw);
+    }
+    setMessage(null);
+    mutation.mutate({ data: update });
+  };
+
   return (
-    <div className="p-3 space-y-2 bg-muted/20">
-      <div className="flex items-center gap-2 flex-wrap">
-        <StatusBadge label={d.overall} className={overallBadge(d.overall)} testId={`status-commissioning-${assetId}`} />
-        <span className="text-[10px] text-muted-foreground">
-          Evaluated {formatTimeAgo(d.evaluatedAt)}
-          {d.sourceObservedAt ? ` · newest device observation ${formatTimeAgo(d.sourceObservedAt)}` : ""}
-        </span>
-      </div>
-      <ul className="space-y-1.5">
-        {d.checks.map((c) => (
-          <li key={c.id} className="flex items-start gap-2 text-[11px]" data-testid={`check-${assetId}-${c.id}`}>
-            <CheckIcon status={c.status} />
-            <div className="min-w-0">
-              <span className="font-medium">{c.label}</span>
-              <span className="text-muted-foreground"> — {c.detail}</span>
-              {c.observedAt && (
-                <span className="text-[9px] text-muted-foreground block" title={formatDateTime(c.observedAt)}>
-                  Observed {formatTimeAgo(c.observedAt)}
-                </span>
-              )}
-            </div>
-          </li>
+    <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+      <div className="grid gap-2 sm:grid-cols-3">
+        {CONFIG_FIELDS.map((f) => (
+          <label key={f.key} className="space-y-0.5">
+            <span className="text-[10px] text-muted-foreground block">{f.label} ({f.unit}){f.nullable ? " — blank = not configured" : ""}</span>
+            <Input
+              data-testid={`input-config-${f.key}`}
+              className="h-7 text-[11px]"
+              type="number"
+              value={draft[f.key] ?? (cfg[f.key] == null ? "" : String(cfg[f.key]))}
+              onChange={(e) => { setDraft((d) => ({ ...d, [f.key]: e.target.value })); setMessage(null); }}
+            />
+          </label>
         ))}
-      </ul>
-      <p className="text-[10px] text-muted-foreground italic">
-        Automated checks derived from live data. The persisted commissioning checklist arrives in a later phase.
-      </p>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          size="sm"
+          className="h-7 text-[11px]"
+          disabled={mutation.isPending || Object.keys(draft).length === 0 || !isAdminRole()}
+          data-testid="button-save-config"
+          onClick={save}
+        >
+          Save configuration
+        </Button>
+        {!isAdminRole() && (
+          <span className="text-[10px] text-amber-600 dark:text-amber-400">Requires sign-in with an admin access key</span>
+        )}
+        {message && <span className={cn("text-[10px]", mutation.isError ? "text-destructive" : "text-emerald-600 dark:text-emerald-400")}>{message}</span>}
+        {query.data.updatedBy && (
+          <span className="text-[10px] text-muted-foreground ml-auto">Last updated by {query.data.updatedBy}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -109,6 +217,7 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
   const [stage, setStage] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [showConfig, setShowConfig] = useState(false);
 
   // Fetch the FULL set of meters for each queue lifecycle (all API pages).
   const lifecycleQueries = useQueries({
@@ -143,6 +252,7 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
 
   return (
     <div className="space-y-4">
+      <OperatorBar />
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex gap-1.5">
           <button
@@ -169,15 +279,27 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
             </button>
           ))}
         </div>
-        <button
-          data-testid="button-refresh-commissioning"
-          onClick={refetchAll}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-          title="Refresh queue"
-        >
-          <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", isFetching && "animate-spin")} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            data-testid="button-toggle-config"
+            onClick={() => setShowConfig((s) => !s)}
+            className={cn("p-1.5 rounded-lg hover:bg-muted transition-colors", showConfig && "bg-muted")}
+            title="HHC configuration"
+          >
+            <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+          <button
+            data-testid="button-refresh-commissioning"
+            onClick={refetchAll}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+            title="Refresh queue"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", isFetching && "animate-spin")} />
+          </button>
+        </div>
       </div>
+
+      {showConfig && <ConfigPanel />}
 
       {isLoading ? (
         <div className="space-y-2">
@@ -251,7 +373,7 @@ export function CommissioningTab({ onSelectMeter }: { onSelectMeter: (id: string
                     </button>
                   </div>
                 </div>
-                {expanded && <ChecksPanel assetId={m.id} />}
+                {expanded && <CommissioningPanel assetId={m.id} />}
               </div>
             );
           })}

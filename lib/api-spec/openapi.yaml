@@ -778,7 +778,7 @@ paths:
     get:
       operationId: getHouseholdMeterCommissioning
       tags: [ewater]
-      summary: Get commissioning status and auto-check results
+      summary: Get the full commissioning session, three-gate QC checklist, blockers, comms test and RTC drift
       parameters:
         - name: assetId
           in: path
@@ -787,13 +787,196 @@ paths:
             type: string
       responses:
         "200":
-          description: Commissioning status
+          description: Commissioning detail
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CommissioningStatus"
+                $ref: "#/components/schemas/CommissioningDetail"
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateHouseholdMeterCommissioning
+      tags: [ewater]
+      summary: Update commissioning session stage, start comms test, set batch size, record a manual QC result, or approve
+      description: Requires a Bearer operator token from /ewater/hhc/auth/login; identity and role are taken from the verified token.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommissioningBody"
+      responses:
+        "200":
+          description: Updated commissioning detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissioningDetail"
+        "400":
+          description: Invalid body or missing operator identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approval blocked by failing mandatory checks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/auth/login:
+    post:
+      operationId: hhcOperatorLogin
+      tags: [ewater]
+      summary: Exchange an operator access key for a signed operator token (identity and role are server-verified)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorLoginBody"
+      responses:
+        "200":
+          description: Operator session token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSession"
+        "401":
+          description: Invalid access key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Operator access keys not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/config:
+    get:
+      operationId: getHhcConfig
+      tags: [ewater]
+      summary: Read HHC configuration (battery thresholds, Gate 3 sample %, RTC tolerance, tariff)
+      responses:
+        "200":
+          description: HHC configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HhcConfiguration"
+    put:
+      operationId: updateHhcConfig
+      tags: [ewater]
+      summary: Update HHC configuration (admin only — requires a Bearer operator token with the admin role)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HhcConfigurationUpdate"
+      responses:
+        "200":
+          description: Updated HHC configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HhcConfiguration"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/parts/modem-iccid:
+    post:
+      operationId: recordModemIccid
+      tags: [ewater]
+      summary: Record/verify a modem ICCID during commissioning (syncs the Pulse parts inventory)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModemIccidBody"
+      responses:
+        "200":
+          description: ICCID recorded in Pulse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModemIccidResult"
+        "400":
+          description: Invalid body or missing operator identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API rejected the update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/parts/job-types:
+    get:
+      operationId: getHhcJobTypes
+      tags: [ewater]
+      summary: List Pulse job types (thin proxy to Pulse GET /api/jobs/JobTypes)
+      responses:
+        "200":
+          description: Job types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobTypesResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
           content:
             application/json:
               schema:
@@ -1810,40 +1993,315 @@ components:
         fetchedAt:
           type: string
 
-    CommissioningCheck:
+    CommissioningSession:
       type: object
-      required: [id, label, status, detail]
-      properties:
-        id:
-          type: string
-        label:
-          type: string
-        status:
-          type: string
-          enum: [pass, fail, unknown]
-        detail:
-          type: string
-        observedAt:
-          type: ["string", "null"]
-
-    CommissioningStatus:
-      type: object
-      required: [assetId, overall, checks, connectivity, evaluatedAt]
+      required: [assetId, stage, createdAt, updatedAt]
       properties:
         assetId:
           type: string
-        overall:
+        stage:
           type: string
-          enum: [ready, attention, insufficient-data]
+          enum: [gate1, gate2, gate3, approved]
+        commissioningTestStartedAt:
+          type: ["string", "null"]
+        batchSize:
+          type: ["number", "null"]
+        approvedAt:
+          type: ["string", "null"]
+        approvedBy:
+          type: ["string", "null"]
+        overrideReason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        updatedBy:
+          type: ["string", "null"]
+
+    QcEvidence:
+      type: object
+      description: Machine-readable evidence for a QC result (source field reference, observed/expected values, packet provenance)
+      properties:
+        sourceField:
+          type: string
+          description: e.g. "Shengda /80/0 field 37"
+        observedValue: {}
+        expectedValue: {}
+        observedAt:
+          type: ["string", "null"]
+        packetId:
+          type: ["string", "null"]
+        imei:
+          type: ["string", "null"]
+        receivedAt:
+          type: ["string", "null"]
+      additionalProperties: true
+
+    QcResult:
+      type: object
+      required: [checkCode, gate, source, label, mandatory, result, detail]
+      properties:
+        checkCode:
+          type: string
+        gate:
+          type: integer
+        source:
+          type: string
+          enum: [AUTO, MANUAL]
+        label:
+          type: string
+        mandatory:
+          type: boolean
+        result:
+          type: string
+          enum: [PASS, FAIL, PENDING]
+        detail:
+          type: string
+        evidence:
+          oneOf:
+            - $ref: "#/components/schemas/QcEvidence"
+            - type: "null"
+        operator:
+          type: ["string", "null"]
+        recordedAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    CommissioningBlocker:
+      type: object
+      required: [checkCode, label, detail]
+      properties:
+        checkCode:
+          type: string
+        label:
+          type: string
+        detail:
+          type: string
+
+    CommsDelivery:
+      type: object
+      required: [packetId, receivedAt, crcValid, counted]
+      properties:
+        packetId:
+          type: string
+        receivedAt:
+          type: string
+        deviceTime:
+          type: ["string", "null"]
+        crcValid:
+          type: boolean
+        counted:
+          type: boolean
+          description: True when the delivery counts towards the three-communication test (CRC-valid, received after test start)
+
+    CommsTestStatus:
+      type: object
+      required: [requiredCount, validCount, deliveries]
+      properties:
+        startedAt:
+          type: ["string", "null"]
+        requiredCount:
+          type: integer
+        validCount:
+          type: integer
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommsDelivery"
+
+    RtcDriftStatus:
+      type: object
+      properties:
+        deviceTime:
+          type: ["string", "null"]
+        serverReceivedAt:
+          type: ["string", "null"]
+        driftSeconds:
+          type: ["number", "null"]
+        toleranceSeconds:
+          type: ["number", "null"]
+        packetId:
+          type: ["string", "null"]
+
+    Gate3Sampling:
+      type: object
+      description: >-
+        Informational Gate 3 acceptance-sampling guidance for the batch this
+        meter belongs to. Batch membership tracking and enforcement of sample
+        completion as an approval gate arrive with the O&M phase; per-meter
+        approval is gated on the QC checklist, not on sampling.
+      required: [samplePct]
+      properties:
+        batchSize:
+          type: ["number", "null"]
+        samplePct:
+          type: number
+        requiredSampleSize:
+          type: ["number", "null"]
+          description: ceil(batchSize × samplePct / 100)
+
+    OperatorLoginBody:
+      type: object
+      required: [operatorName, accessKey]
+      properties:
+        operatorName:
+          type: string
+        accessKey:
+          type: string
+
+    OperatorSession:
+      type: object
+      required: [token, operator, role, expiresAt]
+      properties:
+        token:
+          type: string
+        operator:
+          type: string
+        role:
+          type: string
+          enum: [operator, admin]
+        expiresAt:
+          type: string
+
+    CommissioningDetail:
+      type: object
+      required: [assetId, session, checks, blockers, canApprove, commsTest, rtcDrift, sampling, connectivity, config, evaluatedAt]
+      properties:
+        assetId:
+          type: string
+        session:
+          $ref: "#/components/schemas/CommissioningSession"
         checks:
           type: array
           items:
-            $ref: "#/components/schemas/CommissioningCheck"
+            $ref: "#/components/schemas/QcResult"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommissioningBlocker"
+        canApprove:
+          type: boolean
+        commsTest:
+          $ref: "#/components/schemas/CommsTestStatus"
+        rtcDrift:
+          $ref: "#/components/schemas/RtcDriftStatus"
+        sampling:
+          $ref: "#/components/schemas/Gate3Sampling"
         connectivity:
           $ref: "#/components/schemas/ConnectivityEvaluation"
+        config:
+          $ref: "#/components/schemas/HhcConfiguration"
         evaluatedAt:
           type: string
         fetchedAt:
           type: string
         sourceObservedAt:
           type: ["string", "null"]
+
+    UpdateCommissioningBody:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [setStage, startCommsTest, setBatchSize, recordManualCheck, approve]
+        stage:
+          type: string
+          enum: [gate1, gate2, gate3]
+          description: Required for setStage
+        batchSize:
+          type: integer
+          minimum: 1
+          description: Required for setBatchSize
+        checkCode:
+          type: string
+          description: Required for recordManualCheck (MANUAL checks only)
+        result:
+          type: string
+          enum: [PASS, FAIL, PENDING]
+          description: Required for recordManualCheck
+        notes:
+          type: ["string", "null"]
+        evidence:
+          type: ["object", "null"]
+          additionalProperties: true
+        overrideReason:
+          type: ["string", "null"]
+          description: For approve — authorised override reason when blockers exist
+
+    HhcConfiguration:
+      type: object
+      required: [batteryCriticalVoltage, batteryWarningVoltage, gate3SamplePct, requiredOverdraftLitres, tariffKesPer1000L]
+      properties:
+        batteryCriticalVoltage:
+          type: number
+        batteryWarningVoltage:
+          type: number
+        gate3SamplePct:
+          type: number
+        rtcToleranceSeconds:
+          type: ["number", "null"]
+        requiredOverdraftLitres:
+          type: number
+        tariffKesPer1000L:
+          type: number
+        updatedAt:
+          type: ["string", "null"]
+        updatedBy:
+          type: ["string", "null"]
+        fetchedAt:
+          type: string
+
+    HhcConfigurationUpdate:
+      type: object
+      properties:
+        batteryCriticalVoltage:
+          type: number
+        batteryWarningVoltage:
+          type: number
+        gate3SamplePct:
+          type: number
+          minimum: 0
+          maximum: 100
+        rtcToleranceSeconds:
+          type: ["integer", "null"]
+        requiredOverdraftLitres:
+          type: number
+        tariffKesPer1000L:
+          type: number
+
+    ModemIccidBody:
+      type: object
+      required: [iccid]
+      properties:
+        iccid:
+          type: string
+          minLength: 10
+          maxLength: 30
+
+    ModemIccidResult:
+      type: object
+      required: [ok, iccid, pulseStatus]
+      properties:
+        ok:
+          type: boolean
+        iccid:
+          type: string
+        pulseStatus:
+          type: integer
+        pulseResponse: {}
+        fetchedAt:
+          type: string
+
+    JobTypesResult:
+      type: object
+      required: [jobTypes]
+      properties:
+        jobTypes:
+          description: Raw job type list from Pulse
+          type: array
+          items: {}
+        fetchedAt:
+          type: string
