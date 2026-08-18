@@ -240,8 +240,34 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
         header: "Lifecycle",
         cell: (info) => cellVal(info.getValue() && (LIFECYCLE_LABELS[info.getValue()!] ?? info.getValue())),
       }),
-      col.accessor((r) => r.meter.waterSystemName ?? null, { id: "waterSystem", header: "Water system", cell: (i) => cellVal(i.getValue()) }),
-      col.accessor((r) => r.meter.countryName ?? null, { id: "country", header: "Country", cell: (i) => cellVal(i.getValue()) }),
+      col.accessor((r) => r.meter.waterSystemName ?? null, {
+        id: "waterSystem",
+        header: () => (
+          <HeaderFilterSelect
+            label="Water system"
+            allLabel="All water systems"
+            value={waterSystem}
+            options={waterSystemOptions}
+            onChange={(v) => { setWaterSystem(v); setPage(0); }}
+            testId="filter-water-system"
+          />
+        ),
+        cell: (i) => cellVal(i.getValue()),
+      }),
+      col.accessor((r) => r.meter.countryName ?? null, {
+        id: "country",
+        header: () => (
+          <HeaderFilterSelect
+            label="Country"
+            allLabel="All countries"
+            value={country}
+            options={countryOptions}
+            onChange={(v) => { setCountry(v); setPage(0); }}
+            testId="filter-country"
+          />
+        ),
+        cell: (i) => cellVal(i.getValue()),
+      }),
       col.display({
         id: "shengda",
         header: "Shengda",
@@ -330,7 +356,7 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
         }),
       }),
     ],
-    [],
+    [waterSystem, country, waterSystemOptions, countryOptions],
   );
 
   const rows: FleetRow[] = useMemo(
@@ -446,38 +472,6 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
             ))}
           </div>
 
-          {/* Water system dropdown */}
-          <Select
-            value={waterSystem ?? "__all__"}
-            onValueChange={(v) => { setWaterSystem(v === "__all__" ? null : v); setPage(0); }}
-          >
-            <SelectTrigger className="h-8 text-xs w-[160px]" data-testid="filter-water-system">
-              <SelectValue placeholder="Water system" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All water systems</SelectItem>
-              {waterSystemOptions.map((ws) => (
-                <SelectItem key={ws} value={ws}>{ws}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Country dropdown */}
-          <Select
-            value={country ?? "__all__"}
-            onValueChange={(v) => { setCountry(v === "__all__" ? null : v); setPage(0); }}
-          >
-            <SelectTrigger className="h-8 text-xs w-[130px]" data-testid="filter-country">
-              <SelectValue placeholder="Country" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All countries</SelectItem>
-              {countryOptions.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
           {/* Clear filters */}
           {(lifecycle || waterSystem || country) && (
             <button
@@ -558,6 +552,47 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
         </div>
       )}
     </div>
+  );
+}
+
+// Column-header filter dropdown: label + Select in the table header cell.
+function HeaderFilterSelect({
+  label,
+  allLabel,
+  value,
+  options,
+  onChange,
+  testId,
+}: {
+  label: string;
+  allLabel: string;
+  value: string | null;
+  options: string[];
+  onChange: (value: string | null) => void;
+  testId: string;
+}) {
+  return (
+    <Select
+      value={value ?? "__all__"}
+      onValueChange={(v) => onChange(v === "__all__" ? null : v)}
+    >
+      <SelectTrigger
+        data-testid={testId}
+        className={cn(
+          "h-6 px-1.5 text-[10px] font-semibold uppercase tracking-wider border-0 bg-transparent shadow-none gap-1 w-auto min-w-0",
+          value ? "text-primary" : "text-muted-foreground",
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SelectValue placeholder={label}>{value ?? label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__all__">{allLabel}</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o} value={o}>{o}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
