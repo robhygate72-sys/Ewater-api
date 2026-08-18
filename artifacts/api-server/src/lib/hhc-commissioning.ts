@@ -8,7 +8,7 @@
 // Route handlers in routes/hhc.ts are thin wrappers around these functions.
 // ---------------------------------------------------------------------------
 
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import {
   db,
   hhcCommissioningSessionsTable,
@@ -116,6 +116,34 @@ export async function recordAudit(
   detail: Record<string, unknown> | null,
 ): Promise<void> {
   await db.insert(hhcActionAuditTable).values({ assetId, action, operator, reason, detail });
+}
+
+export interface HhcActionAuditEntry {
+  id: number;
+  assetId: string | null;
+  action: string;
+  operator: string;
+  reason: string | null;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export async function listAudit(assetId: string, limit = 50): Promise<HhcActionAuditEntry[]> {
+  const rows = await db
+    .select()
+    .from(hhcActionAuditTable)
+    .where(eq(hhcActionAuditTable.assetId, assetId))
+    .orderBy(desc(hhcActionAuditTable.createdAt), desc(hhcActionAuditTable.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
+  return rows.map((r) => ({
+    id: r.id,
+    assetId: r.assetId,
+    action: r.action,
+    operator: r.operator,
+    reason: r.reason,
+    detail: (r.detail as Record<string, unknown> | null) ?? null,
+    createdAt: r.createdAt.toISOString(),
+  }));
 }
 
 // ---------------------------------------------------------------------------

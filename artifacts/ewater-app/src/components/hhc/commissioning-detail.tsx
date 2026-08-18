@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatTimeAgo, formatDateTime } from "@/lib/date";
 import { StatusBadge } from "./shared";
-import { getOperator, isAdminRole, operatorHeaders } from "./operator";
+import { getOperator, isAdminRole, operatorHeaders, useOperatorSession } from "./operator";
 
 const GATES: { gate: number; stage: string; label: string }[] = [
   { gate: 1, stage: "gate1", label: "Gate 1 · Manufacturer" },
@@ -360,6 +360,7 @@ function ModemIccidPanel({ assetId }: { assetId: string }) {
 }
 
 export function CommissioningPanel({ assetId }: { assetId: string }) {
+  useOperatorSession(); // re-render on sign-in/sign-out so operator/admin gating stays current
   const queryClient = useQueryClient();
   const queryKey = getGetHouseholdMeterCommissioningQueryKey(assetId);
   const query = useGetHouseholdMeterCommissioning(assetId, {

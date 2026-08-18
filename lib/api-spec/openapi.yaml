@@ -982,6 +982,368 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/hhc/alarms:
+    get:
+      operationId: getHhcFleetAlarms
+      tags: [ewater]
+      summary: Fleet-wide alarm view combining Pulse faults and Shengda-derived health alarms
+      responses:
+        "200":
+          description: Fleet alarms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HhcFleetAlarms"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/alarms:
+    get:
+      operationId: getHhcMeterAlarms
+      tags: [ewater]
+      summary: Per-meter alarms merged from Pulse faults and Shengda health evaluation
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Meter alarms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HhcMeterAlarms"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/maintenance:
+    get:
+      operationId: getHhcMeterMaintenance
+      tags: [ewater]
+      summary: List Pulse maintenance jobs linked to this asset (Pulse is the source of truth)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pulse jobs for the asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceJobsResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createHhcMaintenanceJob
+      tags: [ewater]
+      summary: Create a Pulse maintenance job for this asset (requires operator token; audited locally)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMaintenanceJobBody"
+      responses:
+        "200":
+          description: Created Pulse job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceJobResult"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/maintenance/{jobId}/reassign:
+    put:
+      operationId: reassignHhcMaintenanceJob
+      tags: [ewater]
+      summary: Reassign a Pulse job to another technician (requires operator token; audited locally)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReassignJobBody"
+      responses:
+        "200":
+          description: Reassigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceActionResult"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/maintenance/{jobId}:
+    delete:
+      operationId: cancelHhcMaintenanceJob
+      tags: [ewater]
+      summary: Cancel a Pulse job (requires operator token; audited locally)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelJobBody"
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceActionResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/maintenance/{jobId}/events:
+    post:
+      operationId: recordHhcMaintenanceJobEvents
+      tags: [ewater]
+      summary: Record job lifecycle events against a Pulse job (requires operator token; audited locally)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordJobEventsBody"
+      responses:
+        "200":
+          description: Events recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceActionResult"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/users:
+    get:
+      operationId: getHhcAssignableUsers
+      tags: [ewater]
+      summary: List Pulse assignable users for the technician assignment dropdown
+      responses:
+        "200":
+          description: Assignable users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignableUsersResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/fault-types:
+    get:
+      operationId: getHhcFaultTypes
+      tags: [ewater]
+      summary: List Pulse fault types
+      responses:
+        "200":
+          description: Fault types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PulseFaultTypesResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/job-types:
+    get:
+      operationId: getHhcManualJobTypes
+      tags: [ewater]
+      summary: List Pulse job types available for manual creation against assets
+      responses:
+        "200":
+          description: Manual-create job types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PulseJobTypesResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Pulse API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/audit:
+    get:
+      operationId: getHhcMeterAudit
+      tags: [ewater]
+      summary: Local action audit trail for this asset (requires a Bearer operator token)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Audit entries, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HhcActionAuditPage"
+        "401":
+          description: Missing or invalid operator token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -2303,5 +2665,399 @@ components:
           description: Raw job type list from Pulse
           type: array
           items: {}
+        fetchedAt:
+          type: string
+
+    # ── HHC O&M — Pulse jobs, faults, unified alarms, audit ──────────────────
+
+    AssignableUser:
+      type: object
+      required: [userId, displayName, email, mobileNumber]
+      properties:
+        userId:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: ["string", "null"]
+        mobileNumber:
+          type: ["string", "null"]
+
+    AssignableUsersResult:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignableUser"
+        fetchedAt:
+          type: string
+
+    PulseFaultType:
+      type: object
+      required: [faultTypeId, name, description, entityType, applicableDiagnoses]
+      properties:
+        faultTypeId:
+          type: string
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        entityType:
+          type: ["string", "null"]
+        applicableDiagnoses:
+          type: array
+          items:
+            type: string
+
+    PulseFaultTypesResult:
+      type: object
+      required: [faultTypes]
+      properties:
+        faultTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PulseFaultType"
+        fetchedAt:
+          type: string
+
+    PulseJobType:
+      type: object
+      required: [jobTypeId, name, entityType, defaultPriority, isFaultLinked, faultTypeId, observations]
+      properties:
+        jobTypeId:
+          type: string
+        name:
+          type: string
+        entityType:
+          type: ["string", "null"]
+        defaultPriority:
+          type: integer
+        isFaultLinked:
+          type: boolean
+        faultTypeId:
+          type: ["string", "null"]
+        observations:
+          type: array
+          items:
+            type: object
+            required: [value, display, description]
+            properties:
+              value:
+                type: string
+              display:
+                type: string
+              description:
+                type: ["string", "null"]
+
+    PulseJobTypesResult:
+      type: object
+      required: [jobTypes]
+      properties:
+        jobTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PulseJobType"
+        fetchedAt:
+          type: string
+
+    PulseJobRecord:
+      type: object
+      required: [jobRecordId, recordType, eventDt, data]
+      properties:
+        jobRecordId:
+          type: ["string", "null"]
+        recordType:
+          type: string
+        eventDt:
+          type: string
+        data:
+          type: ["string", "null"]
+
+    PulseJob:
+      type: object
+      required:
+        [jobInstanceId, jobTypeId, jobTypeName, entityType, entityId, priority, createdDt,
+         assigneeUserId, assigneeName, jobLifecycleState, closedDt, title, description,
+         dueDt, createdSource, records, faultInstanceId]
+      properties:
+        jobInstanceId:
+          type: string
+        jobTypeId:
+          type: string
+        jobTypeName:
+          type: ["string", "null"]
+        entityType:
+          type: ["string", "null"]
+        entityId:
+          type: integer
+        priority:
+          type: integer
+        createdDt:
+          type: string
+        assigneeUserId:
+          type: ["string", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        jobLifecycleState:
+          type: ["string", "null"]
+        closedDt:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        dueDt:
+          type: ["string", "null"]
+        createdSource:
+          type: ["string", "null"]
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PulseJobRecord"
+        faultInstanceId:
+          type: ["string", "null"]
+
+    PulseFault:
+      type: object
+      required:
+        [faultInstanceId, faultTypeId, faultTypeName, description, entityType, entityId,
+         startDt, endDt, severity, faultLifecycleState, records]
+      properties:
+        faultInstanceId:
+          type: string
+        faultTypeId:
+          type: string
+        faultTypeName:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        entityType:
+          type: ["string", "null"]
+        entityId:
+          type: integer
+        startDt:
+          type: string
+        endDt:
+          type: ["string", "null"]
+        severity:
+          type: integer
+        faultLifecycleState:
+          type: ["string", "null"]
+        records:
+          type: array
+          items:
+            type: object
+            required: [recordType, value, recordedDt, verificationStatus]
+            properties:
+              recordType:
+                type: string
+              value:
+                type: ["string", "null"]
+              recordedDt:
+                type: string
+              verificationStatus:
+                type: ["string", "null"]
+
+    HhcAlarm:
+      type: object
+      required:
+        [source, assetId, code, label, severity, severityRaw, observedValue, expectedValue,
+         firstSeenAt, lastSeenAt, status, description, faultInstanceId]
+      properties:
+        source:
+          type: string
+          enum: ["Pulse", "Shengda"]
+        assetId:
+          type: string
+        code:
+          type: string
+        label:
+          type: string
+        severity:
+          type: string
+          enum: ["critical", "warning", "info"]
+        severityRaw:
+          type: string
+          description: Raw upstream severity for transparency (e.g. "Pulse severity 3")
+        observedValue:
+          type: ["string", "null"]
+        expectedValue:
+          type: ["string", "null"]
+        firstSeenAt:
+          type: ["string", "null"]
+        lastSeenAt:
+          type: ["string", "null"]
+        status:
+          type: string
+        description:
+          type: ["string", "null"]
+        faultInstanceId:
+          type: ["string", "null"]
+
+    HhcMeterAlarms:
+      type: object
+      required: [assetId, alarms, pulseCount, shengdaCount, pulseError]
+      properties:
+        assetId:
+          type: string
+        alarms:
+          type: array
+          items:
+            $ref: "#/components/schemas/HhcAlarm"
+        pulseCount:
+          type: integer
+        shengdaCount:
+          type: integer
+        pulseError:
+          type: ["string", "null"]
+          description: Non-null when the Pulse fault source failed (Shengda alarms still shown)
+        fetchedAt:
+          type: string
+
+    HhcFleetAlarms:
+      type: object
+      required: [alarms, pulseCount, shengdaCount, meterCount, shengdaCoverage, pulseError, shengdaErrors]
+      properties:
+        alarms:
+          type: array
+          items:
+            $ref: "#/components/schemas/HhcAlarm"
+        pulseCount:
+          type: integer
+        shengdaCount:
+          type: integer
+        meterCount:
+          type: integer
+        shengdaCoverage:
+          type: integer
+        pulseError:
+          type: ["string", "null"]
+        shengdaErrors:
+          type: integer
+        fetchedAt:
+          type: string
+
+    MaintenanceJobsResult:
+      type: object
+      required: [assetId, jobs]
+      properties:
+        assetId:
+          type: string
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PulseJob"
+        fetchedAt:
+          type: string
+
+    CreateMaintenanceJobBody:
+      type: object
+      required: [jobTypeId]
+      properties:
+        jobTypeId:
+          type: string
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        priority:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 5
+        dueDt:
+          type: ["string", "null"]
+          description: ISO datetime with offset
+        assigneeUserId:
+          type: ["string", "null"]
+        faultObservation:
+          type: ["string", "null"]
+          description: Required observation value for fault-linked job types
+
+    MaintenanceJobResult:
+      type: object
+      required: [job]
+      properties:
+        job:
+          $ref: "#/components/schemas/PulseJob"
+        fetchedAt:
+          type: string
+
+    ReassignJobBody:
+      type: object
+      required: [assigneeUserId]
+      properties:
+        assigneeUserId:
+          type: string
+
+    CancelJobBody:
+      type: object
+      properties:
+        reason:
+          type: ["string", "null"]
+          description: Recorded only in the local audit trail (Pulse CancelJob has no reason field)
+
+    RecordJobEventsBody:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            required: [recordType, data]
+            properties:
+              recordType:
+                type: string
+                enum: ["Blockage", "ReadingCapture", "PartChange", "Action", "Escalation", "Completion", "WorkStarted"]
+              eventDt:
+                type: ["string", "null"]
+                description: ISO datetime with offset; defaults to now
+              data:
+                type: ["string", "null"]
+
+    MaintenanceActionResult:
+      type: object
+      required: [ok, jobInstanceId]
+      properties:
+        ok:
+          type: boolean
+        jobInstanceId:
+          type: string
+        fetchedAt:
+          type: string
+
+    HhcActionAudit:
+      type: object
+      required: [id, assetId, action, operator, reason, detail, createdAt]
+      properties:
+        id:
+          type: integer
+        assetId:
+          type: ["string", "null"]
+        action:
+          type: string
+        operator:
+          type: string
+        reason:
+          type: ["string", "null"]
+        detail:
+          description: Sanitised request/response detail (correlationId, endpoint, commandState, upstream status, error)
+        createdAt:
+          type: string
+
+    HhcActionAuditPage:
+      type: object
+      required: [assetId, entries]
+      properties:
+        assetId:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/HhcActionAudit"
         fetchedAt:
           type: string

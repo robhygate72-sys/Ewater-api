@@ -40,6 +40,23 @@ import {
   roleForAccessKey,
   accessKeysConfigured,
 } from "../lib/hhc-auth";
+import { listAudit } from "../lib/hhc-commissioning";
+import {
+  getPulseJobsForAsset,
+  createPulseJob,
+  reassignPulseJob,
+  cancelPulseJob,
+  recordPulseJobEvents,
+  assertJobBelongsToAsset,
+  getAssignableUsers,
+  getPulseFaultTypes,
+  getManualJobTypes,
+  getMeterAlarms,
+  getFleetAlarms,
+  PulseError,
+  type PulseJobEventInput,
+} from "../lib/hhc-pulse";
+import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
@@ -416,6 +433,347 @@ router.get(
       return;
     }
     res.json({ jobTypes: result.data ?? [], fetchedAt: new Date().toISOString() });
+  }),
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// O&M — Pulse maintenance jobs, alarms, and reference data.
+// Pulse owns the job lifecycle; we never persist job state locally. Every
+// write is recorded in hhc_action_audit before and after the upstream call.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const sendPulseError = (res: import("express").Response, err: unknown): boolean => {
+  if (err instanceof PulseError) {
+    // Preserve upstream client-error semantics (400 bad input, 409 lifecycle
+    // conflicts, …); anything else is a bad-gateway from our perspective.
+    const status = err.upstreamStatus >= 400 && err.upstreamStatus < 500 ? err.upstreamStatus : 502;
+    res.status(status).json({ error: err.message });
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Runs a Pulse write with a full audit trail: one row before the upstream
+ * call (commandState=requested) and one after (confirmed/failed), linked by
+ * a correlationId. Payloads are the already-validated request bodies — no
+ * tokens or credentials ever pass through here.
+ */
+async function auditedPulseWrite<T>(opts: {
+  assetId: string;
+  action: string;
+  operator: string;
+  role: string;
+  endpoint: string;
+  payload: Record<string, unknown>;
+  call: () => Promise<T>;
+}): Promise<T> {
+  const correlationId = randomUUID();
+  const requestedAt = new Date().toISOString();
+  await recordAudit(opts.assetId, opts.action, opts.operator, null, {
+    correlationId,
+    role: opts.role,
+    endpoint: opts.endpoint,
+    payload: opts.payload,
+    commandState: "requested",
+    requestedAt,
+  });
+  try {
+    const result = await opts.call();
+    await recordAudit(opts.assetId, opts.action, opts.operator, null, {
+      correlationId,
+      role: opts.role,
+      endpoint: opts.endpoint,
+      commandState: "confirmed",
+      upstreamStatus: 200,
+      confirmedAt: new Date().toISOString(),
+    });
+    return result;
+  } catch (err) {
+    await recordAudit(opts.assetId, opts.action, opts.operator, null, {
+      correlationId,
+      role: opts.role,
+      endpoint: opts.endpoint,
+      commandState: "failed",
+      upstreamStatus: err instanceof PulseError ? err.upstreamStatus : null,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+}
+
+// ── GET /api/ewater/hhc/alarms — fleet-wide Pulse + Shengda alarms ───────────
+
+router.get(
+  "/ewater/hhc/alarms",
+  handle(async (_req, res) => {
+    if (!requireCreds(res)) return;
+    const result = await cached("hhc:fleet-alarms", () => getFleetAlarms());
+    res.json({ ...result, fetchedAt: new Date().toISOString() });
+  }),
+);
+
+// ── GET /api/ewater/hhc/meters/:assetId/alarms ───────────────────────────────
+
+router.get(
+  "/ewater/hhc/meters/:assetId/alarms",
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const assetId = String(req.params["assetId"]);
+    const result = await cached(`hhc:alarms:${assetId}`, () => getMeterAlarms(assetId));
+    res.json({ ...result, fetchedAt: new Date().toISOString() });
+  }),
+);
+
+// ── GET /api/ewater/hhc/meters/:assetId/maintenance — Pulse jobs ─────────────
+
+router.get(
+  "/ewater/hhc/meters/:assetId/maintenance",
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const assetId = String(req.params["assetId"]);
+    try {
+      const jobs = await cached(`hhc:jobs:${assetId}`, () => getPulseJobsForAsset(assetId));
+      res.json({ assetId, jobs, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+// ── POST /api/ewater/hhc/meters/:assetId/maintenance — create Pulse job ──────
+
+const createJobSchema = z
+  .object({
+    jobTypeId: z.string().uuid(),
+    title: z.string().min(1).max(200).nullish(),
+    description: z.string().min(1).max(2000).nullish(),
+    priority: z.number().int().min(1).max(5).nullish(),
+    dueDt: z.string().datetime({ offset: true }).nullish(),
+    assigneeUserId: z.string().uuid().nullish(),
+    faultObservation: z.string().min(1).max(200).nullish(),
+  })
+  .strict();
+
+router.post(
+  "/ewater/hhc/meters/:assetId/maintenance",
+  requireOperatorAuth(),
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const assetId = String(req.params["assetId"]);
+    const claims = operatorOf(res);
+    const parsed = createJobSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: `Invalid body: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}` });
+      return;
+    }
+    try {
+      const job = await auditedPulseWrite({
+        assetId,
+        action: "pulse-job-create",
+        operator: claims.name,
+        role: claims.role,
+        endpoint: "POST /api/jobs/CreateManualJob",
+        payload: parsed.data as Record<string, unknown>,
+        call: () => createPulseJob(assetId, parsed.data),
+      });
+      cache.delete(`hhc:jobs:${assetId}`);
+      res.json({ job, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+// ── PUT /api/ewater/hhc/meters/:assetId/maintenance/:jobId/reassign ──────────
+
+const reassignSchema = z.object({ assigneeUserId: z.string().uuid() }).strict();
+
+router.put(
+  "/ewater/hhc/meters/:assetId/maintenance/:jobId/reassign",
+  requireOperatorAuth(),
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const assetId = String(req.params["assetId"]);
+    const jobId = String(req.params["jobId"]);
+    const claims = operatorOf(res);
+    const parsed = reassignSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "assigneeUserId (UUID) is required" });
+      return;
+    }
+    try {
+      await assertJobBelongsToAsset(assetId, jobId);
+      await auditedPulseWrite({
+        assetId,
+        action: "pulse-job-reassign",
+        operator: claims.name,
+        role: claims.role,
+        endpoint: "POST /api/jobs/ReassignJob",
+        payload: { jobInstanceId: jobId, assigneeUserId: parsed.data.assigneeUserId },
+        call: () => reassignPulseJob(jobId, parsed.data.assigneeUserId),
+      });
+      cache.delete(`hhc:jobs:${assetId}`);
+      res.json({ ok: true, jobInstanceId: jobId, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+// ── DELETE /api/ewater/hhc/meters/:assetId/maintenance/:jobId — cancel ───────
+
+router.delete(
+  "/ewater/hhc/meters/:assetId/maintenance/:jobId",
+  requireOperatorAuth(),
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const assetId = String(req.params["assetId"]);
+    const jobId = String(req.params["jobId"]);
+    const claims = operatorOf(res);
+    const reason = typeof (req.body as Record<string, unknown> | undefined)?.["reason"] === "string"
+      ? String((req.body as Record<string, unknown>)["reason"]).slice(0, 500)
+      : null;
+    try {
+      await assertJobBelongsToAsset(assetId, jobId);
+      await auditedPulseWrite({
+        assetId,
+        action: "pulse-job-cancel",
+        operator: claims.name,
+        role: claims.role,
+        endpoint: "POST /api/jobs/CancelJob",
+        payload: { jobInstanceId: jobId, reason },
+        call: () => cancelPulseJob(jobId),
+      });
+      cache.delete(`hhc:jobs:${assetId}`);
+      res.json({ ok: true, jobInstanceId: jobId, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+// ── POST /api/ewater/hhc/meters/:assetId/maintenance/:jobId/events ───────────
+
+const jobEventSchema = z
+  .object({
+    recordType: z.enum(["Blockage", "ReadingCapture", "PartChange", "Action", "Escalation", "Completion", "WorkStarted"]),
+    eventDt: z.string().datetime({ offset: true }).nullish(),
+    data: z
+      .string()
+      .max(2000)
+      .nullable()
+      .refine(
+        (v) => {
+          if (v == null || !v.trim()) return true;
+          try {
+            JSON.parse(v);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { message: "data must be a JSON payload string (Pulse validates it per record type)" },
+      ),
+  })
+  .strict();
+const jobEventsSchema = z.object({ events: z.array(jobEventSchema).min(1).max(20) }).strict();
+
+router.post(
+  "/ewater/hhc/meters/:assetId/maintenance/:jobId/events",
+  requireOperatorAuth(),
+  handle(async (req, res) => {
+    if (!requireCreds(res)) return;
+    const assetId = String(req.params["assetId"]);
+    const jobId = String(req.params["jobId"]);
+    const claims = operatorOf(res);
+    const parsed = jobEventsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: `Invalid body: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}` });
+      return;
+    }
+    const events: PulseJobEventInput[] = parsed.data.events.map((e) => ({
+      recordType: e.recordType,
+      eventDt: e.eventDt ?? new Date().toISOString(),
+      data: e.data,
+    }));
+    try {
+      await assertJobBelongsToAsset(assetId, jobId);
+      await auditedPulseWrite({
+        assetId,
+        action: "pulse-job-events",
+        operator: claims.name,
+        role: claims.role,
+        endpoint: "POST /api/jobs/RecordJobEvents",
+        payload: { jobInstanceId: jobId, events: events as unknown as Record<string, unknown>[] },
+        call: () => recordPulseJobEvents(jobId, events),
+      });
+      cache.delete(`hhc:jobs:${assetId}`);
+      res.json({ ok: true, jobInstanceId: jobId, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+// ── Reference data (5-minute upstream cache inside hhc-pulse) ────────────────
+
+router.get(
+  "/ewater/hhc/users",
+  handle(async (_req, res) => {
+    if (!requireCreds(res)) return;
+    try {
+      const users = await getAssignableUsers();
+      res.json({ users, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+router.get(
+  "/ewater/hhc/fault-types",
+  handle(async (_req, res) => {
+    if (!requireCreds(res)) return;
+    try {
+      const faultTypes = await getPulseFaultTypes();
+      res.json({ faultTypes, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+router.get(
+  "/ewater/hhc/job-types",
+  handle(async (_req, res) => {
+    if (!requireCreds(res)) return;
+    try {
+      const jobTypes = await getManualJobTypes();
+      res.json({ jobTypes, fetchedAt: new Date().toISOString() });
+    } catch (err) {
+      if (sendPulseError(res, err)) return;
+      throw err;
+    }
+  }),
+);
+
+// ── GET /api/ewater/hhc/meters/:assetId/audit — local action audit trail ─────
+
+router.get(
+  "/ewater/hhc/meters/:assetId/audit",
+  requireOperatorAuth(),
+  handle(async (req, res) => {
+    const assetId = String(req.params["assetId"]);
+    const entries = await listAudit(assetId, numQ(req.query["limit"]) ?? 50);
+    res.json({ assetId, entries, fetchedAt: new Date().toISOString() });
   }),
 );
 

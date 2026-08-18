@@ -19,7 +19,7 @@ import { formatTimeAgo } from "@/lib/date";
 import { useMeterStates } from "./use-meter-states";
 import { obsStr, connectivityColor, StatusBadge } from "./shared";
 import { CommissioningPanel } from "./commissioning-detail";
-import { getSession, saveSession, clearSession, getOperator, isAdminRole, operatorHeaders, type OperatorSessionInfo } from "./operator";
+import { getSession, useOperatorSession, saveSession, clearSession, getOperator, isAdminRole, operatorHeaders, type OperatorSessionInfo } from "./operator";
 
 const QUEUE_LIFECYCLES = ["PreInstallation", "Staged", "Active"] as const;
 const STAGE_LABEL: Record<string, string> = {
@@ -50,8 +50,8 @@ async function fetchAllMeters(status: string): Promise<HouseholdMeterSummary[]> 
 // The access key is verified server-side; the returned token carries the
 // operator's verified identity and role.
 
-function OperatorBar() {
-  const [session, setSession] = useState(getSession());
+export function OperatorBar() {
+  const session = useOperatorSession();
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +59,6 @@ function OperatorBar() {
     mutation: {
       onSuccess: (data) => {
         saveSession(data as OperatorSessionInfo);
-        setSession(getSession());
         setKey("");
         setError(null);
       },
@@ -86,7 +85,7 @@ function OperatorBar() {
             variant="ghost"
             className="h-7 text-[11px] ml-auto"
             data-testid="button-operator-signout"
-            onClick={() => { clearSession(); setSession(null); }}
+            onClick={() => clearSession()}
           >
             Sign out
           </Button>
@@ -140,6 +139,7 @@ const CONFIG_FIELDS: { key: keyof HhcConfigurationUpdate; label: string; unit: s
 ];
 
 function ConfigPanel() {
+  useOperatorSession(); // re-render on sign-in/sign-out so admin gating stays current
   const queryClient = useQueryClient();
   const queryKey = getGetHhcConfigQueryKey();
   const query = useGetHhcConfig({ query: { queryKey, staleTime: 60_000 } });

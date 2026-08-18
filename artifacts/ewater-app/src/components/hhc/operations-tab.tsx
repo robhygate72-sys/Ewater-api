@@ -24,6 +24,8 @@ import {
   useGetHouseholdMeterHistory,
   getGetHouseholdMeterHistoryQueryKey,
 } from "@workspace/api-client-react";
+import { AlarmsPanel, MaintenancePanel, AuditPanel } from "./om-maintenance";
+import { OperatorBar } from "./commissioning-tab";
 
 const STATE_POLL_MS = 30_000;
 
@@ -336,7 +338,13 @@ function MeterDetail({ assetId }: { assetId: string }) {
         </SectionCard>
       </div>
 
+      {/* ── Alarms (Pulse faults + Shengda health) ── */}
+      <AlarmsPanel assetId={assetId} />
+
       {/* ── Activity ── */}
+      <OperatorBar />
+      <MaintenancePanel assetId={assetId} />
+      <AuditPanel assetId={assetId} />
       <UsageCharts assetId={assetId} />
       <CommsLog assetId={assetId} />
     </div>

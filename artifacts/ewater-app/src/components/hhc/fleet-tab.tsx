@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect } from "react";
 import {
   useListHouseholdMeters,
   getListHouseholdMetersQueryKey,
+  useGetHhcFleetAlarms,
+  getGetHhcFleetAlarmsQueryKey,
   type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
 import {
@@ -115,6 +117,12 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
     useListHouseholdMeters(lcParams[2]!, { query: { queryKey: getListHouseholdMetersQueryKey(lcParams[2]!), staleTime: 60_000 } }),
     useListHouseholdMeters(lcParams[3]!, { query: { queryKey: getListHouseholdMetersQueryKey(lcParams[3]!), staleTime: 60_000 } }),
   ];
+
+  // Fleet-wide alarms (Pulse faults + server-computed Shengda alerts).
+  const fleetAlarmsQuery = useGetHhcFleetAlarms({
+    query: { queryKey: getGetHhcFleetAlarmsQueryKey(), refetchInterval: FLEET_POLL_MS, staleTime: 60_000 },
+  });
+  const fa = fleetAlarmsQuery.data;
 
   const meters = listQuery.data?.items ?? [];
   const pageIds = useMemo(() => meters.map((m) => m.id), [meters]);
@@ -303,6 +311,16 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
         <Kpi label="Comm healthy" value={commHealthy} sub={coverage} className="text-emerald-600 dark:text-emerald-400" testId="kpi-comm-healthy" />
         <Kpi label="Comm late / offline" value={`${commLate} / ${commOffline}`} sub={coverage} className="text-amber-600 dark:text-amber-400" testId="kpi-comm-late-offline" />
         <Kpi label="With alarms" value={alarmCount} sub={coverage} className={alarmCount > 0 ? "text-destructive" : undefined} testId="kpi-alarms" />
+        <Kpi
+          label="Active alarms (fleet)"
+          value={fa ? fa.pulseCount + fa.shengdaCount : null}
+          loading={fleetAlarmsQuery.isLoading}
+          sub={fa
+            ? `${fa.pulseCount} Pulse fault${fa.pulseCount !== 1 ? "s" : ""} · ${fa.shengdaCount} Shengda alert${fa.shengdaCount !== 1 ? "s" : ""}${fa.pulseError ? " · Pulse unavailable" : ""}`
+            : fleetAlarmsQuery.isError ? "Alarm feed unavailable" : undefined}
+          className={fa && fa.pulseCount + fa.shengdaCount > 0 ? "text-destructive" : undefined}
+          testId="kpi-fleet-alarms"
+        />
         <Kpi label="Low battery" value={lowBattery} sub={coverage} className={lowBattery > 0 ? "text-amber-600 dark:text-amber-400" : undefined} testId="kpi-low-battery" />
       </div>
       <p className="text-[10px] text-muted-foreground" data-testid="text-coverage">

@@ -1,3 +1,4 @@
 - [eWater API endpoints](ewater-api.md) — confirmed live eWater endpoints for eSense charts (tank height, inflow, voltage), asset ID patterns, and Orval codegen quirk fix for query-param type conflicts.
 - [Push Notifications](push-notifications.md) — Web Push setup, VAPID env vars, SW path convention, DB tables, alert checker architecture
+- [Pulse O&M API quirks](pulse-om.md) — per-user WorkQueue/GetFaults (no asset scoping), RecordJobEvents needs client UUID + typed JSON `data` ("{}" minimal), CancelJob has no reason, 409s on closed jobs.
 - [Remote MCP server pattern](mcp-server.md) — stateless Streamable HTTP MCP server (fresh server+transport per request), bearer auth, shared insights module for REST/MCP parity

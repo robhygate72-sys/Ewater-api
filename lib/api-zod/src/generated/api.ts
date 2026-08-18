@@ -1049,3 +1049,296 @@ export const GetHhcJobTypesResponse = zod.object({
 })
 
 
+/**
+ * @summary Fleet-wide alarm view combining Pulse faults and Shengda-derived health alarms
+ */
+export const GetHhcFleetAlarmsResponse = zod.object({
+  "alarms": zod.array(zod.object({
+  "source": zod.enum(['Pulse', 'Shengda']),
+  "assetId": zod.string(),
+  "code": zod.string(),
+  "label": zod.string(),
+  "severity": zod.enum(['critical', 'warning', 'info']),
+  "severityRaw": zod.string().describe('Raw upstream severity for transparency (e.g. \"Pulse severity 3\")'),
+  "observedValue": zod.string().nullable(),
+  "expectedValue": zod.string().nullable(),
+  "firstSeenAt": zod.string().nullable(),
+  "lastSeenAt": zod.string().nullable(),
+  "status": zod.string(),
+  "description": zod.string().nullable(),
+  "faultInstanceId": zod.string().nullable()
+})),
+  "pulseCount": zod.number(),
+  "shengdaCount": zod.number(),
+  "meterCount": zod.number(),
+  "shengdaCoverage": zod.number(),
+  "pulseError": zod.string().nullable(),
+  "shengdaErrors": zod.number(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Per-meter alarms merged from Pulse faults and Shengda health evaluation
+ */
+export const GetHhcMeterAlarmsParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetHhcMeterAlarmsResponse = zod.object({
+  "assetId": zod.string(),
+  "alarms": zod.array(zod.object({
+  "source": zod.enum(['Pulse', 'Shengda']),
+  "assetId": zod.string(),
+  "code": zod.string(),
+  "label": zod.string(),
+  "severity": zod.enum(['critical', 'warning', 'info']),
+  "severityRaw": zod.string().describe('Raw upstream severity for transparency (e.g. \"Pulse severity 3\")'),
+  "observedValue": zod.string().nullable(),
+  "expectedValue": zod.string().nullable(),
+  "firstSeenAt": zod.string().nullable(),
+  "lastSeenAt": zod.string().nullable(),
+  "status": zod.string(),
+  "description": zod.string().nullable(),
+  "faultInstanceId": zod.string().nullable()
+})),
+  "pulseCount": zod.number(),
+  "shengdaCount": zod.number(),
+  "pulseError": zod.string().nullable().describe('Non-null when the Pulse fault source failed (Shengda alarms still shown)'),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary List Pulse maintenance jobs linked to this asset (Pulse is the source of truth)
+ */
+export const GetHhcMeterMaintenanceParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetHhcMeterMaintenanceResponse = zod.object({
+  "assetId": zod.string(),
+  "jobs": zod.array(zod.object({
+  "jobInstanceId": zod.string(),
+  "jobTypeId": zod.string(),
+  "jobTypeName": zod.string().nullable(),
+  "entityType": zod.string().nullable(),
+  "entityId": zod.number(),
+  "priority": zod.number(),
+  "createdDt": zod.string(),
+  "assigneeUserId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "jobLifecycleState": zod.string().nullable(),
+  "closedDt": zod.string().nullable(),
+  "title": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "dueDt": zod.string().nullable(),
+  "createdSource": zod.string().nullable(),
+  "records": zod.array(zod.object({
+  "jobRecordId": zod.string().nullable(),
+  "recordType": zod.string(),
+  "eventDt": zod.string(),
+  "data": zod.string().nullable()
+})),
+  "faultInstanceId": zod.string().nullable()
+})),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Create a Pulse maintenance job for this asset (requires operator token; audited locally)
+ */
+export const CreateHhcMaintenanceJobParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const createHhcMaintenanceJobBodyPriorityMax = 5;
+
+
+
+export const CreateHhcMaintenanceJobBody = zod.object({
+  "jobTypeId": zod.string(),
+  "title": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "priority": zod.number().min(1).max(createHhcMaintenanceJobBodyPriorityMax).nullish(),
+  "dueDt": zod.string().nullish().describe('ISO datetime with offset'),
+  "assigneeUserId": zod.string().nullish(),
+  "faultObservation": zod.string().nullish().describe('Required observation value for fault-linked job types')
+})
+
+export const CreateHhcMaintenanceJobResponse = zod.object({
+  "job": zod.object({
+  "jobInstanceId": zod.string(),
+  "jobTypeId": zod.string(),
+  "jobTypeName": zod.string().nullable(),
+  "entityType": zod.string().nullable(),
+  "entityId": zod.number(),
+  "priority": zod.number(),
+  "createdDt": zod.string(),
+  "assigneeUserId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "jobLifecycleState": zod.string().nullable(),
+  "closedDt": zod.string().nullable(),
+  "title": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "dueDt": zod.string().nullable(),
+  "createdSource": zod.string().nullable(),
+  "records": zod.array(zod.object({
+  "jobRecordId": zod.string().nullable(),
+  "recordType": zod.string(),
+  "eventDt": zod.string(),
+  "data": zod.string().nullable()
+})),
+  "faultInstanceId": zod.string().nullable()
+}),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Reassign a Pulse job to another technician (requires operator token; audited locally)
+ */
+export const ReassignHhcMaintenanceJobParams = zod.object({
+  "assetId": zod.coerce.string(),
+  "jobId": zod.coerce.string()
+})
+
+export const ReassignHhcMaintenanceJobBody = zod.object({
+  "assigneeUserId": zod.string()
+})
+
+export const ReassignHhcMaintenanceJobResponse = zod.object({
+  "ok": zod.boolean(),
+  "jobInstanceId": zod.string(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Cancel a Pulse job (requires operator token; audited locally)
+ */
+export const CancelHhcMaintenanceJobParams = zod.object({
+  "assetId": zod.coerce.string(),
+  "jobId": zod.coerce.string()
+})
+
+export const CancelHhcMaintenanceJobBody = zod.object({
+  "reason": zod.string().nullish().describe('Recorded only in the local audit trail (Pulse CancelJob has no reason field)')
+})
+
+export const CancelHhcMaintenanceJobResponse = zod.object({
+  "ok": zod.boolean(),
+  "jobInstanceId": zod.string(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Record job lifecycle events against a Pulse job (requires operator token; audited locally)
+ */
+export const RecordHhcMaintenanceJobEventsParams = zod.object({
+  "assetId": zod.coerce.string(),
+  "jobId": zod.coerce.string()
+})
+
+export const recordHhcMaintenanceJobEventsBodyEventsMax = 20;
+
+
+
+export const RecordHhcMaintenanceJobEventsBody = zod.object({
+  "events": zod.array(zod.object({
+  "recordType": zod.enum(['Blockage', 'ReadingCapture', 'PartChange', 'Action', 'Escalation', 'Completion', 'WorkStarted']),
+  "eventDt": zod.string().nullish().describe('ISO datetime with offset; defaults to now'),
+  "data": zod.string().nullable()
+})).min(1).max(recordHhcMaintenanceJobEventsBodyEventsMax)
+})
+
+export const RecordHhcMaintenanceJobEventsResponse = zod.object({
+  "ok": zod.boolean(),
+  "jobInstanceId": zod.string(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary List Pulse assignable users for the technician assignment dropdown
+ */
+export const GetHhcAssignableUsersResponse = zod.object({
+  "users": zod.array(zod.object({
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "email": zod.string().nullable(),
+  "mobileNumber": zod.string().nullable()
+})),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary List Pulse fault types
+ */
+export const GetHhcFaultTypesResponse = zod.object({
+  "faultTypes": zod.array(zod.object({
+  "faultTypeId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "entityType": zod.string().nullable(),
+  "applicableDiagnoses": zod.array(zod.string())
+})),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary List Pulse job types available for manual creation against assets
+ */
+export const GetHhcManualJobTypesResponse = zod.object({
+  "jobTypes": zod.array(zod.object({
+  "jobTypeId": zod.string(),
+  "name": zod.string(),
+  "entityType": zod.string().nullable(),
+  "defaultPriority": zod.number(),
+  "isFaultLinked": zod.boolean(),
+  "faultTypeId": zod.string().nullable(),
+  "observations": zod.array(zod.object({
+  "value": zod.string(),
+  "display": zod.string(),
+  "description": zod.string().nullable()
+}))
+})),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Local action audit trail for this asset (requires a Bearer operator token)
+ */
+export const GetHhcMeterAuditParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const getHhcMeterAuditQueryLimitDefault = 50;
+export const getHhcMeterAuditQueryLimitMax = 200;
+
+
+
+export const GetHhcMeterAuditQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getHhcMeterAuditQueryLimitMax).default(getHhcMeterAuditQueryLimitDefault)
+})
+
+export const GetHhcMeterAuditResponse = zod.object({
+  "assetId": zod.string(),
+  "entries": zod.array(zod.object({
+  "id": zod.number(),
+  "assetId": zod.string().nullable(),
+  "action": zod.string(),
+  "operator": zod.string(),
+  "reason": zod.string().nullable(),
+  "detail": zod.unknown().describe('Sanitised request\/response detail (correlationId, endpoint, commandState, upstream status, error)'),
+  "createdAt": zod.string()
+})),
+  "fetchedAt": zod.string().optional()
+})
+
+

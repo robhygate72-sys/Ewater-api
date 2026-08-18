@@ -25,7 +25,10 @@ import type {
   Asset,
   AssetEwcSettings,
   AssetTechStatus,
+  AssignableUsersResult,
+  CancelJobBody,
   CommissioningDetail,
+  CreateMaintenanceJobBody,
   CredentialsInput,
   CredentialsStatus,
   DashboardSummary,
@@ -36,11 +39,15 @@ import type {
   GetAssetPacketsParams,
   GetDashboardParams,
   GetESenseChartsParams,
+  GetHhcMeterAuditParams,
   GetHouseholdMeterCommunicationsParams,
   GetHouseholdMeterHistoryParams,
   HealthStatus,
+  HhcActionAuditPage,
   HhcConfiguration,
   HhcConfigurationUpdate,
+  HhcFleetAlarms,
+  HhcMeterAlarms,
   HouseholdMeterCommunicationsPage,
   HouseholdMeterHistory,
   HouseholdMeterListPage,
@@ -48,6 +55,9 @@ import type {
   HouseholdMeterSummary,
   JobTypesResult,
   ListHouseholdMetersParams,
+  MaintenanceActionResult,
+  MaintenanceJobResult,
+  MaintenanceJobsResult,
   MeterReadingResult,
   ModemIccidBody,
   ModemIccidResult,
@@ -58,7 +68,11 @@ import type {
   OperatorSession,
   ProxyInput,
   ProxyResponse,
+  PulseFaultTypesResult,
+  PulseJobTypesResult,
   RawPacketLog,
+  ReassignJobBody,
+  RecordJobEventsBody,
   ResetMeterBody,
   ResetMeterResult,
   TelemetryEntry,
@@ -2606,6 +2620,851 @@ export function useGetHhcJobTypes<TData = Awaited<ReturnType<typeof getHhcJobTyp
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetHhcJobTypesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHhcFleetAlarmsUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/alarms`
+}
+
+/**
+ * @summary Fleet-wide alarm view combining Pulse faults and Shengda-derived health alarms
+ */
+export const getHhcFleetAlarms = async ( options?: RequestInit): Promise<HhcFleetAlarms> => {
+
+  return customFetch<HhcFleetAlarms>(getGetHhcFleetAlarmsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcFleetAlarmsQueryKey = () => {
+    return [
+    `/api/ewater/hhc/alarms`
+    ] as const;
+    }
+
+
+export const getGetHhcFleetAlarmsQueryOptions = <TData = Awaited<ReturnType<typeof getHhcFleetAlarms>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcFleetAlarms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcFleetAlarmsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcFleetAlarms>>> = ({ signal }) => getHhcFleetAlarms({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcFleetAlarms>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcFleetAlarmsQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcFleetAlarms>>>
+export type GetHhcFleetAlarmsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Fleet-wide alarm view combining Pulse faults and Shengda-derived health alarms
+ */
+
+export function useGetHhcFleetAlarms<TData = Awaited<ReturnType<typeof getHhcFleetAlarms>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcFleetAlarms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcFleetAlarmsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHhcMeterAlarmsUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/alarms`
+}
+
+/**
+ * @summary Per-meter alarms merged from Pulse faults and Shengda health evaluation
+ */
+export const getHhcMeterAlarms = async (assetId: string, options?: RequestInit): Promise<HhcMeterAlarms> => {
+
+  return customFetch<HhcMeterAlarms>(getGetHhcMeterAlarmsUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcMeterAlarmsQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/alarms`
+    ] as const;
+    }
+
+
+export const getGetHhcMeterAlarmsQueryOptions = <TData = Awaited<ReturnType<typeof getHhcMeterAlarms>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterAlarms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcMeterAlarmsQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcMeterAlarms>>> = ({ signal }) => getHhcMeterAlarms(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterAlarms>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcMeterAlarmsQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcMeterAlarms>>>
+export type GetHhcMeterAlarmsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Per-meter alarms merged from Pulse faults and Shengda health evaluation
+ */
+
+export function useGetHhcMeterAlarms<TData = Awaited<ReturnType<typeof getHhcMeterAlarms>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterAlarms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcMeterAlarmsQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHhcMeterMaintenanceUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/maintenance`
+}
+
+/**
+ * @summary List Pulse maintenance jobs linked to this asset (Pulse is the source of truth)
+ */
+export const getHhcMeterMaintenance = async (assetId: string, options?: RequestInit): Promise<MaintenanceJobsResult> => {
+
+  return customFetch<MaintenanceJobsResult>(getGetHhcMeterMaintenanceUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcMeterMaintenanceQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/maintenance`
+    ] as const;
+    }
+
+
+export const getGetHhcMeterMaintenanceQueryOptions = <TData = Awaited<ReturnType<typeof getHhcMeterMaintenance>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterMaintenance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcMeterMaintenanceQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcMeterMaintenance>>> = ({ signal }) => getHhcMeterMaintenance(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterMaintenance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcMeterMaintenanceQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcMeterMaintenance>>>
+export type GetHhcMeterMaintenanceQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List Pulse maintenance jobs linked to this asset (Pulse is the source of truth)
+ */
+
+export function useGetHhcMeterMaintenance<TData = Awaited<ReturnType<typeof getHhcMeterMaintenance>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterMaintenance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcMeterMaintenanceQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateHhcMaintenanceJobUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/maintenance`
+}
+
+/**
+ * @summary Create a Pulse maintenance job for this asset (requires operator token; audited locally)
+ */
+export const createHhcMaintenanceJob = async (assetId: string,
+    createMaintenanceJobBody: CreateMaintenanceJobBody, options?: RequestInit): Promise<MaintenanceJobResult> => {
+
+  return customFetch<MaintenanceJobResult>(getCreateHhcMaintenanceJobUrl(assetId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createMaintenanceJobBody,)
+  }
+);}
+
+
+
+
+export const getCreateHhcMaintenanceJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createHhcMaintenanceJob>>, TError,{assetId: string;data: BodyType<CreateMaintenanceJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createHhcMaintenanceJob>>, TError,{assetId: string;data: BodyType<CreateMaintenanceJobBody>}, TContext> => {
+
+const mutationKey = ['createHhcMaintenanceJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createHhcMaintenanceJob>>, {assetId: string;data: BodyType<CreateMaintenanceJobBody>}> = (props) => {
+          const {assetId,data} = props ?? {};
+
+          return  createHhcMaintenanceJob(assetId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateHhcMaintenanceJobMutationResult = NonNullable<Awaited<ReturnType<typeof createHhcMaintenanceJob>>>
+    export type CreateHhcMaintenanceJobMutationBody = BodyType<CreateMaintenanceJobBody>
+    export type CreateHhcMaintenanceJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a Pulse maintenance job for this asset (requires operator token; audited locally)
+ */
+export const useCreateHhcMaintenanceJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createHhcMaintenanceJob>>, TError,{assetId: string;data: BodyType<CreateMaintenanceJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createHhcMaintenanceJob>>,
+        TError,
+        {assetId: string;data: BodyType<CreateMaintenanceJobBody>},
+        TContext
+      > => {
+      return useMutation(getCreateHhcMaintenanceJobMutationOptions(options));
+    }
+
+export const getReassignHhcMaintenanceJobUrl = (assetId: string,
+    jobId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/maintenance/${jobId}/reassign`
+}
+
+/**
+ * @summary Reassign a Pulse job to another technician (requires operator token; audited locally)
+ */
+export const reassignHhcMaintenanceJob = async (assetId: string,
+    jobId: string,
+    reassignJobBody: ReassignJobBody, options?: RequestInit): Promise<MaintenanceActionResult> => {
+
+  return customFetch<MaintenanceActionResult>(getReassignHhcMaintenanceJobUrl(assetId,jobId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reassignJobBody,)
+  }
+);}
+
+
+
+
+export const getReassignHhcMaintenanceJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignHhcMaintenanceJob>>, TError,{assetId: string;jobId: string;data: BodyType<ReassignJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reassignHhcMaintenanceJob>>, TError,{assetId: string;jobId: string;data: BodyType<ReassignJobBody>}, TContext> => {
+
+const mutationKey = ['reassignHhcMaintenanceJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reassignHhcMaintenanceJob>>, {assetId: string;jobId: string;data: BodyType<ReassignJobBody>}> = (props) => {
+          const {assetId,jobId,data} = props ?? {};
+
+          return  reassignHhcMaintenanceJob(assetId,jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReassignHhcMaintenanceJobMutationResult = NonNullable<Awaited<ReturnType<typeof reassignHhcMaintenanceJob>>>
+    export type ReassignHhcMaintenanceJobMutationBody = BodyType<ReassignJobBody>
+    export type ReassignHhcMaintenanceJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reassign a Pulse job to another technician (requires operator token; audited locally)
+ */
+export const useReassignHhcMaintenanceJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignHhcMaintenanceJob>>, TError,{assetId: string;jobId: string;data: BodyType<ReassignJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reassignHhcMaintenanceJob>>,
+        TError,
+        {assetId: string;jobId: string;data: BodyType<ReassignJobBody>},
+        TContext
+      > => {
+      return useMutation(getReassignHhcMaintenanceJobMutationOptions(options));
+    }
+
+export const getCancelHhcMaintenanceJobUrl = (assetId: string,
+    jobId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/maintenance/${jobId}`
+}
+
+/**
+ * @summary Cancel a Pulse job (requires operator token; audited locally)
+ */
+export const cancelHhcMaintenanceJob = async (assetId: string,
+    jobId: string,
+    cancelJobBody?: CancelJobBody, options?: RequestInit): Promise<MaintenanceActionResult> => {
+
+  return customFetch<MaintenanceActionResult>(getCancelHhcMaintenanceJobUrl(assetId,jobId),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      cancelJobBody,)
+  }
+);}
+
+
+
+
+export const getCancelHhcMaintenanceJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelHhcMaintenanceJob>>, TError,{assetId: string;jobId: string;data?: BodyType<CancelJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelHhcMaintenanceJob>>, TError,{assetId: string;jobId: string;data?: BodyType<CancelJobBody>}, TContext> => {
+
+const mutationKey = ['cancelHhcMaintenanceJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelHhcMaintenanceJob>>, {assetId: string;jobId: string;data?: BodyType<CancelJobBody>}> = (props) => {
+          const {assetId,jobId,data} = props ?? {};
+
+          return  cancelHhcMaintenanceJob(assetId,jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelHhcMaintenanceJobMutationResult = NonNullable<Awaited<ReturnType<typeof cancelHhcMaintenanceJob>>>
+    export type CancelHhcMaintenanceJobMutationBody = BodyType<CancelJobBody> | undefined
+    export type CancelHhcMaintenanceJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a Pulse job (requires operator token; audited locally)
+ */
+export const useCancelHhcMaintenanceJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelHhcMaintenanceJob>>, TError,{assetId: string;jobId: string;data?: BodyType<CancelJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelHhcMaintenanceJob>>,
+        TError,
+        {assetId: string;jobId: string;data?: BodyType<CancelJobBody>},
+        TContext
+      > => {
+      return useMutation(getCancelHhcMaintenanceJobMutationOptions(options));
+    }
+
+export const getRecordHhcMaintenanceJobEventsUrl = (assetId: string,
+    jobId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/maintenance/${jobId}/events`
+}
+
+/**
+ * @summary Record job lifecycle events against a Pulse job (requires operator token; audited locally)
+ */
+export const recordHhcMaintenanceJobEvents = async (assetId: string,
+    jobId: string,
+    recordJobEventsBody: RecordJobEventsBody, options?: RequestInit): Promise<MaintenanceActionResult> => {
+
+  return customFetch<MaintenanceActionResult>(getRecordHhcMaintenanceJobEventsUrl(assetId,jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      recordJobEventsBody,)
+  }
+);}
+
+
+
+
+export const getRecordHhcMaintenanceJobEventsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordHhcMaintenanceJobEvents>>, TError,{assetId: string;jobId: string;data: BodyType<RecordJobEventsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordHhcMaintenanceJobEvents>>, TError,{assetId: string;jobId: string;data: BodyType<RecordJobEventsBody>}, TContext> => {
+
+const mutationKey = ['recordHhcMaintenanceJobEvents'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordHhcMaintenanceJobEvents>>, {assetId: string;jobId: string;data: BodyType<RecordJobEventsBody>}> = (props) => {
+          const {assetId,jobId,data} = props ?? {};
+
+          return  recordHhcMaintenanceJobEvents(assetId,jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordHhcMaintenanceJobEventsMutationResult = NonNullable<Awaited<ReturnType<typeof recordHhcMaintenanceJobEvents>>>
+    export type RecordHhcMaintenanceJobEventsMutationBody = BodyType<RecordJobEventsBody>
+    export type RecordHhcMaintenanceJobEventsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record job lifecycle events against a Pulse job (requires operator token; audited locally)
+ */
+export const useRecordHhcMaintenanceJobEvents = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordHhcMaintenanceJobEvents>>, TError,{assetId: string;jobId: string;data: BodyType<RecordJobEventsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordHhcMaintenanceJobEvents>>,
+        TError,
+        {assetId: string;jobId: string;data: BodyType<RecordJobEventsBody>},
+        TContext
+      > => {
+      return useMutation(getRecordHhcMaintenanceJobEventsMutationOptions(options));
+    }
+
+export const getGetHhcAssignableUsersUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/users`
+}
+
+/**
+ * @summary List Pulse assignable users for the technician assignment dropdown
+ */
+export const getHhcAssignableUsers = async ( options?: RequestInit): Promise<AssignableUsersResult> => {
+
+  return customFetch<AssignableUsersResult>(getGetHhcAssignableUsersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcAssignableUsersQueryKey = () => {
+    return [
+    `/api/ewater/hhc/users`
+    ] as const;
+    }
+
+
+export const getGetHhcAssignableUsersQueryOptions = <TData = Awaited<ReturnType<typeof getHhcAssignableUsers>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcAssignableUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcAssignableUsersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcAssignableUsers>>> = ({ signal }) => getHhcAssignableUsers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcAssignableUsers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcAssignableUsersQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcAssignableUsers>>>
+export type GetHhcAssignableUsersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List Pulse assignable users for the technician assignment dropdown
+ */
+
+export function useGetHhcAssignableUsers<TData = Awaited<ReturnType<typeof getHhcAssignableUsers>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcAssignableUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcAssignableUsersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHhcFaultTypesUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/fault-types`
+}
+
+/**
+ * @summary List Pulse fault types
+ */
+export const getHhcFaultTypes = async ( options?: RequestInit): Promise<PulseFaultTypesResult> => {
+
+  return customFetch<PulseFaultTypesResult>(getGetHhcFaultTypesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcFaultTypesQueryKey = () => {
+    return [
+    `/api/ewater/hhc/fault-types`
+    ] as const;
+    }
+
+
+export const getGetHhcFaultTypesQueryOptions = <TData = Awaited<ReturnType<typeof getHhcFaultTypes>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcFaultTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcFaultTypesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcFaultTypes>>> = ({ signal }) => getHhcFaultTypes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcFaultTypes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcFaultTypesQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcFaultTypes>>>
+export type GetHhcFaultTypesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List Pulse fault types
+ */
+
+export function useGetHhcFaultTypes<TData = Awaited<ReturnType<typeof getHhcFaultTypes>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcFaultTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcFaultTypesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHhcManualJobTypesUrl = () => {
+
+
+
+
+  return `/api/ewater/hhc/job-types`
+}
+
+/**
+ * @summary List Pulse job types available for manual creation against assets
+ */
+export const getHhcManualJobTypes = async ( options?: RequestInit): Promise<PulseJobTypesResult> => {
+
+  return customFetch<PulseJobTypesResult>(getGetHhcManualJobTypesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcManualJobTypesQueryKey = () => {
+    return [
+    `/api/ewater/hhc/job-types`
+    ] as const;
+    }
+
+
+export const getGetHhcManualJobTypesQueryOptions = <TData = Awaited<ReturnType<typeof getHhcManualJobTypes>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcManualJobTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcManualJobTypesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcManualJobTypes>>> = ({ signal }) => getHhcManualJobTypes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcManualJobTypes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcManualJobTypesQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcManualJobTypes>>>
+export type GetHhcManualJobTypesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List Pulse job types available for manual creation against assets
+ */
+
+export function useGetHhcManualJobTypes<TData = Awaited<ReturnType<typeof getHhcManualJobTypes>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcManualJobTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcManualJobTypesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHhcMeterAuditUrl = (assetId: string,
+    params?: GetHhcMeterAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ewater/hhc/meters/${assetId}/audit?${stringifiedParams}` : `/api/ewater/hhc/meters/${assetId}/audit`
+}
+
+/**
+ * @summary Local action audit trail for this asset (requires a Bearer operator token)
+ */
+export const getHhcMeterAudit = async (assetId: string,
+    params?: GetHhcMeterAuditParams, options?: RequestInit): Promise<HhcActionAuditPage> => {
+
+  return customFetch<HhcActionAuditPage>(getGetHhcMeterAuditUrl(assetId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHhcMeterAuditQueryKey = (assetId: string,
+    params?: GetHhcMeterAuditParams,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetHhcMeterAuditQueryOptions = <TData = Awaited<ReturnType<typeof getHhcMeterAudit>>, TError = ErrorType<ErrorResponse>>(assetId: string,
+    params?: GetHhcMeterAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHhcMeterAuditQueryKey(assetId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHhcMeterAudit>>> = ({ signal }) => getHhcMeterAudit(assetId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHhcMeterAuditQueryResult = NonNullable<Awaited<ReturnType<typeof getHhcMeterAudit>>>
+export type GetHhcMeterAuditQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Local action audit trail for this asset (requires a Bearer operator token)
+ */
+
+export function useGetHhcMeterAudit<TData = Awaited<ReturnType<typeof getHhcMeterAudit>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string,
+    params?: GetHhcMeterAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHhcMeterAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHhcMeterAuditQueryOptions(assetId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

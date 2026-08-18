@@ -1042,6 +1042,298 @@ export interface JobTypesResult {
   fetchedAt?: string;
 }
 
+export interface AssignableUser {
+  userId: string;
+  displayName: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  mobileNumber: string | null;
+}
+
+export interface AssignableUsersResult {
+  users: AssignableUser[];
+  fetchedAt?: string;
+}
+
+export interface PulseFaultType {
+  faultTypeId: string;
+  name: string;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  entityType: string | null;
+  applicableDiagnoses: string[];
+}
+
+export interface PulseFaultTypesResult {
+  faultTypes: PulseFaultType[];
+  fetchedAt?: string;
+}
+
+export type PulseJobTypeObservationsItem = {
+  value: string;
+  display: string;
+  /** @nullable */
+  description: string | null;
+};
+
+export interface PulseJobType {
+  jobTypeId: string;
+  name: string;
+  /** @nullable */
+  entityType: string | null;
+  defaultPriority: number;
+  isFaultLinked: boolean;
+  /** @nullable */
+  faultTypeId: string | null;
+  observations: PulseJobTypeObservationsItem[];
+}
+
+export interface PulseJobTypesResult {
+  jobTypes: PulseJobType[];
+  fetchedAt?: string;
+}
+
+export interface PulseJobRecord {
+  /** @nullable */
+  jobRecordId: string | null;
+  recordType: string;
+  eventDt: string;
+  /** @nullable */
+  data: string | null;
+}
+
+export interface PulseJob {
+  jobInstanceId: string;
+  jobTypeId: string;
+  /** @nullable */
+  jobTypeName: string | null;
+  /** @nullable */
+  entityType: string | null;
+  entityId: number;
+  priority: number;
+  createdDt: string;
+  /** @nullable */
+  assigneeUserId: string | null;
+  /** @nullable */
+  assigneeName: string | null;
+  /** @nullable */
+  jobLifecycleState: string | null;
+  /** @nullable */
+  closedDt: string | null;
+  /** @nullable */
+  title: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  dueDt: string | null;
+  /** @nullable */
+  createdSource: string | null;
+  records: PulseJobRecord[];
+  /** @nullable */
+  faultInstanceId: string | null;
+}
+
+export type PulseFaultRecordsItem = {
+  recordType: string;
+  /** @nullable */
+  value: string | null;
+  recordedDt: string;
+  /** @nullable */
+  verificationStatus: string | null;
+};
+
+export interface PulseFault {
+  faultInstanceId: string;
+  faultTypeId: string;
+  /** @nullable */
+  faultTypeName: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  entityType: string | null;
+  entityId: number;
+  startDt: string;
+  /** @nullable */
+  endDt: string | null;
+  severity: number;
+  /** @nullable */
+  faultLifecycleState: string | null;
+  records: PulseFaultRecordsItem[];
+}
+
+export type HhcAlarmSource = typeof HhcAlarmSource[keyof typeof HhcAlarmSource];
+
+
+export const HhcAlarmSource = {
+  Pulse: 'Pulse',
+  Shengda: 'Shengda',
+} as const;
+
+export type HhcAlarmSeverity = typeof HhcAlarmSeverity[keyof typeof HhcAlarmSeverity];
+
+
+export const HhcAlarmSeverity = {
+  critical: 'critical',
+  warning: 'warning',
+  info: 'info',
+} as const;
+
+export interface HhcAlarm {
+  source: HhcAlarmSource;
+  assetId: string;
+  code: string;
+  label: string;
+  severity: HhcAlarmSeverity;
+  /** Raw upstream severity for transparency (e.g. "Pulse severity 3") */
+  severityRaw: string;
+  /** @nullable */
+  observedValue: string | null;
+  /** @nullable */
+  expectedValue: string | null;
+  /** @nullable */
+  firstSeenAt: string | null;
+  /** @nullable */
+  lastSeenAt: string | null;
+  status: string;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  faultInstanceId: string | null;
+}
+
+export interface HhcMeterAlarms {
+  assetId: string;
+  alarms: HhcAlarm[];
+  pulseCount: number;
+  shengdaCount: number;
+  /**
+     * Non-null when the Pulse fault source failed (Shengda alarms still shown)
+     * @nullable
+     */
+  pulseError: string | null;
+  fetchedAt?: string;
+}
+
+export interface HhcFleetAlarms {
+  alarms: HhcAlarm[];
+  pulseCount: number;
+  shengdaCount: number;
+  meterCount: number;
+  shengdaCoverage: number;
+  /** @nullable */
+  pulseError: string | null;
+  shengdaErrors: number;
+  fetchedAt?: string;
+}
+
+export interface MaintenanceJobsResult {
+  assetId: string;
+  jobs: PulseJob[];
+  fetchedAt?: string;
+}
+
+export interface CreateMaintenanceJobBody {
+  jobTypeId: string;
+  /** @nullable */
+  title?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /**
+     * @minimum 1
+     * @maximum 5
+     * @nullable
+     */
+  priority?: number | null;
+  /**
+     * ISO datetime with offset
+     * @nullable
+     */
+  dueDt?: string | null;
+  /** @nullable */
+  assigneeUserId?: string | null;
+  /**
+     * Required observation value for fault-linked job types
+     * @nullable
+     */
+  faultObservation?: string | null;
+}
+
+export interface MaintenanceJobResult {
+  job: PulseJob;
+  fetchedAt?: string;
+}
+
+export interface ReassignJobBody {
+  assigneeUserId: string;
+}
+
+export interface CancelJobBody {
+  /**
+     * Recorded only in the local audit trail (Pulse CancelJob has no reason field)
+     * @nullable
+     */
+  reason?: string | null;
+}
+
+export type RecordJobEventsBodyEventsItemRecordType = typeof RecordJobEventsBodyEventsItemRecordType[keyof typeof RecordJobEventsBodyEventsItemRecordType];
+
+
+export const RecordJobEventsBodyEventsItemRecordType = {
+  Blockage: 'Blockage',
+  ReadingCapture: 'ReadingCapture',
+  PartChange: 'PartChange',
+  Action: 'Action',
+  Escalation: 'Escalation',
+  Completion: 'Completion',
+  WorkStarted: 'WorkStarted',
+} as const;
+
+export type RecordJobEventsBodyEventsItem = {
+  recordType: RecordJobEventsBodyEventsItemRecordType;
+  /**
+     * ISO datetime with offset; defaults to now
+     * @nullable
+     */
+  eventDt?: string | null;
+  /** @nullable */
+  data: string | null;
+};
+
+export interface RecordJobEventsBody {
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  events: RecordJobEventsBodyEventsItem[];
+}
+
+export interface MaintenanceActionResult {
+  ok: boolean;
+  jobInstanceId: string;
+  fetchedAt?: string;
+}
+
+export interface HhcActionAudit {
+  id: number;
+  /** @nullable */
+  assetId: string | null;
+  action: string;
+  operator: string;
+  /** @nullable */
+  reason: string | null;
+  /** Sanitised request/response detail (correlationId, endpoint, commandState, upstream status, error) */
+  detail: unknown;
+  createdAt: string;
+}
+
+export interface HhcActionAuditPage {
+  assetId: string;
+  entries: HhcActionAudit[];
+  fetchedAt?: string;
+}
+
 export type GetDashboardParams = {
 lifecycleState?: GetDashboardLifecycleState;
 };
@@ -1140,5 +1432,13 @@ limit?: number;
  * @minimum 0
  */
 offset?: number;
+};
+
+export type GetHhcMeterAuditParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
 };
 
