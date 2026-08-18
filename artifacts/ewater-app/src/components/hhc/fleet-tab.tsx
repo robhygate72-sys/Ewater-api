@@ -49,6 +49,8 @@ import {
   getListHouseholdMetersQueryKey,
   useGetHhcFleetAlarms,
   getGetHhcFleetAlarmsQueryKey,
+  useGetHhcFilterOptions,
+  getGetHhcFilterOptionsQueryKey,
   type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
 import {
@@ -176,6 +178,11 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
     useListHouseholdMeters(lcParams[3]!, { query: { queryKey: getListHouseholdMetersQueryKey(lcParams[3]!), staleTime: 60_000 } }),
   ];
 
+  // All distinct water-system and country values across the whole fleet.
+  const filterOptionsQuery = useGetHhcFilterOptions({
+    query: { queryKey: getGetHhcFilterOptionsQueryKey(), staleTime: 300_000 },
+  });
+
   // Fleet-wide alarms (Pulse faults + server-computed Shengda alerts).
   const fleetAlarmsQuery = useGetHhcFleetAlarms({
     query: { queryKey: getGetHhcFleetAlarmsQueryKey(), refetchInterval: FLEET_POLL_MS, staleTime: 60_000 },
@@ -184,18 +191,24 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
 
   const meters = listQuery.data?.items ?? [];
 
-  // Dropdown options derived from the values actually displayed in the table,
-  // plus the current selection so an active filter can always be cleared.
+  // Dropdown options come from the fleet-wide filter-options endpoint so every
+  // distinct value across all pages is always available. While that fetch is
+  // in-flight we fall back to the values on the current page, and we always
+  // ensure the active selection is present so a live filter can be cleared.
   const waterSystemOptions = useMemo(() => {
-    const set = new Set(meters.map((m) => m.waterSystemName).filter((v): v is string => !!v));
+    const base = filterOptionsQuery.data?.waterSystems
+      ?? meters.map((m) => m.waterSystemName).filter((v): v is string => !!v);
+    const set = new Set(base);
     if (waterSystem) set.add(waterSystem);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [meters, waterSystem]);
+  }, [filterOptionsQuery.data, meters, waterSystem]);
   const countryOptions = useMemo(() => {
-    const set = new Set(meters.map((m) => m.countryName).filter((v): v is string => !!v));
+    const base = filterOptionsQuery.data?.countries
+      ?? meters.map((m) => m.countryName).filter((v): v is string => !!v);
+    const set = new Set(base);
     if (country) set.add(country);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [meters, country]);
+  }, [filterOptionsQuery.data, meters, country]);
 
   const pageIds = useMemo(() => meters.map((m) => m.id), [meters]);
   const states = useMeterStates(pageIds);
