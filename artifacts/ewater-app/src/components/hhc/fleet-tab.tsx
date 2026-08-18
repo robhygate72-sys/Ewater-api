@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
+import { useMemo, useState, Component, type ReactNode, type ErrorInfo } from "react";
 
 // ── Error boundary — catches render crashes and exposes the message ───────────
 class FleetErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -49,7 +49,6 @@ import {
   getListHouseholdMetersQueryKey,
   useGetHhcFleetAlarms,
   getGetHhcFleetAlarmsQueryKey,
-  useGetHhcFilterOptions,
   type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
 import {
@@ -143,27 +142,15 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
 }
 
 function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => void }) {
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [lifecycle, setLifecycle] = useState<string | null>(null);
   const [waterSystem, setWaterSystem] = useState<string | null>(null);
   const [country, setCountry] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    const t = setTimeout(() => { setDebouncedSearch(search.trim()); setPage(0); }, 350);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  // Fetch distinct filter options from the server (water systems + countries).
-  const filterOptionsQuery = useGetHhcFilterOptions({ query: { staleTime: 300_000, queryKey: ["hhc-filter-options"] } });
-  const filterOptions = filterOptionsQuery.data;
-
   const listParams = {
     ...(lifecycle ? { status: lifecycle } : {}),
     ...(waterSystem ? { waterSystem } : {}),
     ...(country ? { country } : {}),
-    ...(debouncedSearch ? { search: debouncedSearch } : {}),
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   };
@@ -196,6 +183,20 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
   const fa = fleetAlarmsQuery.data;
 
   const meters = listQuery.data?.items ?? [];
+
+  // Dropdown options derived from the values actually displayed in the table,
+  // plus the current selection so an active filter can always be cleared.
+  const waterSystemOptions = useMemo(() => {
+    const set = new Set(meters.map((m) => m.waterSystemName).filter((v): v is string => !!v));
+    if (waterSystem) set.add(waterSystem);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [meters, waterSystem]);
+  const countryOptions = useMemo(() => {
+    const set = new Set(meters.map((m) => m.countryName).filter((v): v is string => !!v));
+    if (country) set.add(country);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [meters, country]);
+
   const pageIds = useMemo(() => meters.map((m) => m.id), [meters]);
   const states = useMeterStates(pageIds);
   const stateById = useMemo(() => new Map(states.map((s) => [s.assetId, s])), [states]);
@@ -405,14 +406,13 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
 
       {/* Search + filters */}
       <div className="flex flex-col gap-2">
-        {/* Search bar */}
+        {/* Search bar (disabled) */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input
             data-testid="input-fleet-search"
-            placeholder="Search by name or asset ID…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search disabled"
+            disabled
             className="pl-9 h-9 text-sm"
           />
         </div>
@@ -456,7 +456,7 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">All water systems</SelectItem>
-              {(filterOptions?.waterSystems ?? []).map((ws) => (
+              {waterSystemOptions.map((ws) => (
                 <SelectItem key={ws} value={ws}>{ws}</SelectItem>
               ))}
             </SelectContent>
@@ -472,16 +472,16 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">All countries</SelectItem>
-              {(filterOptions?.countries ?? []).map((c) => (
+              {countryOptions.map((c) => (
                 <SelectItem key={c} value={c}>{c}</SelectItem>
               ))}
             </SelectContent>
           </Select>
 
           {/* Clear filters */}
-          {(lifecycle || waterSystem || country || debouncedSearch) && (
+          {(lifecycle || waterSystem || country) && (
             <button
-              onClick={() => { setLifecycle(null); setWaterSystem(null); setCountry(null); setSearch(""); setDebouncedSearch(""); setPage(0); }}
+              onClick={() => { setLifecycle(null); setWaterSystem(null); setCountry(null); setPage(0); }}
               className="text-xs px-2.5 py-1 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
             >
               Clear filters
