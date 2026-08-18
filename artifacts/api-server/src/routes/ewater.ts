@@ -5,6 +5,7 @@ import {
   getCredentials,
   getToken,
   getTokenExpiresAt,
+  getCredentialGeneration,
   ewaterFetch,
 } from "../lib/ewater-client";
 import {
@@ -47,6 +48,70 @@ import {
 import { tryDecodeShengdaLwm2m } from "../lib/shengda-nbiot-decoder";
 
 const router: IRouter = Router();
+
+// ── Tiny TTL caches for the heavy asset-tech bundle ──────────────────────────
+// The tech endpoint fans out to ~12 eWater calls; repeat visits within the
+// TTL are served instantly. Discovered IMEIs and the Entity/List are much
+// more stable than live telemetry, so they get longer TTLs.
+const techCache = new Map<string, { expiresAt: number; value: unknown }>();
+const TECH_TTL_MS = 30_000;
+const IMEI_TTL_MS = 10 * 60_000;
+const ENTITY_TTL_MS = 5 * 60_000;
+
+// Cache entries are namespaced by credential generation, so changing or
+// clearing eWater credentials instantly invalidates everything cached under
+// the previous account — one account's data is never served to another.
+let cacheGeneration = getCredentialGeneration();
+
+function genKey(key: string): string {
+  const gen = getCredentialGeneration();
+  if (gen !== cacheGeneration) {
+    techCache.clear();
+    cacheGeneration = gen;
+  }
+  return `${gen}:${key}`;
+}
+
+function ttlGet<T>(map: Map<string, { expiresAt: number; value: unknown }>, key: string): T | undefined {
+  const k = genKey(key);
+  const hit = map.get(k);
+  if (hit && hit.expiresAt > Date.now()) return hit.value as T;
+  map.delete(k);
+  return undefined;
+}
+
+function ttlSet(map: Map<string, { expiresAt: number; value: unknown }>, key: string, value: unknown, ttlMs: number): void {
+  // Opportunistic sweep so long-running servers don't accumulate stale entries.
+  if (map.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of map) if (v.expiresAt <= now) map.delete(k);
+  }
+  map.set(genKey(key), { expiresAt: Date.now() + ttlMs, value });
+}
+
+async function cachedDiscoverImeis(assetId: string): Promise<string[]> {
+  const key = `imeis:${assetId}`;
+  const hit = ttlGet<string[]>(techCache, key);
+  if (hit) return hit;
+  const imeis = await discoverImeisFromLogs(assetId);
+  // Only cache non-empty results for the long TTL — an empty answer may just
+  // mean the log scan transiently failed, and must not stick for 10 minutes.
+  if (imeis.length > 0) ttlSet(techCache, key, imeis, IMEI_TTL_MS);
+  return imeis;
+}
+
+async function cachedEntityList(): Promise<PromiseSettledResult<{ status: number; data: unknown }>> {
+  const key = "entity-list";
+  const hit = ttlGet<{ status: number; data: unknown }>(techCache, key);
+  if (hit) return { status: "fulfilled", value: hit };
+  try {
+    const res = await ewaterFetch("state", "/api/Entity/List");
+    if (res.status === 200) ttlSet(techCache, key, res, ENTITY_TTL_MS);
+    return { status: "fulfilled", value: res };
+  } catch (err) {
+    return { status: "rejected", reason: err };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Credentials
@@ -413,9 +478,17 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
   const id = params.data.assetId;
   const idNum = Number(id);
 
+  // Serve a recent copy instantly — the fan-out below is expensive.
+  const cachedTech = ttlGet<Record<string, unknown>>(techCache, `tech:${id}`);
+  if (cachedTech) {
+    res.json(cachedTech);
+    return;
+  }
+
   try {
     const [
-      [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, entityRes, settingsRes],
+      [basicRes, connRes, powerRes, flowRes, usageRes, statusRes, firmwareRes, identifiersRes, commandsRes, settingsRes],
+      entityRes,
       discoveredImeis,
     ] = await Promise.all([
       Promise.allSettled([
@@ -428,17 +501,27 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
         ewaterFetch("state", `/api/Asset/GetFirmwareStatusByAssetId?assetId=${encodeURIComponent(id)}`),
         ewaterFetch("state", `/api/Asset/GetIdentifiersByAssetId?assetId=${encodeURIComponent(idNum)}`),
         ewaterFetch("state", `/api/Asset/GetCommandsForAsset?assetId=${encodeURIComponent(id)}&pageSize=20&pageIndex=0`),
-        ewaterFetch("state", "/api/Entity/List"),
         ewaterFetch("state", `/api/Asset/GetSettingsMapForAsset?assetId=${encodeURIComponent(id)}`),
       ]),
+      // Fleet-wide entity list changes rarely — served from a 5-minute cache.
+      cachedEntityList(),
       // Run alongside the batch above (not after it) — this is an extra
       // eWater call purely to catch secondary devices (e.g. a Shengda
       // NB-IoT meter) missing from the identifiers registry below.
-      discoverImeisFromLogs(id),
+      // Discovered IMEIs are stable, so results are cached for 10 minutes.
+      cachedDiscoverImeis(id),
     ]);
 
     const ok = <T>(r: PromiseSettledResult<{ status: number; data: unknown }>): T | null =>
       r.status === "fulfilled" && r.value.status === 200 ? (r.value.data as T) : null;
+
+    // Only a COMPLETE bundle may be cached — if any upstream source failed or
+    // timed out, the degraded payload (nulls where data should be) is served
+    // once but never replayed from cache for the next 30 seconds.
+    const bundleComplete = [
+      basicRes, connRes, powerRes, flowRes, usageRes, statusRes,
+      firmwareRes, identifiersRes, commandsRes, settingsRes, entityRes,
+    ].every((r) => r.status === "fulfilled" && r.value.status === 200);
 
     const basic = ok<Record<string, unknown>>(basicRes);
     if (!basic) {
@@ -541,7 +624,7 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
     // Round voltage to 2dp to avoid floating point noise
     const round2 = (n: number | null) => n != null ? Math.round(n * 100) / 100 : null;
 
-    res.json({
+    const techPayload = {
       assetId: id,
       name: strOrNull(basic["name"]) ?? id,
       lifecycleState: strOrNull(basic["assetLifecycleState"]),
@@ -602,7 +685,9 @@ router.get("/ewater/assets/:assetId/tech", async (req, res): Promise<void> => {
           : null;
         return { ewcFcf: fcf, ewcLcf: lcf, ewcFx: fx, ewcPreload: preload, priceOfWater: price };
       })(),
-    });
+    };
+    if (bundleComplete) ttlSet(techCache, `tech:${id}`, techPayload, TECH_TTL_MS);
+    res.json(techPayload);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "Failed to fetch asset tech status");

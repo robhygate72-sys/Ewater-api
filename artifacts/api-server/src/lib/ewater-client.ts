@@ -59,6 +59,15 @@ function deleteFile(): void {
 let credentials: Credentials | null = null;
 let tokenCache: TokenCache | null = null;
 
+// Bumped whenever credentials change; lets in-flight logins detect they are
+// stale, and lets route-level caches invalidate themselves so one account's
+// cached data is never served under another account's credentials.
+let credentialGeneration = 0;
+
+export function getCredentialGeneration(): number {
+  return credentialGeneration;
+}
+
 // Load persisted credentials on startup (file takes priority, then env vars)
 credentials =
   loadFromFile() ??
@@ -73,18 +82,27 @@ if (credentials) {
 export function setCredentials(creds: Credentials): void {
   credentials = creds;
   tokenCache = null;
+  tokenRefreshInFlight = null;
+  credentialGeneration++;
   saveToFile(creds);
 }
 
 export function clearCredentials(): void {
   credentials = null;
   tokenCache = null;
+  tokenRefreshInFlight = null;
+  credentialGeneration++;
   deleteFile();
 }
 
 export function getCredentials(): Credentials | null {
   return credentials;
 }
+
+// Dedupe concurrent logins: when many parallel requests need a token at once
+// (e.g. the asset-tech fan-out on a cold start), only ONE web-login flow runs;
+// the rest await the same promise instead of each doing the multi-step login.
+let tokenRefreshInFlight: Promise<string> | null = null;
 
 export async function getToken(): Promise<string> {
   if (!credentials) {
@@ -96,12 +114,27 @@ export async function getToken(): Promise<string> {
     return tokenCache.token;
   }
 
+  if (tokenRefreshInFlight) return tokenRefreshInFlight;
+  const inFlight = refreshToken(credentialGeneration).finally(() => {
+    if (tokenRefreshInFlight === inFlight) tokenRefreshInFlight = null;
+  });
+  tokenRefreshInFlight = inFlight;
+  return inFlight;
+}
+
+async function refreshToken(generation: number): Promise<string> {
+  if (!credentials) {
+    throw new Error("No credentials configured");
+  }
+  const now = Date.now();
+
   logger.info("Refreshing eWater token via web login");
 
   // Step 1: GET the login page to obtain the antiforgery cookie + CSRF token
   const loginPageRes = await fetch(`${EWATER_BASES.auth}`, {
     method: "GET",
     redirect: "follow",
+    signal: AbortSignal.timeout(25_000),
   });
 
   const loginPageHtml = await loginPageRes.text();
@@ -134,6 +167,7 @@ export async function getToken(): Promise<string> {
     },
     body: formData.toString(),
     redirect: "manual",
+    signal: AbortSignal.timeout(25_000),
   });
 
   if (loginRes.status !== 302) {
@@ -147,6 +181,11 @@ export async function getToken(): Promise<string> {
   }
 
   const token = tokenMatch[1];
+  // Discard the result if credentials changed while this login was in flight
+  // — an old account's token must not populate the cache.
+  if (generation !== credentialGeneration) {
+    throw new Error("Credentials changed during login; please retry");
+  }
   tokenCache = {
     token,
     expiresAt: now + 3600 * 1000,
@@ -161,13 +200,20 @@ export function getTokenExpiresAt(): string | null {
   return new Date(tokenCache.expiresAt).toISOString();
 }
 
+// Hard ceiling per upstream call — a hung eWater endpoint must never leave
+// our own API request (and the user's skeleton screen) waiting indefinitely.
+const UPSTREAM_TIMEOUT_MS = 25_000;
+
 async function doFetch(
   url: string,
   token: string,
   options: RequestInit
 ): Promise<{ status: number; data: unknown }> {
+  const timeoutSignal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
   const res = await fetch(url, {
     ...options,
+    // Compose with any caller-supplied signal — the timeout ceiling always applies.
+    signal: options.signal ? AbortSignal.any([timeoutSignal, options.signal]) : timeoutSignal,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
