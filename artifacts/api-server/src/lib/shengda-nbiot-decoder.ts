@@ -393,6 +393,226 @@ function formatFieldValue(def: FieldDef | undefined, raw: unknown): string {
   return String(raw);
 }
 
+// ---------------------------------------------------------------------------
+// Structured state — typed sub-objects per LwM2M section. All fields are null
+// when the packet did not carry them (never 0 as a fallback).
+// ---------------------------------------------------------------------------
+
+export interface ShengdaDeviceInfo {
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  firmwareVersion: string | null;
+  hardwareVersion: string | null;
+  softwareVersion: string | null;
+  powerSupplyType: string | null;
+  powerSupplyVoltage: number | null;
+  batteryLevelPercent: number | null;
+  batteryStatus: string | null;
+  errorCode: number | null;
+  rtcTime: string | null;
+  deviceType: string | null;
+  meterWorkingHours: number | null;
+}
+
+export interface ShengdaMeterState {
+  meterReadingLitres: number | null;
+  meterReadingTime: string | null;
+  availableWaterAllowanceLitres: number | null;
+  availableWaterAllowanceAlarmLitres: number | null;
+  overdraftVolumeLitres: number | null;
+  instantaneousFlowLph: number | null;
+  forwardFlowLitres: number | null;
+  reverseFlowLitres: number | null;
+  batteryVoltage: number | null;
+  meterStatusWord: number | null;
+  waterMeterNo: string | null;
+  paymentFunctionEnabled: boolean | null;
+  measurementModel: string | null;
+  pulseConstant: string | null;
+  meterDnSize: number | null;
+  pressureKpa: number | null;
+  temperatureCelsius: number | null;
+}
+
+export interface ShengdaValveState {
+  controlWord: string | null;
+  status: string | null;
+  failureStatus: string | null;
+  valveType: string | null;
+  dredgeCyclePerMonth: number | null;
+  timeoutSeconds: number | null;
+  openingAngleDegrees: number | null;
+}
+
+export interface ShengdaAlarmState {
+  magneticAttack: boolean | null;
+  historicalMagneticAttack: boolean | null;
+  antiDemolition: boolean | null;
+  historicalAntiDemolition: boolean | null;
+  leak: boolean | null;
+  overflow: boolean | null;
+  stop: boolean | null;
+  reverseFlow: boolean | null;
+  waterErrorCode: number | null;
+  availableWaterInsufficient: boolean | null;
+}
+
+export interface ShengdaReportingState {
+  reportCycleSeconds: number | null;
+  reportTimeSlotSeconds: number | null;
+  retransmissionTimes: number | null;
+  retransmissionCycleSeconds: number | null;
+  rfWorkingMode: string | null;
+}
+
+export interface ShengdaNetworkState {
+  nbModuleVersion: string | null;
+  imei: string | null;
+  imsi: string | null;
+  iccid: string | null;
+  ipPort: string | null;
+  apn: string | null;
+  plmnId: string | null;
+  bandIndicator: string | null;
+  earfcn: number | null;
+  cellId: string | null;
+  pci: number | null;
+  rsrp: number | null;
+  rsrq: number | null;
+  rssi: number | null;
+  snr: number | null;
+  ecl: number | null;
+  txPower: number | null;
+  csq: number | null;
+  psmEnabled: boolean | null;
+  networkProtocol: string | null;
+}
+
+export interface ShengdaState {
+  device: ShengdaDeviceInfo;
+  meter: ShengdaMeterState;
+  valve: ShengdaValveState;
+  alarms: ShengdaAlarmState;
+  reporting: ShengdaReportingState;
+  network: ShengdaNetworkState;
+}
+
+function emptyShengdaState(): ShengdaState {
+  return {
+    device: {
+      manufacturer: null,
+      model: null,
+      serialNumber: null,
+      firmwareVersion: null,
+      hardwareVersion: null,
+      softwareVersion: null,
+      powerSupplyType: null,
+      powerSupplyVoltage: null,
+      batteryLevelPercent: null,
+      batteryStatus: null,
+      errorCode: null,
+      rtcTime: null,
+      deviceType: null,
+      meterWorkingHours: null,
+    },
+    meter: {
+      meterReadingLitres: null,
+      meterReadingTime: null,
+      availableWaterAllowanceLitres: null,
+      availableWaterAllowanceAlarmLitres: null,
+      overdraftVolumeLitres: null,
+      instantaneousFlowLph: null,
+      forwardFlowLitres: null,
+      reverseFlowLitres: null,
+      batteryVoltage: null,
+      meterStatusWord: null,
+      waterMeterNo: null,
+      paymentFunctionEnabled: null,
+      measurementModel: null,
+      pulseConstant: null,
+      meterDnSize: null,
+      pressureKpa: null,
+      temperatureCelsius: null,
+    },
+    valve: {
+      controlWord: null,
+      status: null,
+      failureStatus: null,
+      valveType: null,
+      dredgeCyclePerMonth: null,
+      timeoutSeconds: null,
+      openingAngleDegrees: null,
+    },
+    alarms: {
+      magneticAttack: null,
+      historicalMagneticAttack: null,
+      antiDemolition: null,
+      historicalAntiDemolition: null,
+      leak: null,
+      overflow: null,
+      stop: null,
+      reverseFlow: null,
+      waterErrorCode: null,
+      availableWaterInsufficient: null,
+    },
+    reporting: {
+      reportCycleSeconds: null,
+      reportTimeSlotSeconds: null,
+      retransmissionTimes: null,
+      retransmissionCycleSeconds: null,
+      rfWorkingMode: null,
+    },
+    network: {
+      nbModuleVersion: null,
+      imei: null,
+      imsi: null,
+      iccid: null,
+      ipPort: null,
+      apn: null,
+      plmnId: null,
+      bandIndicator: null,
+      earfcn: null,
+      cellId: null,
+      pci: null,
+      rsrp: null,
+      rsrq: null,
+      rssi: null,
+      snr: null,
+      ecl: null,
+      txPower: null,
+      csq: null,
+      psmEnabled: null,
+      networkProtocol: null,
+    },
+  };
+}
+
+// Small coercion helpers used when populating structured state.
+function asNum(v: unknown): number | null {
+  return typeof v === "number" && !isNaN(v) ? v : null;
+}
+function asStr(v: unknown): string | null {
+  if (typeof v === "string") return v !== "" ? v : null;
+  if (typeof v === "number") return String(v);
+  if (Buffer.isBuffer(v)) return v.toString("hex");
+  return null;
+}
+function asBool01(v: unknown): boolean | null {
+  if (v === 0) return false;
+  if (v === 1) return true;
+  return null;
+}
+function asUnixIso(v: unknown): string | null {
+  if (typeof v !== "number") return null;
+  const d = new Date(v * 1000);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+function enumOrRaw(def: FieldDef | undefined, v: unknown): string | null {
+  if (typeof v !== "number") return asStr(v);
+  return def?.enum?.[v] ?? String(v);
+}
+
 export interface ShengdaLwm2mDecoded {
   valid: boolean;
   messageType: string;
@@ -407,6 +627,8 @@ export interface ShengdaLwm2mDecoded {
   errorCode: number | null;
   magneticAttack: boolean | null;
   description: string;
+  /** Fully structured per-section state extracted from this packet. */
+  state: ShengdaState;
 }
 
 /**
@@ -479,6 +701,8 @@ export function tryDecodeShengdaLwm2m(payloadBase64: string): ShengdaLwm2mDecode
   let errorCode: number | null = null;
   let magneticAttack: boolean | null = null;
 
+  const state = emptyShengdaState();
+
   for (const obj of objects) {
     const bn = obj.get("bn");
     const bnStr = typeof bn === "string" ? bn : null;
@@ -519,6 +743,99 @@ export function tryDecodeShengdaLwm2m(payloadBase64: string): ShengdaLwm2mDecode
         if (code === 11) signalPower = `${String(value)} (rsrp)`;
         if (code === 14) signalSnr = `${String(value)} (snr)`;
       }
+
+      // ── Structured state population (per LwM2M section) ──────────────────
+      if (bnStr === "/3/0") {
+        const d = state.device;
+        if (code === 0) d.manufacturer = asStr(value);
+        if (code === 1) d.model = asStr(value);
+        if (code === 2) d.serialNumber = asStr(value);
+        if (code === 3) d.firmwareVersion = asStr(value);
+        if (code === 18) d.hardwareVersion = asStr(value);
+        if (code === 19) d.softwareVersion = asStr(value);
+        if (code === 6) d.powerSupplyType = enumOrRaw(def, value);
+        if (code === 7) d.powerSupplyVoltage = asNum(value) != null ? (value as number) / 100 : null;
+        if (code === 9) d.batteryLevelPercent = asNum(value);
+        if (code === 20) d.batteryStatus = enumOrRaw(def, value);
+        if (code === 11) d.errorCode = asNum(value);
+        if (code === 13) d.rtcTime = asUnixIso(value);
+        if (code === 17) d.deviceType = enumOrRaw(def, value);
+        if (code === 24) d.meterWorkingHours = asNum(value);
+      }
+      if (bnStr === "/80/0") {
+        const m = state.meter;
+        if (code === 16) m.meterReadingLitres = asNum(value);
+        if (code === 21) m.meterReadingTime = asUnixIso(value);
+        if (code === 23) m.availableWaterAllowanceLitres = asNum(value);
+        if (code === 24) m.availableWaterAllowanceAlarmLitres = asNum(value);
+        if (code === 26) m.overdraftVolumeLitres = asNum(value);
+        if (code === 8) m.instantaneousFlowLph = asNum(value);
+        if (code === 13) m.forwardFlowLitres = asNum(value);
+        if (code === 14) m.reverseFlowLitres = asNum(value);
+        if (code === 37) m.batteryVoltage = asNum(value) != null ? (value as number) / 100 : null;
+        if (code === 6) m.meterStatusWord = asNum(value);
+        if (code === 22) m.waterMeterNo = asStr(value);
+        if (code === 31) m.paymentFunctionEnabled = asBool01(value);
+        if (code === 1) m.measurementModel = enumOrRaw(def, value);
+        if (code === 2) m.pulseConstant = enumOrRaw(def, value);
+        if (code === 3) m.meterDnSize = asNum(value);
+        if (code === 34) m.pressureKpa = asNum(value);
+        if (code === 35) m.temperatureCelsius = asNum(value) != null ? (value as number) / 100 : null;
+      }
+      if (bnStr === "/81/0") {
+        const v = state.valve;
+        if (code === 0) v.controlWord = enumOrRaw(def, value);
+        if (code === 1) v.status = enumOrRaw(def, value);
+        if (code === 2) v.failureStatus = enumOrRaw(def, value);
+        if (code === 3) v.valveType = enumOrRaw(def, value);
+        if (code === 4) v.dredgeCyclePerMonth = asNum(value);
+        if (code === 7) v.timeoutSeconds = asNum(value);
+        if (code === 8) v.openingAngleDegrees = asNum(value);
+      }
+      if (bnStr === "/82/0") {
+        const a = state.alarms;
+        if (code === 0) a.magneticAttack = asBool01(value);
+        if (code === 1) a.historicalMagneticAttack = asBool01(value);
+        if (code === 2) a.antiDemolition = asBool01(value);
+        if (code === 3) a.historicalAntiDemolition = asBool01(value);
+        if (code === 4) a.leak = asBool01(value);
+        if (code === 5) a.overflow = asBool01(value);
+        if (code === 6) a.stop = asBool01(value);
+        if (code === 10) a.reverseFlow = asBool01(value);
+        if (code === 7) a.waterErrorCode = asNum(value);
+        if (code === 11) a.availableWaterInsufficient = asBool01(value);
+      }
+      if (bnStr === "/84/0") {
+        const r = state.reporting;
+        if (code === 0) r.reportCycleSeconds = asNum(value);
+        if (code === 1) r.reportTimeSlotSeconds = asNum(value);
+        if (code === 2) r.retransmissionTimes = asNum(value);
+        if (code === 3) r.retransmissionCycleSeconds = asNum(value);
+        if (code === 10) r.rfWorkingMode = enumOrRaw(def, value);
+      }
+      if (bnStr === "/99/0") {
+        const n = state.network;
+        if (code === 0) n.nbModuleVersion = asStr(value);
+        if (code === 1) n.imei = asStr(value);
+        if (code === 2) n.imsi = asStr(value);
+        if (code === 3) n.iccid = asStr(value);
+        if (code === 4) n.ipPort = asStr(value);
+        if (code === 5) n.apn = asStr(value);
+        if (code === 6) n.plmnId = asStr(value);
+        if (code === 7) n.bandIndicator = asStr(value);
+        if (code === 8) n.earfcn = asNum(value);
+        if (code === 9) n.cellId = asStr(value);
+        if (code === 10) n.pci = asNum(value);
+        if (code === 11) n.rsrp = asNum(value);
+        if (code === 12) n.rsrq = asNum(value);
+        if (code === 13) n.rssi = asNum(value);
+        if (code === 14) n.snr = asNum(value);
+        if (code === 15) n.ecl = asNum(value);
+        if (code === 16) n.txPower = asNum(value);
+        if (code === 19) n.csq = asNum(value);
+        if (code === 21) n.psmEnabled = asBool01(value);
+        if (code === 23) n.networkProtocol = enumOrRaw(def, value);
+      }
     }
     lines.push("");
   }
@@ -537,5 +854,96 @@ export function tryDecodeShengdaLwm2m(payloadBase64: string): ShengdaLwm2mDecode
     errorCode,
     magneticAttack,
     description: lines.join("\n").trimEnd(),
+    state,
   };
+}
+
+// ---------------------------------------------------------------------------
+// State reducer — folds multiple partial packets into an authoritative
+// current state. Walks entries newest-first; the newest non-null observation
+// of each field wins and carries its own `observedAt` timestamp, so a partial
+// newer packet never silently erases fields only present in older packets.
+// Packets with valid === false (bad CRC) are excluded from authoritative
+// state but retained in `invalidPackets`.
+// ---------------------------------------------------------------------------
+
+export interface ShengdaDecodedLogEntry {
+  id: string;
+  /** ISO timestamp the packet was received. */
+  timestamp: string;
+  decoded: ShengdaLwm2mDecoded;
+}
+
+export interface ObservedField {
+  value: string | number | boolean;
+  observedAt: string;
+}
+
+export type ObservedSection = Record<string, ObservedField | null>;
+
+export interface ShengdaCurrentState {
+  device: ObservedSection;
+  meter: ObservedSection;
+  valve: ObservedSection;
+  alarms: ObservedSection;
+  reporting: ObservedSection;
+  network: ObservedSection;
+  /** Timestamp of the newest packet considered (valid or not). */
+  lastPacketAt: string | null;
+  /** Timestamp of the newest CRC-valid packet. */
+  lastValidPacketAt: string | null;
+  validPacketCount: number;
+  invalidPackets: { id: string; timestamp: string }[];
+}
+
+const STATE_SECTIONS = ["device", "meter", "valve", "alarms", "reporting", "network"] as const;
+
+export function buildShengdaCurrentState(entries: ShengdaDecodedLogEntry[]): ShengdaCurrentState {
+  // Newest first
+  const sorted = [...entries].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
+
+  const empty = emptyShengdaState();
+  const out: ShengdaCurrentState = {
+    device: {},
+    meter: {},
+    valve: {},
+    alarms: {},
+    reporting: {},
+    network: {},
+    lastPacketAt: sorted[0]?.timestamp ?? null,
+    lastValidPacketAt: null,
+    validPacketCount: 0,
+    invalidPackets: [],
+  };
+  for (const section of STATE_SECTIONS) {
+    for (const key of Object.keys(empty[section])) {
+      out[section][key] = null;
+    }
+  }
+
+  for (const entry of sorted) {
+    if (!entry.decoded.valid) {
+      out.invalidPackets.push({ id: entry.id, timestamp: entry.timestamp });
+      continue;
+    }
+    out.validPacketCount += 1;
+    if (out.lastValidPacketAt === null) out.lastValidPacketAt = entry.timestamp;
+
+    for (const section of STATE_SECTIONS) {
+      const src = entry.decoded.state[section] as unknown as Record<string, unknown>;
+      const dst = out[section];
+      for (const [key, value] of Object.entries(src)) {
+        if (value === null || value === undefined) continue;
+        if (dst[key] != null) continue; // newer observation already recorded
+        dst[key] = {
+          value: value as string | number | boolean,
+          observedAt: entry.timestamp,
+        };
+      }
+    }
+  }
+
+  return out;
 }

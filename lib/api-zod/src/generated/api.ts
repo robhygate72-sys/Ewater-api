@@ -535,3 +535,243 @@ export const TestNotifierResponse = zod.object({
 })
 
 
+/**
+ * @summary List household meters (paginated, filterable)
+ */
+export const listHouseholdMetersQueryLimitDefault = 50;
+export const listHouseholdMetersQueryLimitMax = 100;
+
+export const listHouseholdMetersQueryOffsetDefault = 0;
+export const listHouseholdMetersQueryOffsetMin = 0;
+
+
+
+export const ListHouseholdMetersQueryParams = zod.object({
+  "status": zod.coerce.string().optional().describe('Filter by asset lifecycle state (case-insensitive)'),
+  "waterSystemId": zod.coerce.number().optional(),
+  "search": zod.coerce.string().optional().describe('Substring match on meter name or asset ID'),
+  "limit": zod.coerce.number().min(1).max(listHouseholdMetersQueryLimitMax).default(listHouseholdMetersQueryLimitDefault),
+  "offset": zod.coerce.number().min(listHouseholdMetersQueryOffsetMin).default(listHouseholdMetersQueryOffsetDefault)
+})
+
+export const ListHouseholdMetersResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "status": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "waterSystemName": zod.string().nullish(),
+  "countryName": zod.string().nullish(),
+  "parentId": zod.number().nullish(),
+  "fetchedAt": zod.string().optional()
+})),
+  "totalCount": zod.number(),
+  "returnedCount": zod.number(),
+  "offset": zod.number(),
+  "limit": zod.number(),
+  "hasMore": zod.boolean(),
+  "fetchedAt": zod.string()
+})
+
+
+/**
+ * @summary Get household meter summary
+ */
+export const GetHouseholdMeterParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetHouseholdMeterResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "status": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "waterSystemName": zod.string().nullish(),
+  "countryName": zod.string().nullish(),
+  "parentId": zod.number().nullish(),
+  "fetchedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Get authoritative current Shengda state (reducer output) with connectivity and health
+ */
+export const GetHouseholdMeterStateParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetHouseholdMeterStateResponse = zod.object({
+  "assetId": zod.string(),
+  "meter": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "status": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "waterSystemName": zod.string().nullish(),
+  "countryName": zod.string().nullish(),
+  "parentId": zod.number().nullish(),
+  "fetchedAt": zod.string().optional()
+}),zod.null()]).optional(),
+  "state": zod.object({
+  "device": zod.record(zod.string(), zod.union([zod.object({
+  "value": zod.union([zod.string(),zod.number(),zod.boolean()]),
+  "observedAt": zod.string().describe('ISO timestamp of the packet that carried this value')
+}).describe('A single field observation with the timestamp of the packet it came from'),zod.null()])).describe('Device Info section (\/3\/0) — map of field name to observation, null when never observed'),
+  "meter": zod.record(zod.string(), zod.union([zod.object({
+  "value": zod.union([zod.string(),zod.number(),zod.boolean()]),
+  "observedAt": zod.string().describe('ISO timestamp of the packet that carried this value')
+}).describe('A single field observation with the timestamp of the packet it came from'),zod.null()])).describe('Meter Basic section (\/80\/0) — map of field name to observation, null when never observed'),
+  "valve": zod.record(zod.string(), zod.union([zod.object({
+  "value": zod.union([zod.string(),zod.number(),zod.boolean()]),
+  "observedAt": zod.string().describe('ISO timestamp of the packet that carried this value')
+}).describe('A single field observation with the timestamp of the packet it came from'),zod.null()])).describe('Valve Control section (\/81\/0) — map of field name to observation, null when never observed'),
+  "alarms": zod.record(zod.string(), zod.union([zod.object({
+  "value": zod.union([zod.string(),zod.number(),zod.boolean()]),
+  "observedAt": zod.string().describe('ISO timestamp of the packet that carried this value')
+}).describe('A single field observation with the timestamp of the packet it came from'),zod.null()])).describe('Abnormal Alarm section (\/82\/0) — map of field name to observation, null when never observed'),
+  "reporting": zod.record(zod.string(), zod.union([zod.object({
+  "value": zod.union([zod.string(),zod.number(),zod.boolean()]),
+  "observedAt": zod.string().describe('ISO timestamp of the packet that carried this value')
+}).describe('A single field observation with the timestamp of the packet it came from'),zod.null()])).describe('Reporting Config section (\/84\/0) — map of field name to observation, null when never observed'),
+  "network": zod.record(zod.string(), zod.union([zod.object({
+  "value": zod.union([zod.string(),zod.number(),zod.boolean()]),
+  "observedAt": zod.string().describe('ISO timestamp of the packet that carried this value')
+}).describe('A single field observation with the timestamp of the packet it came from'),zod.null()])).describe('NB Delivery section (\/99\/0) — map of field name to observation, null when never observed'),
+  "lastPacketAt": zod.string().nullish(),
+  "lastValidPacketAt": zod.string().nullish(),
+  "validPacketCount": zod.number(),
+  "invalidPackets": zod.array(zod.object({
+  "id": zod.string(),
+  "timestamp": zod.string()
+}))
+}),
+  "connectivity": zod.object({
+  "status": zod.enum(['healthy', 'late', 'offline', 'unknown']),
+  "lastValidPacketAt": zod.string().nullish(),
+  "reportCycleSeconds": zod.number().nullish(),
+  "silenceSeconds": zod.number().nullish(),
+  "reason": zod.string()
+}),
+  "health": zod.object({
+  "status": zod.enum(['healthy', 'warning', 'critical', 'unknown']),
+  "reasons": zod.array(zod.object({
+  "severity": zod.enum(['ok', 'warning', 'critical']),
+  "code": zod.string(),
+  "message": zod.string(),
+  "observedAt": zod.string().nullish()
+}))
+}),
+  "fetchedAt": zod.string(),
+  "sourceObservedAt": zod.string().nullish().describe('Timestamp of the newest valid device observation used')
+})
+
+
+/**
+ * @summary Get bucketed usage history from cumulative meter readings (reset-aware)
+ */
+export const GetHouseholdMeterHistoryParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const getHouseholdMeterHistoryQueryPeriodDefault = `7d`;
+
+export const GetHouseholdMeterHistoryQueryParams = zod.object({
+  "period": zod.enum(['24h', '7d', '30d', '90d']).default(getHouseholdMeterHistoryQueryPeriodDefault)
+})
+
+export const GetHouseholdMeterHistoryResponse = zod.object({
+  "assetId": zod.string(),
+  "period": zod.enum(['24h', '7d', '30d', '90d']),
+  "buckets": zod.array(zod.object({
+  "bucketStart": zod.string(),
+  "bucketEnd": zod.string(),
+  "consumptionLitres": zod.number().nullish().describe('Litres consumed in this bucket; null when no diff computable'),
+  "discontinuity": zod.boolean().describe('True when a counter reset (negative diff) fell in this bucket'),
+  "readingCount": zod.number()
+})),
+  "totalConsumptionLitres": zod.number().nullish(),
+  "firstReadingLitres": zod.number().nullish(),
+  "lastReadingLitres": zod.number().nullish(),
+  "discontinuityCount": zod.number(),
+  "fetchedAt": zod.string()
+})
+
+
+/**
+ * @summary Get decoded packet log for a household meter (paginated, filterable)
+ */
+export const GetHouseholdMeterCommunicationsParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const getHouseholdMeterCommunicationsQueryHoursDefault = 72;
+export const getHouseholdMeterCommunicationsQueryHoursMax = 720;
+
+export const getHouseholdMeterCommunicationsQueryLimitDefault = 50;
+export const getHouseholdMeterCommunicationsQueryLimitMax = 100;
+
+export const getHouseholdMeterCommunicationsQueryOffsetDefault = 0;
+export const getHouseholdMeterCommunicationsQueryOffsetMin = 0;
+
+
+
+export const GetHouseholdMeterCommunicationsQueryParams = zod.object({
+  "hours": zod.coerce.number().min(1).max(getHouseholdMeterCommunicationsQueryHoursMax).default(getHouseholdMeterCommunicationsQueryHoursDefault),
+  "validOnly": zod.coerce.boolean().optional().describe('Only CRC-valid packets'),
+  "messageFunction": zod.coerce.string().optional().describe('Substring filter on message function label'),
+  "limit": zod.coerce.number().min(1).max(getHouseholdMeterCommunicationsQueryLimitMax).default(getHouseholdMeterCommunicationsQueryLimitDefault),
+  "offset": zod.coerce.number().min(getHouseholdMeterCommunicationsQueryOffsetMin).default(getHouseholdMeterCommunicationsQueryOffsetDefault)
+})
+
+export const GetHouseholdMeterCommunicationsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "timestamp": zod.string(),
+  "imei": zod.string().nullish(),
+  "pipeline": zod.string().nullish(),
+  "protocol": zod.string().nullish(),
+  "valid": zod.boolean().nullish().describe('CRC validity; null when the payload is not a Shengda frame'),
+  "messageType": zod.string().nullish(),
+  "messageFunction": zod.string().nullish(),
+  "meterReadingLitres": zod.number().nullish(),
+  "description": zod.string().nullish()
+})),
+  "totalCount": zod.number(),
+  "returnedCount": zod.number(),
+  "offset": zod.number(),
+  "limit": zod.number(),
+  "hasMore": zod.boolean(),
+  "fetchedAt": zod.string()
+})
+
+
+/**
+ * @summary Get commissioning status and auto-check results
+ */
+export const GetHouseholdMeterCommissioningParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const GetHouseholdMeterCommissioningResponse = zod.object({
+  "assetId": zod.string(),
+  "overall": zod.enum(['ready', 'attention', 'insufficient-data']),
+  "checks": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['pass', 'fail', 'unknown']),
+  "detail": zod.string(),
+  "observedAt": zod.string().nullish()
+})),
+  "connectivity": zod.object({
+  "status": zod.enum(['healthy', 'late', 'offline', 'unknown']),
+  "lastValidPacketAt": zod.string().nullish(),
+  "reportCycleSeconds": zod.number().nullish(),
+  "silenceSeconds": zod.number().nullish(),
+  "reason": zod.string()
+}),
+  "evaluatedAt": zod.string(),
+  "fetchedAt": zod.string().optional(),
+  "sourceObservedAt": zod.string().nullish()
+})
+
+

@@ -7,6 +7,7 @@ const EWATER_BASES: Record<string, string> = {
   query: "https://query.ewater.io",
   state: "https://state.ewater.io",
   command: "https://command.ewater.io",
+  pulse: "https://pulseapi.ewater.io",
 };
 
 interface Credentials {
@@ -193,7 +194,7 @@ export async function ewaterFetch(
 ): Promise<{ status: number; data: unknown }> {
   const base = EWATER_BASES[api];
   if (!base) {
-    throw new Error(`Unknown eWater API: ${api}. Use: auth, query, state, command`);
+    throw new Error(`Unknown eWater API: ${api}. Use: auth, query, state, command, pulse`);
   }
 
   const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
@@ -210,6 +211,16 @@ export async function ewaterFetch(
   }
 
   return result;
+}
+
+// Convenience wrapper for the Pulse API (https://pulseapi.ewater.io) so
+// insight modules can call Pulse without repeating the base name. Reuses the
+// same Bearer-token mechanism as every other eWater base.
+export async function pulseFetch(
+  path: string,
+  options: RequestInit = {}
+): Promise<{ status: number; data: unknown }> {
+  return ewaterFetch("pulse", path, options);
 }
 
 export type { Credentials };

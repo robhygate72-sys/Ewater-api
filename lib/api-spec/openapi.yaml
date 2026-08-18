@@ -562,6 +562,237 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotifierTestResult"
 
+  /ewater/hhc/meters:
+    get:
+      operationId: listHouseholdMeters
+      tags: [ewater]
+      summary: List household meters (paginated, filterable)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by asset lifecycle state (case-insensitive)
+        - name: waterSystemId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring match on meter name or asset ID
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated household meter list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdMeterListPage"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}:
+    get:
+      operationId: getHouseholdMeter
+      tags: [ewater]
+      summary: Get household meter summary
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Household meter summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdMeterSummary"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not a household meter or not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/state:
+    get:
+      operationId: getHouseholdMeterState
+      tags: [ewater]
+      summary: Get authoritative current Shengda state (reducer output) with connectivity and health
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current meter state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdMeterState"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/history:
+    get:
+      operationId: getHouseholdMeterHistory
+      tags: [ewater]
+      summary: Get bucketed usage history from cumulative meter readings (reset-aware)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["24h", "7d", "30d", "90d"]
+            default: "7d"
+      responses:
+        "200":
+          description: Usage history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdMeterHistory"
+        "400":
+          description: Invalid period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/communications:
+    get:
+      operationId: getHouseholdMeterCommunications
+      tags: [ewater]
+      summary: Get decoded packet log for a household meter (paginated, filterable)
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 72
+            minimum: 1
+            maximum: 720
+        - name: validOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Only CRC-valid packets
+        - name: messageFunction
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring filter on message function label
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated decoded packet log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdMeterCommunicationsPage"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ewater/hhc/meters/{assetId}/commissioning:
+    get:
+      operationId: getHouseholdMeterCommissioning
+      tags: [ewater]
+      summary: Get commissioning status and auto-check results
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commissioning status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissioningStatus"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -1281,3 +1512,332 @@ components:
         error:
           type: string
           description: Error message on failure
+
+    # ── HHC (Household Meter Commissioning) ─────────────────────────────────
+
+    ObservedField:
+      type: object
+      required: [value, observedAt]
+      description: A single field observation with the timestamp of the packet it came from
+      properties:
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+        observedAt:
+          type: string
+          description: ISO timestamp of the packet that carried this value
+
+    ShengdaDeviceInfo:
+      type: object
+      description: Device Info section (/3/0) — map of field name to observation, null when never observed
+      additionalProperties:
+        oneOf:
+          - $ref: "#/components/schemas/ObservedField"
+          - type: "null"
+
+    ShengdaMeterState:
+      type: object
+      description: Meter Basic section (/80/0) — map of field name to observation, null when never observed
+      additionalProperties:
+        oneOf:
+          - $ref: "#/components/schemas/ObservedField"
+          - type: "null"
+
+    ShengdaValveState:
+      type: object
+      description: Valve Control section (/81/0) — map of field name to observation, null when never observed
+      additionalProperties:
+        oneOf:
+          - $ref: "#/components/schemas/ObservedField"
+          - type: "null"
+
+    ShengdaAlarmState:
+      type: object
+      description: Abnormal Alarm section (/82/0) — map of field name to observation, null when never observed
+      additionalProperties:
+        oneOf:
+          - $ref: "#/components/schemas/ObservedField"
+          - type: "null"
+
+    ShengdaReportingState:
+      type: object
+      description: Reporting Config section (/84/0) — map of field name to observation, null when never observed
+      additionalProperties:
+        oneOf:
+          - $ref: "#/components/schemas/ObservedField"
+          - type: "null"
+
+    ShengdaNetworkState:
+      type: object
+      description: NB Delivery section (/99/0) — map of field name to observation, null when never observed
+      additionalProperties:
+        oneOf:
+          - $ref: "#/components/schemas/ObservedField"
+          - type: "null"
+
+    ShengdaCurrentState:
+      type: object
+      required: [device, meter, valve, alarms, reporting, network, validPacketCount, invalidPackets]
+      properties:
+        device:
+          $ref: "#/components/schemas/ShengdaDeviceInfo"
+        meter:
+          $ref: "#/components/schemas/ShengdaMeterState"
+        valve:
+          $ref: "#/components/schemas/ShengdaValveState"
+        alarms:
+          $ref: "#/components/schemas/ShengdaAlarmState"
+        reporting:
+          $ref: "#/components/schemas/ShengdaReportingState"
+        network:
+          $ref: "#/components/schemas/ShengdaNetworkState"
+        lastPacketAt:
+          type: ["string", "null"]
+        lastValidPacketAt:
+          type: ["string", "null"]
+        validPacketCount:
+          type: integer
+        invalidPackets:
+          type: array
+          items:
+            type: object
+            required: [id, timestamp]
+            properties:
+              id:
+                type: string
+              timestamp:
+                type: string
+
+    ConnectivityEvaluation:
+      type: object
+      required: [status, reason]
+      properties:
+        status:
+          type: string
+          enum: [healthy, late, offline, unknown]
+        lastValidPacketAt:
+          type: ["string", "null"]
+        reportCycleSeconds:
+          type: ["number", "null"]
+        silenceSeconds:
+          type: ["number", "null"]
+        reason:
+          type: string
+
+    HealthReason:
+      type: object
+      required: [severity, code, message]
+      properties:
+        severity:
+          type: string
+          enum: [ok, warning, critical]
+        code:
+          type: string
+        message:
+          type: string
+        observedAt:
+          type: ["string", "null"]
+
+    HealthEvaluation:
+      type: object
+      required: [status, reasons]
+      properties:
+        status:
+          type: string
+          enum: [healthy, warning, critical, unknown]
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthReason"
+
+    HouseholdMeterSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        waterSystemName:
+          type: ["string", "null"]
+        countryName:
+          type: ["string", "null"]
+        parentId:
+          type: ["number", "null"]
+        fetchedAt:
+          type: string
+
+    HouseholdMeterListPage:
+      type: object
+      required: [items, totalCount, returnedCount, offset, limit, hasMore, fetchedAt]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdMeterSummary"
+        totalCount:
+          type: integer
+        returnedCount:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+        fetchedAt:
+          type: string
+
+    HouseholdMeterState:
+      type: object
+      required: [assetId, state, connectivity, health, fetchedAt]
+      properties:
+        assetId:
+          type: string
+        meter:
+          oneOf:
+            - $ref: "#/components/schemas/HouseholdMeterSummary"
+            - type: "null"
+        state:
+          $ref: "#/components/schemas/ShengdaCurrentState"
+        connectivity:
+          $ref: "#/components/schemas/ConnectivityEvaluation"
+        health:
+          $ref: "#/components/schemas/HealthEvaluation"
+        fetchedAt:
+          type: string
+        sourceObservedAt:
+          type: ["string", "null"]
+          description: Timestamp of the newest valid device observation used
+
+    HistoryBucket:
+      type: object
+      required: [bucketStart, bucketEnd, discontinuity, readingCount]
+      properties:
+        bucketStart:
+          type: string
+        bucketEnd:
+          type: string
+        consumptionLitres:
+          type: ["number", "null"]
+          description: Litres consumed in this bucket; null when no diff computable
+        discontinuity:
+          type: boolean
+          description: True when a counter reset (negative diff) fell in this bucket
+        readingCount:
+          type: integer
+
+    HouseholdMeterHistory:
+      type: object
+      required: [assetId, period, buckets, discontinuityCount, fetchedAt]
+      properties:
+        assetId:
+          type: string
+        period:
+          type: string
+          enum: ["24h", "7d", "30d", "90d"]
+        buckets:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryBucket"
+        totalConsumptionLitres:
+          type: ["number", "null"]
+        firstReadingLitres:
+          type: ["number", "null"]
+        lastReadingLitres:
+          type: ["number", "null"]
+        discontinuityCount:
+          type: integer
+        fetchedAt:
+          type: string
+
+    HouseholdMeterCommunication:
+      type: object
+      required: [id, timestamp]
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+        imei:
+          type: ["string", "null"]
+        pipeline:
+          type: ["string", "null"]
+        protocol:
+          type: ["string", "null"]
+        valid:
+          type: ["boolean", "null"]
+          description: CRC validity; null when the payload is not a Shengda frame
+        messageType:
+          type: ["string", "null"]
+        messageFunction:
+          type: ["string", "null"]
+        meterReadingLitres:
+          type: ["number", "null"]
+        description:
+          type: ["string", "null"]
+
+    HouseholdMeterCommunicationsPage:
+      type: object
+      required: [items, totalCount, returnedCount, offset, limit, hasMore, fetchedAt]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseholdMeterCommunication"
+        totalCount:
+          type: integer
+        returnedCount:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+        fetchedAt:
+          type: string
+
+    CommissioningCheck:
+      type: object
+      required: [id, label, status, detail]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+          enum: [pass, fail, unknown]
+        detail:
+          type: string
+        observedAt:
+          type: ["string", "null"]
+
+    CommissioningStatus:
+      type: object
+      required: [assetId, overall, checks, connectivity, evaluatedAt]
+      properties:
+        assetId:
+          type: string
+        overall:
+          type: string
+          enum: [ready, attention, insufficient-data]
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommissioningCheck"
+        connectivity:
+          $ref: "#/components/schemas/ConnectivityEvaluation"
+        evaluatedAt:
+          type: string
+        fetchedAt:
+          type: string
+        sourceObservedAt:
+          type: ["string", "null"]

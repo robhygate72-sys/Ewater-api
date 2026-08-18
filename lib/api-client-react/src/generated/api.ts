@@ -25,6 +25,7 @@ import type {
   Asset,
   AssetEwcSettings,
   AssetTechStatus,
+  CommissioningStatus,
   CredentialsInput,
   CredentialsStatus,
   DashboardSummary,
@@ -35,7 +36,15 @@ import type {
   GetAssetPacketsParams,
   GetDashboardParams,
   GetESenseChartsParams,
+  GetHouseholdMeterCommunicationsParams,
+  GetHouseholdMeterHistoryParams,
   HealthStatus,
+  HouseholdMeterCommunicationsPage,
+  HouseholdMeterHistory,
+  HouseholdMeterListPage,
+  HouseholdMeterState,
+  HouseholdMeterSummary,
+  ListHouseholdMetersParams,
   MeterReadingResult,
   NotifierSettings,
   NotifierSettingsInput,
@@ -1666,4 +1675,497 @@ export const useTestNotifier = <TError = ErrorType<ErrorResponse | NotifierTestR
       > => {
       return useMutation(getTestNotifierMutationOptions(options));
     }
+
+export const getListHouseholdMetersUrl = (params?: ListHouseholdMetersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ewater/hhc/meters?${stringifiedParams}` : `/api/ewater/hhc/meters`
+}
+
+/**
+ * @summary List household meters (paginated, filterable)
+ */
+export const listHouseholdMeters = async (params?: ListHouseholdMetersParams, options?: RequestInit): Promise<HouseholdMeterListPage> => {
+
+  return customFetch<HouseholdMeterListPage>(getListHouseholdMetersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListHouseholdMetersQueryKey = (params?: ListHouseholdMetersParams,) => {
+    return [
+    `/api/ewater/hhc/meters`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListHouseholdMetersQueryOptions = <TData = Awaited<ReturnType<typeof listHouseholdMeters>>, TError = ErrorType<ErrorResponse>>(params?: ListHouseholdMetersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listHouseholdMeters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListHouseholdMetersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listHouseholdMeters>>> = ({ signal }) => listHouseholdMeters(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listHouseholdMeters>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListHouseholdMetersQueryResult = NonNullable<Awaited<ReturnType<typeof listHouseholdMeters>>>
+export type ListHouseholdMetersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List household meters (paginated, filterable)
+ */
+
+export function useListHouseholdMeters<TData = Awaited<ReturnType<typeof listHouseholdMeters>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListHouseholdMetersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listHouseholdMeters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListHouseholdMetersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHouseholdMeterUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}`
+}
+
+/**
+ * @summary Get household meter summary
+ */
+export const getHouseholdMeter = async (assetId: string, options?: RequestInit): Promise<HouseholdMeterSummary> => {
+
+  return customFetch<HouseholdMeterSummary>(getGetHouseholdMeterUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHouseholdMeterQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}`
+    ] as const;
+    }
+
+
+export const getGetHouseholdMeterQueryOptions = <TData = Awaited<ReturnType<typeof getHouseholdMeter>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeter>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHouseholdMeterQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHouseholdMeter>>> = ({ signal }) => getHouseholdMeter(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeter>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHouseholdMeterQueryResult = NonNullable<Awaited<ReturnType<typeof getHouseholdMeter>>>
+export type GetHouseholdMeterQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get household meter summary
+ */
+
+export function useGetHouseholdMeter<TData = Awaited<ReturnType<typeof getHouseholdMeter>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeter>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHouseholdMeterQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHouseholdMeterStateUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/state`
+}
+
+/**
+ * @summary Get authoritative current Shengda state (reducer output) with connectivity and health
+ */
+export const getHouseholdMeterState = async (assetId: string, options?: RequestInit): Promise<HouseholdMeterState> => {
+
+  return customFetch<HouseholdMeterState>(getGetHouseholdMeterStateUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHouseholdMeterStateQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/state`
+    ] as const;
+    }
+
+
+export const getGetHouseholdMeterStateQueryOptions = <TData = Awaited<ReturnType<typeof getHouseholdMeterState>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHouseholdMeterStateQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHouseholdMeterState>>> = ({ signal }) => getHouseholdMeterState(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterState>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHouseholdMeterStateQueryResult = NonNullable<Awaited<ReturnType<typeof getHouseholdMeterState>>>
+export type GetHouseholdMeterStateQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get authoritative current Shengda state (reducer output) with connectivity and health
+ */
+
+export function useGetHouseholdMeterState<TData = Awaited<ReturnType<typeof getHouseholdMeterState>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHouseholdMeterStateQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHouseholdMeterHistoryUrl = (assetId: string,
+    params?: GetHouseholdMeterHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ewater/hhc/meters/${assetId}/history?${stringifiedParams}` : `/api/ewater/hhc/meters/${assetId}/history`
+}
+
+/**
+ * @summary Get bucketed usage history from cumulative meter readings (reset-aware)
+ */
+export const getHouseholdMeterHistory = async (assetId: string,
+    params?: GetHouseholdMeterHistoryParams, options?: RequestInit): Promise<HouseholdMeterHistory> => {
+
+  return customFetch<HouseholdMeterHistory>(getGetHouseholdMeterHistoryUrl(assetId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHouseholdMeterHistoryQueryKey = (assetId: string,
+    params?: GetHouseholdMeterHistoryParams,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetHouseholdMeterHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getHouseholdMeterHistory>>, TError = ErrorType<ErrorResponse>>(assetId: string,
+    params?: GetHouseholdMeterHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHouseholdMeterHistoryQueryKey(assetId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHouseholdMeterHistory>>> = ({ signal }) => getHouseholdMeterHistory(assetId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHouseholdMeterHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getHouseholdMeterHistory>>>
+export type GetHouseholdMeterHistoryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get bucketed usage history from cumulative meter readings (reset-aware)
+ */
+
+export function useGetHouseholdMeterHistory<TData = Awaited<ReturnType<typeof getHouseholdMeterHistory>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string,
+    params?: GetHouseholdMeterHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHouseholdMeterHistoryQueryOptions(assetId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHouseholdMeterCommunicationsUrl = (assetId: string,
+    params?: GetHouseholdMeterCommunicationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ewater/hhc/meters/${assetId}/communications?${stringifiedParams}` : `/api/ewater/hhc/meters/${assetId}/communications`
+}
+
+/**
+ * @summary Get decoded packet log for a household meter (paginated, filterable)
+ */
+export const getHouseholdMeterCommunications = async (assetId: string,
+    params?: GetHouseholdMeterCommunicationsParams, options?: RequestInit): Promise<HouseholdMeterCommunicationsPage> => {
+
+  return customFetch<HouseholdMeterCommunicationsPage>(getGetHouseholdMeterCommunicationsUrl(assetId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHouseholdMeterCommunicationsQueryKey = (assetId: string,
+    params?: GetHouseholdMeterCommunicationsParams,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/communications`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetHouseholdMeterCommunicationsQueryOptions = <TData = Awaited<ReturnType<typeof getHouseholdMeterCommunications>>, TError = ErrorType<ErrorResponse>>(assetId: string,
+    params?: GetHouseholdMeterCommunicationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterCommunications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHouseholdMeterCommunicationsQueryKey(assetId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHouseholdMeterCommunications>>> = ({ signal }) => getHouseholdMeterCommunications(assetId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterCommunications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHouseholdMeterCommunicationsQueryResult = NonNullable<Awaited<ReturnType<typeof getHouseholdMeterCommunications>>>
+export type GetHouseholdMeterCommunicationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get decoded packet log for a household meter (paginated, filterable)
+ */
+
+export function useGetHouseholdMeterCommunications<TData = Awaited<ReturnType<typeof getHouseholdMeterCommunications>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string,
+    params?: GetHouseholdMeterCommunicationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterCommunications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHouseholdMeterCommunicationsQueryOptions(assetId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetHouseholdMeterCommissioningUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/hhc/meters/${assetId}/commissioning`
+}
+
+/**
+ * @summary Get commissioning status and auto-check results
+ */
+export const getHouseholdMeterCommissioning = async (assetId: string, options?: RequestInit): Promise<CommissioningStatus> => {
+
+  return customFetch<CommissioningStatus>(getGetHouseholdMeterCommissioningUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHouseholdMeterCommissioningQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/hhc/meters/${assetId}/commissioning`
+    ] as const;
+    }
+
+
+export const getGetHouseholdMeterCommissioningQueryOptions = <TData = Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHouseholdMeterCommissioningQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>> = ({ signal }) => getHouseholdMeterCommissioning(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHouseholdMeterCommissioningQueryResult = NonNullable<Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>>
+export type GetHouseholdMeterCommissioningQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get commissioning status and auto-check results
+ */
+
+export function useGetHouseholdMeterCommissioning<TData = Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHouseholdMeterCommissioning>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHouseholdMeterCommissioningQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

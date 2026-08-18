@@ -534,6 +534,267 @@ export interface NotifierTestResult {
   error?: string;
 }
 
+/**
+ * A single field observation with the timestamp of the packet it came from
+ */
+export interface ObservedField {
+  value: string | number | boolean;
+  /** ISO timestamp of the packet that carried this value */
+  observedAt: string;
+}
+
+/**
+ * Device Info section (/3/0) — map of field name to observation, null when never observed
+ */
+export interface ShengdaDeviceInfo {[key: string]: ObservedField | null}
+
+/**
+ * Meter Basic section (/80/0) — map of field name to observation, null when never observed
+ */
+export interface ShengdaMeterState {[key: string]: ObservedField | null}
+
+/**
+ * Valve Control section (/81/0) — map of field name to observation, null when never observed
+ */
+export interface ShengdaValveState {[key: string]: ObservedField | null}
+
+/**
+ * Abnormal Alarm section (/82/0) — map of field name to observation, null when never observed
+ */
+export interface ShengdaAlarmState {[key: string]: ObservedField | null}
+
+/**
+ * Reporting Config section (/84/0) — map of field name to observation, null when never observed
+ */
+export interface ShengdaReportingState {[key: string]: ObservedField | null}
+
+/**
+ * NB Delivery section (/99/0) — map of field name to observation, null when never observed
+ */
+export interface ShengdaNetworkState {[key: string]: ObservedField | null}
+
+export type ShengdaCurrentStateInvalidPacketsItem = {
+  id: string;
+  timestamp: string;
+};
+
+export interface ShengdaCurrentState {
+  device: ShengdaDeviceInfo;
+  meter: ShengdaMeterState;
+  valve: ShengdaValveState;
+  alarms: ShengdaAlarmState;
+  reporting: ShengdaReportingState;
+  network: ShengdaNetworkState;
+  /** @nullable */
+  lastPacketAt?: string | null;
+  /** @nullable */
+  lastValidPacketAt?: string | null;
+  validPacketCount: number;
+  invalidPackets: ShengdaCurrentStateInvalidPacketsItem[];
+}
+
+export type ConnectivityEvaluationStatus = typeof ConnectivityEvaluationStatus[keyof typeof ConnectivityEvaluationStatus];
+
+
+export const ConnectivityEvaluationStatus = {
+  healthy: 'healthy',
+  late: 'late',
+  offline: 'offline',
+  unknown: 'unknown',
+} as const;
+
+export interface ConnectivityEvaluation {
+  status: ConnectivityEvaluationStatus;
+  /** @nullable */
+  lastValidPacketAt?: string | null;
+  /** @nullable */
+  reportCycleSeconds?: number | null;
+  /** @nullable */
+  silenceSeconds?: number | null;
+  reason: string;
+}
+
+export type HealthReasonSeverity = typeof HealthReasonSeverity[keyof typeof HealthReasonSeverity];
+
+
+export const HealthReasonSeverity = {
+  ok: 'ok',
+  warning: 'warning',
+  critical: 'critical',
+} as const;
+
+export interface HealthReason {
+  severity: HealthReasonSeverity;
+  code: string;
+  message: string;
+  /** @nullable */
+  observedAt?: string | null;
+}
+
+export type HealthEvaluationStatus = typeof HealthEvaluationStatus[keyof typeof HealthEvaluationStatus];
+
+
+export const HealthEvaluationStatus = {
+  healthy: 'healthy',
+  warning: 'warning',
+  critical: 'critical',
+  unknown: 'unknown',
+} as const;
+
+export interface HealthEvaluation {
+  status: HealthEvaluationStatus;
+  reasons: HealthReason[];
+}
+
+export interface HouseholdMeterSummary {
+  id: string;
+  name: string;
+  /** @nullable */
+  status?: string | null;
+  /** @nullable */
+  location?: string | null;
+  /** @nullable */
+  waterSystemName?: string | null;
+  /** @nullable */
+  countryName?: string | null;
+  /** @nullable */
+  parentId?: number | null;
+  fetchedAt?: string;
+}
+
+export interface HouseholdMeterListPage {
+  items: HouseholdMeterSummary[];
+  totalCount: number;
+  returnedCount: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  fetchedAt: string;
+}
+
+export interface HouseholdMeterState {
+  assetId: string;
+  meter?: HouseholdMeterSummary | null;
+  state: ShengdaCurrentState;
+  connectivity: ConnectivityEvaluation;
+  health: HealthEvaluation;
+  fetchedAt: string;
+  /**
+     * Timestamp of the newest valid device observation used
+     * @nullable
+     */
+  sourceObservedAt?: string | null;
+}
+
+export interface HistoryBucket {
+  bucketStart: string;
+  bucketEnd: string;
+  /**
+     * Litres consumed in this bucket; null when no diff computable
+     * @nullable
+     */
+  consumptionLitres?: number | null;
+  /** True when a counter reset (negative diff) fell in this bucket */
+  discontinuity: boolean;
+  readingCount: number;
+}
+
+export type HouseholdMeterHistoryPeriod = typeof HouseholdMeterHistoryPeriod[keyof typeof HouseholdMeterHistoryPeriod];
+
+
+export const HouseholdMeterHistoryPeriod = {
+  '24h': '24h',
+  '7d': '7d',
+  '30d': '30d',
+  '90d': '90d',
+} as const;
+
+export interface HouseholdMeterHistory {
+  assetId: string;
+  period: HouseholdMeterHistoryPeriod;
+  buckets: HistoryBucket[];
+  /** @nullable */
+  totalConsumptionLitres?: number | null;
+  /** @nullable */
+  firstReadingLitres?: number | null;
+  /** @nullable */
+  lastReadingLitres?: number | null;
+  discontinuityCount: number;
+  fetchedAt: string;
+}
+
+export interface HouseholdMeterCommunication {
+  id: string;
+  timestamp: string;
+  /** @nullable */
+  imei?: string | null;
+  /** @nullable */
+  pipeline?: string | null;
+  /** @nullable */
+  protocol?: string | null;
+  /**
+     * CRC validity; null when the payload is not a Shengda frame
+     * @nullable
+     */
+  valid?: boolean | null;
+  /** @nullable */
+  messageType?: string | null;
+  /** @nullable */
+  messageFunction?: string | null;
+  /** @nullable */
+  meterReadingLitres?: number | null;
+  /** @nullable */
+  description?: string | null;
+}
+
+export interface HouseholdMeterCommunicationsPage {
+  items: HouseholdMeterCommunication[];
+  totalCount: number;
+  returnedCount: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  fetchedAt: string;
+}
+
+export type CommissioningCheckStatus = typeof CommissioningCheckStatus[keyof typeof CommissioningCheckStatus];
+
+
+export const CommissioningCheckStatus = {
+  pass: 'pass',
+  fail: 'fail',
+  unknown: 'unknown',
+} as const;
+
+export interface CommissioningCheck {
+  id: string;
+  label: string;
+  status: CommissioningCheckStatus;
+  detail: string;
+  /** @nullable */
+  observedAt?: string | null;
+}
+
+export type CommissioningStatusOverall = typeof CommissioningStatusOverall[keyof typeof CommissioningStatusOverall];
+
+
+export const CommissioningStatusOverall = {
+  ready: 'ready',
+  attention: 'attention',
+  'insufficient-data': 'insufficient-data',
+} as const;
+
+export interface CommissioningStatus {
+  assetId: string;
+  overall: CommissioningStatusOverall;
+  checks: CommissioningCheck[];
+  connectivity: ConnectivityEvaluation;
+  evaluatedAt: string;
+  fetchedAt?: string;
+  /** @nullable */
+  sourceObservedAt?: string | null;
+}
+
 export type GetDashboardParams = {
 lifecycleState?: GetDashboardLifecycleState;
 };
@@ -568,5 +829,65 @@ limit?: number;
  * Restrict to a single IMEI. Omit to merge packets across all IMEIs registered for the asset.
  */
 imei?: string;
+};
+
+export type ListHouseholdMetersParams = {
+/**
+ * Filter by asset lifecycle state (case-insensitive)
+ */
+status?: string;
+waterSystemId?: number;
+/**
+ * Substring match on meter name or asset ID
+ */
+search?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type GetHouseholdMeterHistoryParams = {
+period?: GetHouseholdMeterHistoryPeriod;
+};
+
+export type GetHouseholdMeterHistoryPeriod = typeof GetHouseholdMeterHistoryPeriod[keyof typeof GetHouseholdMeterHistoryPeriod];
+
+
+export const GetHouseholdMeterHistoryPeriod = {
+  '24h': '24h',
+  '7d': '7d',
+  '30d': '30d',
+  '90d': '90d',
+} as const;
+
+export type GetHouseholdMeterCommunicationsParams = {
+/**
+ * @minimum 1
+ * @maximum 720
+ */
+hours?: number;
+/**
+ * Only CRC-valid packets
+ */
+validOnly?: boolean;
+/**
+ * Substring filter on message function label
+ */
+messageFunction?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
 };
 
