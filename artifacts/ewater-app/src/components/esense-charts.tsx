@@ -803,10 +803,17 @@ function FlowRateChart({
     );
   }
 
-  // Convert to scatter-friendly format with numeric x (timestamp)
-  const scatterData = data.map((p) => ({
+  // Convert to scatter-friendly format with numeric x (timestamp).
+  // z is the point index — recharts 2.15.x builds its internal scatter-point
+  // key as `tick-${x}-${y}-${z}`. Without an explicit ZAxis dataKey, recharts
+  // falls back to y for z, producing `tick-${x}-${y}-${y}`. Two events that
+  // share the same millisecond timestamp then collide and React 19 escalates
+  // the duplicate-key console.error to the Vite overlay (appears as a crash).
+  // Using a per-point index as z guarantees every key is unique.
+  const scatterData = data.map((p, i) => ({
     x: new Date(p.time).getTime(),
     y: p.flowRate,
+    z: i,
     ticks: p.ticks,
     flowTimeSec: p.flowTimeSec,
   }));
@@ -861,7 +868,7 @@ function FlowRateChart({
             domain={[0, "auto"]}
             name="Flow rate"
           />
-          <ZAxis range={[28, 28]} />
+          <ZAxis dataKey="z" range={[28, 28]} />
           <Tooltip
             cursor={{ strokeDasharray: "3 3" }}
             content={({ active, payload }) => {
