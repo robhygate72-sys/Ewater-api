@@ -1,39 +1,4 @@
-import { useMemo, useState, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
-
-// ── Filter-options localStorage cache ────────────────────────────────────────
-const FILTER_OPTIONS_CACHE_KEY = "hhc_filter_options_v1";
-
-interface FilterOptionsCache {
-  waterSystems: string[];
-  countries: string[];
-}
-
-function readFilterOptionsCache(): FilterOptionsCache | null {
-  try {
-    const raw = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      Array.isArray((parsed as FilterOptionsCache).waterSystems) &&
-      Array.isArray((parsed as FilterOptionsCache).countries)
-    ) {
-      return parsed as FilterOptionsCache;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function writeFilterOptionsCache(data: FilterOptionsCache): void {
-  try {
-    localStorage.setItem(FILTER_OPTIONS_CACHE_KEY, JSON.stringify(data));
-  } catch {
-    // ignore QuotaExceededError and similar
-  }
-}
+import { useMemo, useState, Component, type ReactNode, type ErrorInfo } from "react";
 
 // ── Error boundary — catches render crashes and exposes the message ───────────
 class FleetErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -84,32 +49,13 @@ import {
   getListHouseholdMetersQueryKey,
   useGetHhcFleetAlarms,
   getGetHhcFleetAlarmsQueryKey,
-  useGetHhcFilterOptions,
-  getGetHhcFilterOptionsQueryKey,
-  type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
-  createColumnHelper,
-  type ColumnDef,
-} from "@tanstack/react-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RefreshCw, Search, ChevronLeft, ChevronRight, Wifi, WifiOff } from "lucide-react";
+import { RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo, formatDateTime } from "@/lib/date";
-import { useMeterStates, type MeterStateResult } from "./use-meter-states";
-import { obs, obsStr, obsNum, fmtSeconds, connectivityColor, healthColor, StatusBadge } from "./shared";
+import { formatTimeAgo } from "@/lib/date";
+import { useMeterStates } from "./use-meter-states";
+import { obsStr, obsNum } from "./shared";
 
 const FLEET_POLL_MS = 90_000;
 const PAGE_SIZE = 25;
@@ -121,27 +67,6 @@ const LIFECYCLE_LABELS: Record<string, string> = {
   Active: "Active",
   Test: "Test",
 };
-
-// ── Row model combining summary + progressively-loaded state ────────────────
-
-interface FleetRow {
-  meter: HouseholdMeterSummary;
-  s: MeterStateResult;
-}
-
-function NotReported() {
-  return <span className="text-muted-foreground/60 italic">Not reported</span>;
-}
-
-function cellVal(v: string | number | null | undefined, unit?: string) {
-  if (v == null) return <NotReported />;
-  const text = typeof v === "number" ? v.toLocaleString() : v;
-  return <span>{unit ? `${text} ${unit}` : text}</span>;
-}
-
-const col = createColumnHelper<FleetRow>();
-// Must be stable — calling getCoreRowModel() on every render triggers TanStack Table re-init.
-const stableCoreRowModel = getCoreRowModel();
 
 // ── KPI card ────────────────────────────────────────────────────────────────
 
@@ -170,32 +95,17 @@ function Kpi({ label, value, loading, sub, className, testId }: {
 
 // ── Main fleet tab ──────────────────────────────────────────────────────────
 
-export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) => void }) {
+export function FleetTab(_props: { onSelectMeter?: (assetId: string) => void }) {
   return (
     <FleetErrorBoundary>
-      <FleetTabInner onSelectMeter={onSelectMeter} />
+      <FleetTabInner />
     </FleetErrorBoundary>
   );
 }
 
-function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => void }) {
-  const [lifecycle, setLifecycle] = useState<string | null>(null);
-  const [waterSystem, setWaterSystem] = useState<string | null>(null);
-  const [country, setCountry] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-
-  // Stale-while-revalidate cache for filter options — survives API blips.
-  const [cachedFilterOptions, setCachedFilterOptions] = useState<FilterOptionsCache | null>(
-    () => readFilterOptionsCache(),
-  );
-
-  const listParams = {
-    ...(lifecycle ? { status: lifecycle } : {}),
-    ...(waterSystem ? { waterSystem } : {}),
-    ...(country ? { country } : {}),
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
-  };
+function FleetTabInner() {
+  // First page of meters — used only to sample device state for the KPI cards.
+  const [listParams] = useState({ limit: PAGE_SIZE, offset: 0 });
 
   const listQuery = useListHouseholdMeters(listParams, {
     query: {
@@ -218,23 +128,6 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
     useListHouseholdMeters(lcParams[3]!, { query: { queryKey: getListHouseholdMetersQueryKey(lcParams[3]!), staleTime: 60_000 } }),
   ];
 
-  // All distinct water-system and country values across the whole fleet.
-  const filterOptionsQuery = useGetHhcFilterOptions({
-    query: { queryKey: getGetHhcFilterOptionsQueryKey(), staleTime: 300_000 },
-  });
-
-  // Persist filter options to localStorage on each successful fetch so they
-  // survive a temporary API outage on the next load.
-  useEffect(() => {
-    if (!filterOptionsQuery.data) return;
-    const next: FilterOptionsCache = {
-      waterSystems: filterOptionsQuery.data.waterSystems ?? [],
-      countries: filterOptionsQuery.data.countries ?? [],
-    };
-    setCachedFilterOptions(next);
-    writeFilterOptionsCache(next);
-  }, [filterOptionsQuery.data]);
-
   // Fleet-wide alarms (Pulse faults + server-computed Shengda alerts).
   const fleetAlarmsQuery = useGetHhcFleetAlarms({
     query: { queryKey: getGetHhcFleetAlarmsQueryKey(), refetchInterval: FLEET_POLL_MS, staleTime: 60_000 },
@@ -243,32 +136,8 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
 
   const meters = listQuery.data?.items ?? [];
 
-  // Dropdown options come from the fleet-wide filter-options endpoint so every
-  // distinct value across all pages is always available.
-  //
-  // Priority: fresh API data → localStorage cache (shown immediately on load
-  // and preserved when the API is unreachable) → current page's values.
-  // The active selection is always kept so a live filter can still be cleared.
-  const waterSystemOptions = useMemo(() => {
-    const base = filterOptionsQuery.data?.waterSystems
-      ?? cachedFilterOptions?.waterSystems
-      ?? meters.map((m) => m.waterSystemName).filter((v): v is string => !!v);
-    const set = new Set(base);
-    if (waterSystem) set.add(waterSystem);
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [filterOptionsQuery.data, cachedFilterOptions, meters, waterSystem]);
-  const countryOptions = useMemo(() => {
-    const base = filterOptionsQuery.data?.countries
-      ?? cachedFilterOptions?.countries
-      ?? meters.map((m) => m.countryName).filter((v): v is string => !!v);
-    const set = new Set(base);
-    if (country) set.add(country);
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [filterOptionsQuery.data, cachedFilterOptions, meters, country]);
-
   const pageIds = useMemo(() => meters.map((m) => m.id), [meters]);
   const states = useMeterStates(pageIds);
-  const stateById = useMemo(() => new Map(states.map((s) => [s.assetId, s])), [states]);
 
   const loadedStates = states.filter((s) => s.state != null);
   const totalMeters = totalQuery.data?.totalCount ?? null;
@@ -290,153 +159,6 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
   }).length;
 
   const coverage = `Device state loaded for ${loadedStates.length} of ${totalMeters ?? "?"} HouseholdMeters`;
-
-  // ── Table columns ─────────────────────────────────────────────────────────
-  const columns = useMemo<ColumnDef<FleetRow, unknown>[]>(
-    () => [
-      col.accessor((r) => r.meter.name, {
-        id: "name",
-        header: "Asset",
-        cell: (info) => (
-          <div className="min-w-[140px]">
-            <p className="font-semibold text-xs truncate">{info.getValue()}</p>
-            <p className="text-[10px] text-muted-foreground font-mono">#{info.row.original.meter.id}</p>
-          </div>
-        ),
-      }),
-      col.accessor((r) => r.meter.status ?? null, {
-        id: "lifecycle",
-        header: "Lifecycle",
-        cell: (info) => cellVal(info.getValue() && (LIFECYCLE_LABELS[info.getValue()!] ?? info.getValue())),
-      }),
-      col.accessor((r) => r.meter.waterSystemName ?? null, {
-        id: "waterSystem",
-        header: () => (
-          <HeaderFilterSelect
-            label="Water system"
-            allLabel="All water systems"
-            value={waterSystem}
-            options={waterSystemOptions}
-            onChange={(v) => { setWaterSystem(v); setPage(0); }}
-            testId="filter-water-system"
-          />
-        ),
-        cell: (i) => cellVal(i.getValue()),
-      }),
-      col.accessor((r) => r.meter.countryName ?? null, {
-        id: "country",
-        header: () => (
-          <HeaderFilterSelect
-            label="Country"
-            allLabel="All countries"
-            value={country}
-            options={countryOptions}
-            onChange={(v) => { setCountry(v); setPage(0); }}
-            testId="filter-country"
-          />
-        ),
-        cell: (i) => cellVal(i.getValue()),
-      }),
-      col.display({
-        id: "shengda",
-        header: "Shengda",
-        cell: ({ row }) => {
-          const s = row.original.s;
-          if (s.isLoading) return <Skeleton className="h-3 w-10" />;
-          // Guard st.state.state — the nested ShengdaCurrentState can be absent
-          // for meters that have never reported, causing a runtime null-deref.
-          if (!s.state?.state) return <NotReported />;
-          return s.state.state.validPacketCount > 0
-            ? <StatusBadge label="Detected" className="text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25" />
-            : <StatusBadge label="No packets" className="text-muted-foreground bg-muted/40 border-border" />;
-        },
-      }),
-      col.display({
-        id: "serial", header: "Serial",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsStr(st.state?.device, "serialNumber") ?? obsStr(st.state?.meter, "waterMeterNo"))),
-      }),
-      col.display({
-        id: "imei", header: "IMEI",
-        cell: ({ row }) => stateCell(row.original.s, (st) => <span className="font-mono text-[10px]">{obsStr(st.state?.network, "imei") ?? <NotReported />}</span>),
-      }),
-      col.display({
-        id: "iccid", header: "ICCID",
-        cell: ({ row }) => stateCell(row.original.s, (st) => <span className="font-mono text-[10px]">{obsStr(st.state?.network, "iccid") ?? <NotReported />}</span>),
-      }),
-      col.display({
-        id: "lastComm", header: "Last valid comm",
-        cell: ({ row }) => stateCell(row.original.s, (st) =>
-          st.connectivity?.lastValidPacketAt
-            ? <span title={formatDateTime(st.connectivity.lastValidPacketAt)}>{formatTimeAgo(st.connectivity.lastValidPacketAt)}</span>
-            : <NotReported />),
-      }),
-      col.display({
-        id: "interval", header: "Expected interval",
-        cell: ({ row }) => stateCell(row.original.s, (st) =>
-          st.connectivity?.reportCycleSeconds != null ? <span>{fmtSeconds(st.connectivity.reportCycleSeconds)}</span> : <NotReported />),
-      }),
-      col.display({
-        id: "commHealth", header: "Comm health",
-        cell: ({ row }) => stateCell(row.original.s, (st) => (
-          <StatusBadge label={st.connectivity?.status ?? "unknown"} className={connectivityColor(st.connectivity?.status ?? "unknown")} />
-        )),
-      }),
-      col.display({
-        id: "battery", header: "Battery",
-        cell: ({ row }) => stateCell(row.original.s, (st) => {
-          const v = obsNum(st.state?.meter, "batteryVoltage") ?? obsNum(st.state?.device, "powerSupplyVoltage");
-          const bs = obsStr(st.state?.device, "batteryStatus");
-          if (v == null && bs == null) return <NotReported />;
-          return <span>{v != null ? `${v.toFixed(2)} V` : ""}{v != null && bs ? " · " : ""}{bs ?? ""}</span>;
-        }),
-      }),
-      col.display({
-        id: "rsrp", header: "RSRP",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.network, "rsrp"), "dBm")),
-      }),
-      col.display({
-        id: "snr", header: "SNR",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.network, "snr"), "dB")),
-      }),
-      col.display({
-        id: "valve", header: "Valve",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsStr(st.state?.valve, "status"))),
-      }),
-      col.display({
-        id: "prepaid", header: "Prepaid balance",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.meter, "availableWaterAllowanceLitres"), "L")),
-      }),
-      col.display({
-        id: "reading", header: "Cumulative reading",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.meter, "meterReadingLitres"), "L")),
-      }),
-      col.display({
-        id: "flags", header: "Status",
-        cell: ({ row }) => stateCell(row.original.s, (st) => {
-          const badges: React.ReactNode[] = [];
-          const err = obsNum(st.state?.device, "errorCode") ?? obsNum(st.state?.alarms, "waterErrorCode");
-          if (err != null && err !== 0)
-            badges.push(<StatusBadge key="err" label={`Err ${err}`} className="text-destructive bg-destructive/10 border-destructive/25" />);
-          const mag = obs(st.state?.alarms, "magneticAttack");
-          if (mag?.value === true)
-            badges.push(<StatusBadge key="tamper" label="Tamper" className="text-destructive bg-destructive/10 border-destructive/25" />);
-          badges.push(<StatusBadge key="health" label={st.health?.status ?? "unknown"} className={healthColor(st.health?.status ?? "unknown")} />);
-          return <div className="flex gap-1 flex-wrap">{badges}</div>;
-        }),
-      }),
-    ],
-    [waterSystem, country, waterSystemOptions, countryOptions],
-  );
-
-  const rows: FleetRow[] = useMemo(
-    () => meters.map((meter) => ({ meter, s: stateById.get(meter.id) ?? { assetId: meter.id, state: undefined, isLoading: true, isError: false } })),
-    [meters, stateById],
-  );
-
-  const table = useReactTable({ data: rows, columns, getCoreRowModel: stableCoreRowModel });
-
-  const totalCount = listQuery.data?.totalCount ?? 0;
-  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   // API connection status
   const apiOk = !listQuery.isError;
@@ -498,179 +220,6 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
       <p className="text-[10px] text-muted-foreground" data-testid="text-coverage">
         {coverage}. Communication, alarm and battery counts cover only meters whose device state has loaded.
       </p>
-
-      {/* Search + filters */}
-      <div className="flex flex-col gap-2">
-        {/* Search bar (disabled) */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <Input
-            data-testid="input-fleet-search"
-            placeholder="Search disabled"
-            disabled
-            className="pl-9 h-9 text-sm"
-          />
-        </div>
-
-        {/* Filter row */}
-        <div className="flex flex-wrap gap-2 items-center">
-          {/* Lifecycle pills */}
-          <div className="flex gap-1 flex-wrap">
-            <button
-              data-testid="filter-lifecycle-all"
-              onClick={() => { setLifecycle(null); setPage(0); }}
-              className={cn(
-                "text-xs px-2.5 py-1 rounded-lg border transition-colors",
-                lifecycle == null ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
-              )}
-            >
-              All
-            </button>
-            {LIFECYCLES.map((lc) => (
-              <button
-                key={lc}
-                data-testid={`filter-lifecycle-${lc.toLowerCase()}`}
-                onClick={() => { setLifecycle(lc); setPage(0); }}
-                className={cn(
-                  "text-xs px-2.5 py-1 rounded-lg border transition-colors",
-                  lifecycle === lc ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
-                )}
-              >
-                {LIFECYCLE_LABELS[lc]}
-              </button>
-            ))}
-          </div>
-
-          {/* Clear filters */}
-          {(lifecycle || waterSystem || country) && (
-            <button
-              onClick={() => { setLifecycle(null); setWaterSystem(null); setCountry(null); setPage(0); }}
-              className="text-xs px-2.5 py-1 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Table */}
-      {listQuery.isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
-        </div>
-      ) : listQuery.isError ? (
-        <div className="text-center p-10 bg-card border border-dashed rounded-xl space-y-3">
-          <p className="text-sm text-destructive font-medium">Failed to load HouseholdMeters from eWater</p>
-          <Button size="sm" variant="outline" data-testid="button-retry-fleet" onClick={() => void listQuery.refetch()}>Retry</Button>
-        </div>
-      ) : meters.length === 0 ? (
-        <div className="text-center p-10 bg-card border border-dashed rounded-xl space-y-3">
-          <p className="text-sm text-muted-foreground">No HouseholdMeter assets returned by eWater</p>
-          <Button size="sm" variant="outline" data-testid="button-refresh-empty" onClick={() => void listQuery.refetch()}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-          </Button>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border overflow-x-auto bg-card">
-          <table className="w-full text-xs">
-            <thead>
-              {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className="border-b border-border bg-muted/40">
-                  {hg.headers.map((h) => (
-                    <th key={h.id} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                      {flexRender(h.column.columnDef.header, h.getContext())}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  data-testid={`row-meter-${row.original.meter.id}`}
-                  onClick={() => onSelectMeter(row.original.meter.id)}
-                  className="border-b border-border/40 last:border-0 hover:bg-muted/40 cursor-pointer transition-colors"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2 whitespace-nowrap align-top">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalCount > PAGE_SIZE && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span data-testid="text-fleet-page-info">
-            Page {page + 1} of {pageCount} · {totalCount} meters
-          </span>
-          <div className="flex gap-1.5">
-            <Button size="sm" variant="outline" data-testid="button-fleet-prev" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-              <ChevronLeft className="w-4 h-4" /> Prev
-            </Button>
-            <Button size="sm" variant="outline" data-testid="button-fleet-next" disabled={page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>
-              Next <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-// Column-header filter dropdown: label + Select in the table header cell.
-function HeaderFilterSelect({
-  label,
-  allLabel,
-  value,
-  options,
-  onChange,
-  testId,
-}: {
-  label: string;
-  allLabel: string;
-  value: string | null;
-  options: string[];
-  onChange: (value: string | null) => void;
-  testId: string;
-}) {
-  return (
-    <Select
-      value={value ?? "__all__"}
-      onValueChange={(v) => onChange(v === "__all__" ? null : v)}
-    >
-      <SelectTrigger
-        data-testid={testId}
-        className={cn(
-          "h-6 px-1.5 text-[10px] font-semibold uppercase tracking-wider border-0 bg-transparent shadow-none gap-1 w-auto min-w-0",
-          value ? "text-primary" : "text-muted-foreground",
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SelectValue placeholder={label}>{value ?? label}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="__all__">{allLabel}</SelectItem>
-        {options.map((o) => (
-          <SelectItem key={o} value={o}>{o}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-// Render helper: skeleton while a row's state is loading, honest fallback after.
-function stateCell(
-  s: MeterStateResult,
-  render: (st: NonNullable<MeterStateResult["state"]>) => React.ReactNode,
-): React.ReactNode {
-  if (s.isLoading) return <Skeleton className="h-3 w-14" />;
-  if (!s.state) return <NotReported />;
-  return render(s.state);
 }

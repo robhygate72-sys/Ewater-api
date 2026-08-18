@@ -13,7 +13,6 @@ import { z } from "zod";
 import { getCredentials, pulseFetch } from "../lib/ewater-client";
 import {
   listHouseholdMeters,
-  getFleetFilterOptions,
   getHouseholdMeter,
   getHouseholdMeterState,
   getHouseholdMeterHistory,
@@ -129,17 +128,6 @@ router.get(
     const key = `meters:${JSON.stringify(options)}`;
     const page = await cached(key, () => listHouseholdMeters(options));
     res.json({ ...page, fetchedAt: new Date().toISOString() });
-  }),
-);
-
-// ── GET /api/ewater/hhc/filter-options ──────────────────────────────────────
-
-router.get(
-  "/ewater/hhc/filter-options",
-  handle(async (req, res) => {
-    if (!requireCreds(res)) return;
-    const opts = await cached("filter-options", () => getFleetFilterOptions());
-    res.json({ ...opts, fetchedAt: new Date().toISOString() });
   }),
 );
 

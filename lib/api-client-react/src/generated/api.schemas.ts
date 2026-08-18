@@ -1216,12 +1216,6 @@ export interface HhcMeterAlarms {
   fetchedAt?: string;
 }
 
-export interface HhcFilterOptions {
-  waterSystems: string[];
-  countries: string[];
-  fetchedAt: string;
-}
-
 export interface HhcFleetAlarms {
   alarms: HhcAlarm[];
   pulseCount: number;

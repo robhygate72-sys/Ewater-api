@@ -246,23 +246,6 @@ export async function listHouseholdMeters(
   return { ...page, items: page.items.map(toMeterSummary) };
 }
 
-export interface FleetFilterOptions {
-  waterSystems: string[];
-  countries: string[];
-}
-
-export async function getFleetFilterOptions(): Promise<FleetFilterOptions> {
-  const assets = await listAssets();
-  const meters = assets.filter(isHouseholdMeter);
-  const waterSystems = Array.from(
-    new Set(meters.map((m) => m.waterSystemName).filter((n): n is string => n != null)),
-  ).sort((a, b) => a.localeCompare(b));
-  const countries = Array.from(
-    new Set(meters.map((m) => m.countryName).filter((n): n is string => n != null)),
-  ).sort((a, b) => a.localeCompare(b));
-  return { waterSystems, countries };
-}
-
 export async function getHouseholdMeter(assetId: string): Promise<HouseholdMeterSummary | null> {
   const assets = await listAssets();
   const asset = assets.find((a) => a.id === assetId);

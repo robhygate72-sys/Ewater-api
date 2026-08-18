@@ -536,16 +536,6 @@ export const TestNotifierResponse = zod.object({
 
 
 /**
- * @summary Distinct water system names and countries across all HouseholdMeters
- */
-export const GetHhcFilterOptionsResponse = zod.object({
-  "waterSystems": zod.array(zod.string()),
-  "countries": zod.array(zod.string()),
-  "fetchedAt": zod.string()
-})
-
-
-/**
  * @summary List household meters (paginated, filterable)
  */
 export const listHouseholdMetersQueryLimitDefault = 50;
