@@ -247,7 +247,9 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
         cell: ({ row }) => {
           const s = row.original.s;
           if (s.isLoading) return <Skeleton className="h-3 w-10" />;
-          if (!s.state) return <NotReported />;
+          // Guard st.state.state — the nested ShengdaCurrentState can be absent
+          // for meters that have never reported, causing a runtime null-deref.
+          if (!s.state?.state) return <NotReported />;
           return s.state.state.validPacketCount > 0
             ? <StatusBadge label="Detected" className="text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25" />
             : <StatusBadge label="No packets" className="text-muted-foreground bg-muted/40 border-border" />;
@@ -255,74 +257,74 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
       }),
       col.display({
         id: "serial", header: "Serial",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsStr(st.state.device, "serialNumber") ?? obsStr(st.state.meter, "waterMeterNo"))),
+        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsStr(st.state?.device, "serialNumber") ?? obsStr(st.state?.meter, "waterMeterNo"))),
       }),
       col.display({
         id: "imei", header: "IMEI",
-        cell: ({ row }) => stateCell(row.original.s, (st) => <span className="font-mono text-[10px]">{obsStr(st.state.network, "imei") ?? <NotReported />}</span>),
+        cell: ({ row }) => stateCell(row.original.s, (st) => <span className="font-mono text-[10px]">{obsStr(st.state?.network, "imei") ?? <NotReported />}</span>),
       }),
       col.display({
         id: "iccid", header: "ICCID",
-        cell: ({ row }) => stateCell(row.original.s, (st) => <span className="font-mono text-[10px]">{obsStr(st.state.network, "iccid") ?? <NotReported />}</span>),
+        cell: ({ row }) => stateCell(row.original.s, (st) => <span className="font-mono text-[10px]">{obsStr(st.state?.network, "iccid") ?? <NotReported />}</span>),
       }),
       col.display({
         id: "lastComm", header: "Last valid comm",
         cell: ({ row }) => stateCell(row.original.s, (st) =>
-          st.connectivity.lastValidPacketAt
+          st.connectivity?.lastValidPacketAt
             ? <span title={formatDateTime(st.connectivity.lastValidPacketAt)}>{formatTimeAgo(st.connectivity.lastValidPacketAt)}</span>
             : <NotReported />),
       }),
       col.display({
         id: "interval", header: "Expected interval",
         cell: ({ row }) => stateCell(row.original.s, (st) =>
-          st.connectivity.reportCycleSeconds != null ? <span>{fmtSeconds(st.connectivity.reportCycleSeconds)}</span> : <NotReported />),
+          st.connectivity?.reportCycleSeconds != null ? <span>{fmtSeconds(st.connectivity.reportCycleSeconds)}</span> : <NotReported />),
       }),
       col.display({
         id: "commHealth", header: "Comm health",
         cell: ({ row }) => stateCell(row.original.s, (st) => (
-          <StatusBadge label={st.connectivity.status} className={connectivityColor(st.connectivity.status)} />
+          <StatusBadge label={st.connectivity?.status ?? "unknown"} className={connectivityColor(st.connectivity?.status ?? "unknown")} />
         )),
       }),
       col.display({
         id: "battery", header: "Battery",
         cell: ({ row }) => stateCell(row.original.s, (st) => {
-          const v = obsNum(st.state.meter, "batteryVoltage") ?? obsNum(st.state.device, "powerSupplyVoltage");
-          const bs = obsStr(st.state.device, "batteryStatus");
+          const v = obsNum(st.state?.meter, "batteryVoltage") ?? obsNum(st.state?.device, "powerSupplyVoltage");
+          const bs = obsStr(st.state?.device, "batteryStatus");
           if (v == null && bs == null) return <NotReported />;
           return <span>{v != null ? `${v.toFixed(2)} V` : ""}{v != null && bs ? " · " : ""}{bs ?? ""}</span>;
         }),
       }),
       col.display({
         id: "rsrp", header: "RSRP",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state.network, "rsrp"), "dBm")),
+        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.network, "rsrp"), "dBm")),
       }),
       col.display({
         id: "snr", header: "SNR",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state.network, "snr"), "dB")),
+        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.network, "snr"), "dB")),
       }),
       col.display({
         id: "valve", header: "Valve",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsStr(st.state.valve, "status"))),
+        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsStr(st.state?.valve, "status"))),
       }),
       col.display({
         id: "prepaid", header: "Prepaid balance",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state.meter, "availableWaterAllowanceLitres"), "L")),
+        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.meter, "availableWaterAllowanceLitres"), "L")),
       }),
       col.display({
         id: "reading", header: "Cumulative reading",
-        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state.meter, "meterReadingLitres"), "L")),
+        cell: ({ row }) => stateCell(row.original.s, (st) => cellVal(obsNum(st.state?.meter, "meterReadingLitres"), "L")),
       }),
       col.display({
         id: "flags", header: "Status",
         cell: ({ row }) => stateCell(row.original.s, (st) => {
           const badges: React.ReactNode[] = [];
-          const err = obsNum(st.state.device, "errorCode") ?? obsNum(st.state.alarms, "waterErrorCode");
+          const err = obsNum(st.state?.device, "errorCode") ?? obsNum(st.state?.alarms, "waterErrorCode");
           if (err != null && err !== 0)
             badges.push(<StatusBadge key="err" label={`Err ${err}`} className="text-destructive bg-destructive/10 border-destructive/25" />);
-          const mag = obs(st.state.alarms, "magneticAttack");
+          const mag = obs(st.state?.alarms, "magneticAttack");
           if (mag?.value === true)
             badges.push(<StatusBadge key="tamper" label="Tamper" className="text-destructive bg-destructive/10 border-destructive/25" />);
-          badges.push(<StatusBadge key="health" label={st.health.status} className={healthColor(st.health.status)} />);
+          badges.push(<StatusBadge key="health" label={st.health?.status ?? "unknown"} className={healthColor(st.health?.status ?? "unknown")} />);
           return <div className="flex gap-1 flex-wrap">{badges}</div>;
         }),
       }),
