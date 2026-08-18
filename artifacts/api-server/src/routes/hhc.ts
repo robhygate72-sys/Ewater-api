@@ -155,6 +155,7 @@ router.get(
       hours: numQ(req.query["hours"]),
       validOnly: strQ(req.query["validOnly"]) === "true",
       messageFunction: strQ(req.query["messageFunction"]),
+      imei: strQ(req.query["imei"]),
       limit: numQ(req.query["limit"]),
       offset: numQ(req.query["offset"]),
     };

@@ -739,6 +739,12 @@ paths:
           schema:
             type: string
           description: Substring filter on message function label
+        - name: imei
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring filter on source IMEI
         - name: limit
           in: query
           required: false

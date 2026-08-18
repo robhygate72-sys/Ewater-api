@@ -881,6 +881,10 @@ validOnly?: boolean;
  */
 messageFunction?: string;
 /**
+ * Substring filter on source IMEI
+ */
+imei?: string;
+/**
  * @minimum 1
  * @maximum 100
  */

@@ -719,6 +719,7 @@ export const GetHouseholdMeterCommunicationsQueryParams = zod.object({
   "hours": zod.coerce.number().min(1).max(getHouseholdMeterCommunicationsQueryHoursMax).default(getHouseholdMeterCommunicationsQueryHoursDefault),
   "validOnly": zod.coerce.boolean().optional().describe('Only CRC-valid packets'),
   "messageFunction": zod.coerce.string().optional().describe('Substring filter on message function label'),
+  "imei": zod.coerce.string().optional().describe('Substring filter on source IMEI'),
   "limit": zod.coerce.number().min(1).max(getHouseholdMeterCommunicationsQueryLimitMax).default(getHouseholdMeterCommunicationsQueryLimitDefault),
   "offset": zod.coerce.number().min(getHouseholdMeterCommunicationsQueryOffsetMin).default(getHouseholdMeterCommunicationsQueryOffsetDefault)
 })

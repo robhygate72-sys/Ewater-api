@@ -498,6 +498,7 @@ export interface GetCommunicationsOptions {
   hours?: number;
   validOnly?: boolean;
   messageFunction?: string;
+  imei?: string;
   limit?: number;
   offset?: number;
 }
@@ -526,6 +527,10 @@ export async function getHouseholdMeterCommunications(
   if (options.messageFunction) {
     const needle = options.messageFunction.toLowerCase();
     packets = packets.filter((p) => (p.messageFunction ?? "").toLowerCase().includes(needle));
+  }
+  if (options.imei) {
+    const needle = options.imei.trim();
+    packets = packets.filter((p) => (p.imei ?? "").includes(needle));
   }
 
   const page = paginateArray(packets, options.limit, options.offset);

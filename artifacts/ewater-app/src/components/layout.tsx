@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Droplet, ChevronLeft, LogOut, RefreshCw, Star, Bell, Tag } from "lucide-react";
+import { Home, Droplet, ChevronLeft, LogOut, RefreshCw, Star, Bell, Tag, Gauge } from "lucide-react";
 import { ReactNode, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useLogout } from "@/App";
@@ -11,9 +11,11 @@ interface LayoutProps {
   showBack?: boolean;
   backTo?: string;
   headerActions?: ReactNode;
+  /** Relax the mobile max-width for data-dense pages like the HHC dashboard. */
+  wide?: boolean;
 }
 
-export function Layout({ children, title, showBack, backTo, headerActions }: LayoutProps) {
+export function Layout({ children, title, showBack, backTo, headerActions, wide }: LayoutProps) {
   const [location] = useLocation();
   const logout = useLogout();
   const queryClient = useQueryClient();
@@ -31,6 +33,7 @@ export function Layout({ children, title, showBack, backTo, headerActions }: Lay
     { href: "/tags", icon: Tag, label: "Tags" },
     { href: "/watchlist", icon: Star, label: "Watchlist" },
     { href: "/notifications", icon: Bell, label: "Alerts" },
+    { href: "/hhc", icon: Gauge, label: "HHC" },
   ];
 
   return (
@@ -60,7 +63,7 @@ export function Layout({ children, title, showBack, backTo, headerActions }: Lay
         </button>
       </header>
 
-      <main className="flex-1 flex flex-col p-4 w-full max-w-md mx-auto overflow-x-hidden pb-20">
+      <main className={cn("flex-1 flex flex-col p-4 w-full mx-auto overflow-x-hidden pb-20", wide ? "max-w-5xl" : "max-w-md")}>
         {children}
       </main>
 

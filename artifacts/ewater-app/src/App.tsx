@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation, useRoute } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,7 +14,7 @@ import Login from "@/pages/login";
 import McpDocsPage from "@/pages/mcp-docs";
 import TagsPage from "@/pages/tags";
 import TagDetailPage from "@/pages/tag-detail";
-import HhmPage from "@/pages/hhm";
+import HhcPage from "@/pages/hhc";
 import { useGetCredentialsStatus, useClearCredentials, getGetCredentialsStatusQueryKey } from "@workspace/api-client-react";
 import { Droplets } from "lucide-react";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
@@ -105,6 +105,17 @@ export function useLogout() {
   };
 }
 
+/** Legacy bookmarks: /hhm/:id now lives in the HHC dashboard's O&M tab. */
+function HhmRedirect() {
+  const [, params] = useRoute("/hhm/:id");
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    const id = params?.id;
+    setLocation(id ? `/hhc?tab=operations&assetId=${encodeURIComponent(id)}` : "/hhc", { replace: true });
+  }, [params?.id, setLocation]);
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
@@ -116,7 +127,8 @@ function Router() {
       <Route path="/export" component={ExportPage} />
       <Route path="/tags" component={TagsPage} />
       <Route path="/tags/:nfcId" component={TagDetailPage} />
-      <Route path="/hhm/:id" component={HhmPage} />
+      <Route path="/hhc" component={HhcPage} />
+      <Route path="/hhm/:id" component={HhmRedirect} />
       <Route component={NotFound} />
     </Switch>
   );

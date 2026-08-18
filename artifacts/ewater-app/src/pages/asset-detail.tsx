@@ -507,7 +507,7 @@ export default function AssetDetail() {
 
           {/* HHM shortcut — shown only for HouseholdMeter assets */}
           {isHhm && (
-            <Link href={`/hhm/${id}`}>
+            <Link href={`/hhc?tab=operations&assetId=${id}`}>
               <Button className="w-full gap-2" variant="default">
                 <Gauge className="w-4 h-4" />
                 See Household Meter
