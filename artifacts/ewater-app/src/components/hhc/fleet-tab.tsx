@@ -1,4 +1,36 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
+
+// ── Error boundary — catches render crashes and exposes the message ───────────
+class FleetErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // Surfaces in browser console logs so we can diagnose.
+    console.error("[FleetTab] Render error:", error.message, error.stack, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-xl border border-destructive bg-destructive/5 p-6 space-y-3">
+          <p className="text-sm font-semibold text-destructive">Dashboard render error</p>
+          <pre className="text-[10px] text-destructive/80 whitespace-pre-wrap break-all">{this.state.error.message}</pre>
+          <button
+            className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted"
+            onClick={() => this.setState({ error: null })}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   useListHouseholdMeters,
   getListHouseholdMetersQueryKey,
@@ -59,6 +91,8 @@ function cellVal(v: string | number | null | undefined, unit?: string) {
 }
 
 const col = createColumnHelper<FleetRow>();
+// Must be stable — calling getCoreRowModel() on every render triggers TanStack Table re-init.
+const stableCoreRowModel = getCoreRowModel();
 
 // ── KPI card ────────────────────────────────────────────────────────────────
 
@@ -88,6 +122,14 @@ function Kpi({ label, value, loading, sub, className, testId }: {
 // ── Main fleet tab ──────────────────────────────────────────────────────────
 
 export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) => void }) {
+  return (
+    <FleetErrorBoundary>
+      <FleetTabInner onSelectMeter={onSelectMeter} />
+    </FleetErrorBoundary>
+  );
+}
+
+function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => void }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [lifecycle, setLifecycle] = useState<string | null>(null);
@@ -149,15 +191,18 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
   const totalMeters = totalQuery.data?.totalCount ?? null;
 
   // KPIs derived only from actually-loaded device state, with coverage shown.
-  const commHealthy = loadedStates.filter((s) => s.state!.connectivity.status === "healthy").length;
-  const commLate = loadedStates.filter((s) => s.state!.connectivity.status === "late").length;
-  const commOffline = loadedStates.filter((s) => s.state!.connectivity.status === "offline").length;
+  // All accesses use optional chaining — API shape may differ from TS types at runtime.
+  const commHealthy = loadedStates.filter((s) => s.state?.connectivity?.status === "healthy").length;
+  const commLate = loadedStates.filter((s) => s.state?.connectivity?.status === "late").length;
+  const commOffline = loadedStates.filter((s) => s.state?.connectivity?.status === "offline").length;
   const alarmCount = loadedStates.filter((s) =>
-    s.state!.health.reasons.some((r) => r.severity !== "ok"),
+    Array.isArray(s.state?.health?.reasons) && s.state!.health.reasons.some((r) => r?.severity !== "ok"),
   ).length;
   const lowBattery = loadedStates.filter((s) => {
-    const bs = obsStr(s.state!.state.device, "batteryStatus");
-    const v = obsNum(s.state!.state.meter, "batteryVoltage") ?? obsNum(s.state!.state.device, "powerSupplyVoltage");
+    const st = s.state;
+    if (!st?.state) return false;
+    const bs = obsStr(st.state.device, "batteryStatus");
+    const v = obsNum(st.state.meter, "batteryVoltage") ?? obsNum(st.state.device, "powerSupplyVoltage");
     return (bs != null && /low|critical/i.test(bs)) || (v != null && v > 0 && v < 3.2);
   }).length;
 
@@ -277,7 +322,7 @@ export function FleetTab({ onSelectMeter }: { onSelectMeter: (assetId: string) =
     [meters, stateById],
   );
 
-  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
+  const table = useReactTable({ data: rows, columns, getCoreRowModel: stableCoreRowModel });
 
   const totalCount = listQuery.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
