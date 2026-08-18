@@ -1,4 +1,39 @@
-import { useMemo, useState, Component, type ReactNode, type ErrorInfo } from "react";
+import { useMemo, useState, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
+
+// ── Filter-options localStorage cache ────────────────────────────────────────
+const FILTER_OPTIONS_CACHE_KEY = "hhc_filter_options_v1";
+
+interface FilterOptionsCache {
+  waterSystems: string[];
+  countries: string[];
+}
+
+function readFilterOptionsCache(): FilterOptionsCache | null {
+  try {
+    const raw = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as FilterOptionsCache).waterSystems) &&
+      Array.isArray((parsed as FilterOptionsCache).countries)
+    ) {
+      return parsed as FilterOptionsCache;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeFilterOptionsCache(data: FilterOptionsCache): void {
+  try {
+    localStorage.setItem(FILTER_OPTIONS_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    // ignore QuotaExceededError and similar
+  }
+}
 
 // ── Error boundary — catches render crashes and exposes the message ───────────
 class FleetErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -149,6 +184,11 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
   const [country, setCountry] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
+  // Stale-while-revalidate cache for filter options — survives API blips.
+  const [cachedFilterOptions, setCachedFilterOptions] = useState<FilterOptionsCache | null>(
+    () => readFilterOptionsCache(),
+  );
+
   const listParams = {
     ...(lifecycle ? { status: lifecycle } : {}),
     ...(waterSystem ? { waterSystem } : {}),
@@ -183,6 +223,18 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
     query: { queryKey: getGetHhcFilterOptionsQueryKey(), staleTime: 300_000 },
   });
 
+  // Persist filter options to localStorage on each successful fetch so they
+  // survive a temporary API outage on the next load.
+  useEffect(() => {
+    if (!filterOptionsQuery.data) return;
+    const next: FilterOptionsCache = {
+      waterSystems: filterOptionsQuery.data.waterSystems ?? [],
+      countries: filterOptionsQuery.data.countries ?? [],
+    };
+    setCachedFilterOptions(next);
+    writeFilterOptionsCache(next);
+  }, [filterOptionsQuery.data]);
+
   // Fleet-wide alarms (Pulse faults + server-computed Shengda alerts).
   const fleetAlarmsQuery = useGetHhcFleetAlarms({
     query: { queryKey: getGetHhcFleetAlarmsQueryKey(), refetchInterval: FLEET_POLL_MS, staleTime: 60_000 },
@@ -192,23 +244,27 @@ function FleetTabInner({ onSelectMeter }: { onSelectMeter: (assetId: string) => 
   const meters = listQuery.data?.items ?? [];
 
   // Dropdown options come from the fleet-wide filter-options endpoint so every
-  // distinct value across all pages is always available. While that fetch is
-  // in-flight we fall back to the values on the current page, and we always
-  // ensure the active selection is present so a live filter can be cleared.
+  // distinct value across all pages is always available.
+  //
+  // Priority: fresh API data → localStorage cache (shown immediately on load
+  // and preserved when the API is unreachable) → current page's values.
+  // The active selection is always kept so a live filter can still be cleared.
   const waterSystemOptions = useMemo(() => {
     const base = filterOptionsQuery.data?.waterSystems
+      ?? cachedFilterOptions?.waterSystems
       ?? meters.map((m) => m.waterSystemName).filter((v): v is string => !!v);
     const set = new Set(base);
     if (waterSystem) set.add(waterSystem);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [filterOptionsQuery.data, meters, waterSystem]);
+  }, [filterOptionsQuery.data, cachedFilterOptions, meters, waterSystem]);
   const countryOptions = useMemo(() => {
     const base = filterOptionsQuery.data?.countries
+      ?? cachedFilterOptions?.countries
       ?? meters.map((m) => m.countryName).filter((v): v is string => !!v);
     const set = new Set(base);
     if (country) set.add(country);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [filterOptionsQuery.data, meters, country]);
+  }, [filterOptionsQuery.data, cachedFilterOptions, meters, country]);
 
   const pageIds = useMemo(() => meters.map((m) => m.id), [meters]);
   const states = useMeterStates(pageIds);
