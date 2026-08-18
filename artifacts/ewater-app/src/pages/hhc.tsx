@@ -127,7 +127,7 @@ export default function HhcPage() {
             <button
               key={t.id}
               data-testid={`tab-hhc-${t.id}`}
-              onClick={() => navigate(t.id)}
+              onClick={() => navigate(t.id, null)}
               className={cn(
                 "px-3 py-2 text-xs font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors",
                 tab === t.id

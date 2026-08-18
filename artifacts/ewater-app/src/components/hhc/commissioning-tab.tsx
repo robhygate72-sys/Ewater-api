@@ -37,7 +37,7 @@ const MAX_API_PAGES = 100; // runaway-loop guard: 10,000 meters per lifecycle
  * Throws (surfacing the error state) rather than returning a silently
  * truncated set if the guard ceiling is ever hit.
  */
-async function fetchAllMeters(status: string): Promise<HouseholdMeterSummary[]> {
+export async function fetchAllMeters(status: string): Promise<HouseholdMeterSummary[]> {
   const all: HouseholdMeterSummary[] = [];
   for (let page = 0; page < MAX_API_PAGES; page++) {
     const res = await listHouseholdMeters({ status, limit: API_PAGE_SIZE, offset: page * API_PAGE_SIZE });

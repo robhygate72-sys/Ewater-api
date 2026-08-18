@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import {
   useGetHouseholdMeterState,
   getGetHouseholdMeterStateQueryKey,
-  useListHouseholdMeters,
-  getListHouseholdMetersQueryKey,
+  type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Gauge, Droplets, TrendingUp, Radio, BatteryMedium, Zap, Signal, Power,
   AlertTriangle, RefreshCw, Search, Lock,
@@ -25,56 +26,226 @@ import {
   getGetHouseholdMeterHistoryQueryKey,
 } from "@workspace/api-client-react";
 import { AlarmsPanel, MaintenancePanel, AuditPanel } from "./om-maintenance";
-import { OperatorBar } from "./commissioning-tab";
+import { OperatorBar, fetchAllMeters } from "./commissioning-tab";
 
 const STATE_POLL_MS = 30_000;
 
 // ── Meter picker (shown when no assetId selected) ───────────────────────────
 
+const OM_LIFECYCLES = ["PreInstallation", "Staged", "Active", "Test"] as const;
+const OM_STAGE_LABEL: Record<string, string> = {
+  PreInstallation: "Pre-install",
+  Staged: "Staged",
+  Active: "Active",
+  Test: "Test",
+};
+const OM_PAGE_SIZE = 25;
+
 function MeterPicker({ onSelect }: { onSelect: (id: string) => void }) {
+  const [stage, setStage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const params = { ...(search.trim() ? { search: search.trim() } : {}), limit: 20, offset: 0 };
-  const query = useListHouseholdMeters(params, {
-    query: { queryKey: getListHouseholdMetersQueryKey(params) },
+  const [waterSystem, setWaterSystem] = useState<string | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+
+  // Full asset list — every page of every lifecycle (shares cache with the
+  // commissioning queue for the three lifecycles they have in common).
+  const lifecycleQueries = useQueries({
+    queries: OM_LIFECYCLES.map((lc) => ({
+      queryKey: ["hhc-commissioning-queue", lc],
+      queryFn: () => fetchAllMeters(lc),
+      staleTime: 90_000,
+      refetchInterval: 90_000,
+    })),
   });
-  const meters = query.data?.items ?? [];
+  const isLoading = lifecycleQueries.some((q) => q.isLoading);
+  const isError = lifecycleQueries.some((q) => q.isError);
+  const isFetching = lifecycleQueries.some((q) => q.isFetching);
+  const refetchAll = () => lifecycleQueries.forEach((q) => void q.refetch());
+
+  const allMeters: HouseholdMeterSummary[] = useMemo(
+    () => lifecycleQueries.flatMap((q) => q.data ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lifecycleQueries[0]?.data, lifecycleQueries[1]?.data, lifecycleQueries[2]?.data, lifecycleQueries[3]?.data],
+  );
+
+  // Dropdown options come from the full list so a filter never hides its own options.
+  const waterSystemOptions = useMemo(
+    () => [...new Set(allMeters.map((m) => m.waterSystemName).filter((v): v is string => !!v))].sort(),
+    [allMeters],
+  );
+  const countryOptions = useMemo(
+    () => [...new Set(allMeters.map((m) => m.countryName).filter((v): v is string => !!v))].sort(),
+    [allMeters],
+  );
+
+  const meters: HouseholdMeterSummary[] = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = allMeters.filter((m) =>
+      (!stage || m.status === stage) &&
+      (!waterSystem || m.waterSystemName === waterSystem) &&
+      (!country || m.countryName === country) &&
+      (!q || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)),
+    );
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allMeters, stage, search, waterSystem, country]);
+
+  const pageCount = Math.max(1, Math.ceil(meters.length / OM_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = meters.slice(safePage * OM_PAGE_SIZE, (safePage + 1) * OM_PAGE_SIZE);
+  const hasFilters = Boolean(search || waterSystem || country || stage);
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Select a HouseholdMeter to inspect.</p>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          data-testid="input-om-meter-search"
-          placeholder="Search meters…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-9 text-sm"
-        />
+      {/* Stage pills + refresh */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            data-testid="filter-om-stage-all"
+            onClick={() => { setStage(null); setPage(0); }}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-lg border transition-colors",
+              stage == null ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
+            )}
+          >
+            All stages
+          </button>
+          {OM_LIFECYCLES.map((lc) => (
+            <button
+              key={lc}
+              data-testid={`filter-om-stage-${lc.toLowerCase()}`}
+              onClick={() => { setStage(lc); setPage(0); }}
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-lg border transition-colors",
+                stage === lc ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:bg-muted",
+              )}
+            >
+              {OM_STAGE_LABEL[lc]}
+            </button>
+          ))}
+        </div>
+        <button
+          data-testid="button-om-picker-refresh"
+          onClick={refetchAll}
+          className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+          title="Refresh list"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", isFetching && "animate-spin")} />
+        </button>
       </div>
-      {query.isLoading ? (
-        Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)
+
+      {/* Search + dropdown filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            data-testid="input-om-meter-search"
+            className="h-8 pl-8 text-xs"
+            placeholder="Search by name or asset ID"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          />
+        </div>
+        <Select
+          value={waterSystem ?? "__all__"}
+          onValueChange={(v) => { setWaterSystem(v === "__all__" ? null : v); setPage(0); }}
+        >
+          <SelectTrigger data-testid="filter-om-water-system" className="h-8 w-[180px] text-xs">
+            <SelectValue placeholder="Water system" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All water systems</SelectItem>
+            {waterSystemOptions.map((o) => (
+              <SelectItem key={o} value={o}>{o}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={country ?? "__all__"}
+          onValueChange={(v) => { setCountry(v === "__all__" ? null : v); setPage(0); }}
+        >
+          <SelectTrigger data-testid="filter-om-country" className="h-8 w-[150px] text-xs">
+            <SelectValue placeholder="Country" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All countries</SelectItem>
+            {countryOptions.map((o) => (
+              <SelectItem key={o} value={o}>{o}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {hasFilters && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
+            data-testid="button-clear-om-filters"
+            onClick={() => { setSearch(""); setWaterSystem(null); setCountry(null); setStage(null); setPage(0); }}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)
+      ) : isError ? (
+        <div className="text-center p-8 bg-card border border-dashed rounded-xl space-y-3">
+          <p className="text-sm text-destructive font-medium">Failed to load the asset list from eWater</p>
+          <Button size="sm" variant="outline" data-testid="button-om-picker-retry" onClick={refetchAll}>Retry</Button>
+        </div>
       ) : meters.length === 0 ? (
         <div className="text-center p-8 bg-card border border-dashed rounded-xl space-y-3">
-          <p className="text-sm text-muted-foreground">No HouseholdMeter assets returned by eWater</p>
-          <Button size="sm" variant="outline" data-testid="button-om-picker-refresh" onClick={() => void query.refetch()}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            {hasFilters ? "No meters match the current filters" : "No HouseholdMeter assets returned by eWater"}
+          </p>
+          {hasFilters && (
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="button-clear-om-filters-empty"
+              onClick={() => { setSearch(""); setWaterSystem(null); setCountry(null); setStage(null); setPage(0); }}
+            >
+              Clear filters
+            </Button>
+          )}
         </div>
       ) : (
-        meters.map((m) => (
-          <button
-            key={m.id}
-            data-testid={`button-om-pick-${m.id}`}
-            onClick={() => onSelect(m.id)}
-            className="w-full text-left rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/40 transition-colors"
-          >
-            <p className="text-sm font-semibold">{m.name}</p>
-            <p className="text-[11px] text-muted-foreground">
-              #{m.id}{m.waterSystemName ? ` · ${m.waterSystemName}` : ""}{m.countryName ? ` · ${m.countryName}` : ""}
-            </p>
-          </button>
-        ))
+        <>
+          <p className="text-[10px] text-muted-foreground" data-testid="text-om-total">
+            {meters.length} meter{meters.length !== 1 ? "s" : ""}
+            {stage ? ` (${OM_STAGE_LABEL[stage]})` : ""}
+          </p>
+          {visible.map((m) => (
+            <button
+              key={m.id}
+              data-testid={`button-om-pick-${m.id}`}
+              onClick={() => onSelect(m.id)}
+              className="w-full text-left rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/40 transition-colors"
+            >
+              <p className="text-sm font-semibold">{m.name}</p>
+              <p className="text-[11px] text-muted-foreground">
+                #{m.id}
+                {m.status ? ` · ${OM_STAGE_LABEL[m.status] ?? m.status}` : ""}
+                {m.waterSystemName ? ` · ${m.waterSystemName}` : ""}
+                {m.countryName ? ` · ${m.countryName}` : ""}
+              </p>
+            </button>
+          ))}
+          {meters.length > OM_PAGE_SIZE && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span data-testid="text-om-page-info">Page {safePage + 1} of {pageCount}</span>
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="outline" data-testid="button-om-prev" disabled={safePage === 0} onClick={() => setPage(Math.max(0, safePage - 1))}>
+                  Prev
+                </Button>
+                <Button size="sm" variant="outline" data-testid="button-om-next" disabled={safePage + 1 >= pageCount} onClick={() => setPage(safePage + 1)}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
