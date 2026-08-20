@@ -39,6 +39,51 @@ test("parses recognised modem health fields from table HTML", () => {
   assert.equal(result.signal, "-91 dBm");
 });
 
+test("scrapes the live UDP definition-list page format", () => {
+  const result = parseUdpModemHealthHtml(
+    IMEI_1,
+    `<html><body><dl>
+      <dt>Found: True</dt><dd>'true' when the modem exists</dd>
+      <dt>Last sync date time: 2026-08-20 08:16:52 (8.8 min ago)</dt><dd>Most recent message</dd>
+      <dt>Server ledger lag: 2</dt><dd>Entries waiting to be confirmed</dd>
+      <dt>ICCID: 8999922102090180625</dt><dd>Most recent SIM id</dd>
+      <dt>IMEI: ${IMEI_1}</dt><dd>Unique modem identifier</dd>
+      <dt>Endpoint: 37.220.2.4:63452</dt><dd>Last network address</dd>
+      <dt>Network: 0,0,&quot;Safaricom&quot;,7</dt><dd>Last network provider</dd>
+      <dt>Last reported ESP32 firmware: 28</dt><dd>Current modem firmware</dd>
+    </dl></body></html>`,
+    "2026-08-20T08:25:00.000Z",
+  );
+
+  assert.equal(result.fetchStatus, "success");
+  assert.equal(result.lastSyncAt, "2026-08-20T08:16:52.000Z");
+  assert.equal(result.network, '0,0,"Safaricom",7');
+  assert.equal(result.firmwareVersion, "28");
+  assert.equal(result.iccid, "8999922102090180625");
+  assert.equal(result.endpoint, "37.220.2.4:63452");
+  assert.equal(result.serverLedgerLag, 2);
+});
+
+test("uses the public UDP health/imei endpoint without API-key headers", async () => {
+  let requestedUrl = "";
+  let requestedHeaders;
+  const result = await fetchUdpModemHealth(IMEI_1, {
+    useCache: false,
+    fetchImpl: async (url, init) => {
+      requestedUrl = String(url);
+      requestedHeaders = init?.headers;
+      return new Response(
+        `<dl><dt>IMEI: ${IMEI_1}</dt><dd>id</dd><dt>Network: Safaricom</dt><dd>network</dd></dl>`,
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    },
+  });
+
+  assert.equal(requestedUrl, `https://udp.ewater.io/api/health/imei/${IMEI_1}`);
+  assert.deepEqual(requestedHeaders, { Accept: "text/html" });
+  assert.equal(result.fetchStatus, "success");
+});
+
 test("rejects malformed and mismatched HTML without fabricating data", () => {
   const malformed = parseUdpModemHealthHtml(IMEI_1, "<html><body>hello</body></html>");
   assert.equal(malformed.fetchStatus, "invalid_response");
@@ -50,6 +95,21 @@ test("rejects malformed and mismatched HTML without fabricating data", () => {
   );
   assert.equal(mismatched.fetchStatus, "invalid_response");
   assert.equal(mismatched.network, null);
+});
+
+test("treats a found modem with no telemetry yet as a valid empty result", () => {
+  const result = parseUdpModemHealthHtml(
+    IMEI_1,
+    `<dl>
+      <dt>Found: True</dt><dd>The modem exists</dd>
+      <dt>Last sync date time: unknown (- ago)</dt><dd>No sync received</dd>
+      <dt>IMEI: ${IMEI_1}</dt><dd>Identifier</dd>
+    </dl>`,
+  );
+
+  assert.equal(result.fetchStatus, "success");
+  assert.equal(result.lastSyncAt, null);
+  assert.equal(result.network, null);
 });
 
 test("classifies not-found, oversized, and timeout responses safely", async () => {

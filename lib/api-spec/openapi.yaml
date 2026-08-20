@@ -1764,6 +1764,8 @@ components:
         - iccid
         - modemType
         - signal
+        - endpoint
+        - serverLedgerLag
         - source
         - error
       properties:
@@ -1786,6 +1788,12 @@ components:
           type: ["string", "null"]
         signal:
           type: ["string", "null"]
+        endpoint:
+          type: ["string", "null"]
+          description: Last known modem network address reported by the UDP service
+        serverLedgerLag:
+          type: ["integer", "null"]
+          description: Number of server ledger entries waiting to be confirmed
         source:
           type: string
           enum: [ewater_udp]

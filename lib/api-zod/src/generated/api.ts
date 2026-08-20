@@ -244,6 +244,8 @@ export const GetAssetUdpHealthResponse = zod.object({
   "iccid": zod.string().nullable(),
   "modemType": zod.string().nullable(),
   "signal": zod.string().nullable(),
+  "endpoint": zod.string().nullable().describe('Last known modem network address reported by the UDP service'),
+  "serverLedgerLag": zod.number().nullable().describe('Number of server ledger entries waiting to be confirmed'),
   "source": zod.enum(['ewater_udp']),
   "error": zod.string().nullable()
 })),

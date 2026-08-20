@@ -293,6 +293,16 @@ export interface UdpModemHealth {
   modemType: string | null;
   /** @nullable */
   signal: string | null;
+  /**
+     * Last known modem network address reported by the UDP service
+     * @nullable
+     */
+  endpoint: string | null;
+  /**
+     * Number of server ledger entries waiting to be confirmed
+     * @nullable
+     */
+  serverLedgerLag: number | null;
   source: UdpModemHealthSource;
   /** @nullable */
   error: string | null;

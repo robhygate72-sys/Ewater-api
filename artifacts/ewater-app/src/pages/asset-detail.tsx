@@ -7,6 +7,9 @@ import {
   getGetAssetTechQueryKey,
   useGetAssetUdpHealth,
   getGetAssetUdpHealthQueryKey,
+  useListAssets,
+  getListAssetsQueryKey,
+  type AssetTechStatus,
 } from "@workspace/api-client-react";
 import { AssetLogs } from "@/components/asset-logs";
 import { DeviceStatusCard } from "@/components/device-status-card";
@@ -342,8 +345,23 @@ export default function AssetDetail() {
   const id = params?.id ?? "";
   const [alertSheetOpen, setAlertSheetOpen] = useState(false);
 
-  const { data: tech, isLoading: isLoadingTech } = useGetAssetTech(id, {
-    query: { enabled: !!id, queryKey: getGetAssetTechQueryKey(id) },
+  const {
+    data: loadedTech,
+    isLoading: isLoadingTech,
+    isError: isTechError,
+    refetch: refetchTech,
+  } = useGetAssetTech(id, {
+    // Do not leave the whole screen behind skeletons while React Query repeats
+    // a 25-second upstream timeout. The fast asset summary below renders first,
+    // and the user can retry live readings explicitly if this request fails.
+    query: { enabled: !!id, queryKey: getGetAssetTechQueryKey(id), retry: false },
+  });
+  const { data: assetSummaries, isLoading: isLoadingAssets } = useListAssets({
+    query: {
+      enabled: !!id,
+      queryKey: getListAssetsQueryKey(),
+      staleTime: 5 * 60_000,
+    },
   });
   const { data: udpHealth, isLoading: isLoadingUdpHealth } = useGetAssetUdpHealth(id, {
     query: {
@@ -353,14 +371,31 @@ export default function AssetDetail() {
     },
   });
 
+  const summary = assetSummaries?.find((asset) => asset.id === id);
+  const bootstrapTech: AssetTechStatus | undefined = summary
+    ? {
+        assetId: summary.id,
+        name: summary.name,
+        lifecycleState: summary.status,
+        purpose: summary.type,
+        waterSystemName: summary.waterSystemName,
+        countryName: summary.countryName,
+        lastCommsDt: summary.lastSeen,
+        batteryVoltage: summary.batteryVoltage,
+        imeis: [],
+      }
+    : undefined;
+  const tech = loadedTech ?? bootstrapTech;
 
-  if (isLoadingTech) {
+  if (!tech && (isLoadingTech || isLoadingAssets)) {
     return (
       <Layout title="Asset Detail" showBack backTo="/assets">
         <div className="space-y-4">
-          <Skeleton className="h-32 w-full rounded-xl" />
-          <Skeleton className="h-48 w-full rounded-xl" />
-          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            Loading captured asset details…
+          </div>
         </div>
       </Layout>
     );
@@ -440,6 +475,38 @@ export default function AssetDetail() {
 
         {/* ─── Status ─── */}
         <TabsContent value="status" className="space-y-3 mt-3">
+          {!loadedTech && (
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px]",
+                isTechError
+                  ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "border-primary/20 bg-primary/5 text-muted-foreground",
+              )}
+              data-testid="status-progressive-asset-load"
+            >
+              {isTechError ? (
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+              )}
+              <span className="flex-1">
+                {isTechError
+                  ? "Captured asset details are shown. Live technical readings could not be loaded."
+                  : "Captured asset details are shown. Live technical readings are still loading…"}
+              </span>
+              {isTechError && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[10px]"
+                  onClick={() => void refetchTech()}
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
+          )}
           {/* Header / details card */}
           <Card className="border-none shadow-md overflow-hidden relative">
             <div className={cn(

@@ -1,4 +1,4 @@
-const UDP_MODEM_BASE_URL = "https://udp.ewater.io/api/shengda";
+const UDP_MODEM_BASE_URL = "https://udp.ewater.io/api/health/imei";
 const DEFAULT_TIMEOUT_MS = 6_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024;
 const SUCCESS_CACHE_TTL_MS = 60_000;
@@ -26,6 +26,8 @@ export interface UdpModemHealth {
   iccid: string | null;
   modemType: string | null;
   signal: string | null;
+  endpoint: string | null;
+  serverLedgerLag: number | null;
   source: "ewater_udp";
   error: string | null;
 }
@@ -106,7 +108,13 @@ function extractEntries(html: string): Map<string, string> {
   }
 
   for (const pair of html.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)) {
-    addEntry(entries, pair[1], pair[2]);
+    const term = stripHtml(pair[1]);
+    // The live UDP health page puts the value in the <dt> itself:
+    //   <dt>Last sync date time: 2026-08-20 08:16:52 (8.8 min ago)</dt>
+    // and uses <dd> only for explanatory help text.
+    const inline = term.match(/^([^:]{2,80}):\s*(.*)$/);
+    if (inline) addEntry(entries, inline[1], inline[2]);
+    else addEntry(entries, pair[1], pair[2]);
   }
 
   const lineText = decodeHtml(
@@ -160,6 +168,8 @@ function emptyResult(
     iccid: null,
     modemType: null,
     signal: null,
+    endpoint: null,
+    serverLedgerLag: null,
     source: "ewater_udp",
     error,
   };
@@ -176,6 +186,10 @@ export function parseUdpModemHealthHtml(
   }
 
   const entries = extractEntries(html);
+  const found = firstEntry(entries, ["Found"]);
+  if (found && /^(?:false|no|0)$/i.test(found)) {
+    return emptyResult(imei, "not_found", fetchedAt, "Modem health was not found");
+  }
   const pageImei = firstEntry(entries, ["IMEI", "Modem IMEI", "Device IMEI"]);
   if (pageImei && pageImei.replace(/\D/g, "") !== imei) {
     return emptyResult(imei, "invalid_response", fetchedAt, "UDP response IMEI did not match the requested modem");
@@ -183,6 +197,7 @@ export function parseUdpModemHealthHtml(
 
   const lastSyncAt = parseTimestamp(firstEntry(entries, [
     "Last sync",
+    "Last sync date time",
     "Last sync at",
     "Latest sync",
     "Most recent sync",
@@ -199,14 +214,23 @@ export function parseUdpModemHealthHtml(
     "Firmware",
     "Firmware version",
     "Software version",
+    "Last reported ESP32 firmware",
   ]);
   const iccid = firstEntry(entries, ["ICCID", "SIM ICCID", "SIM card"]);
   const modemType = firstEntry(entries, ["Modem type", "Modem model", "Model", "Module"]);
   const signal = firstEntry(entries, ["Signal", "Signal strength", "RSSI", "RSRP"]);
+  const endpoint = firstEntry(entries, ["Endpoint", "Last endpoint", "Network endpoint"]);
+  const ledgerLagRaw = firstEntry(entries, ["Server ledger lag"]);
+  const serverLedgerLag = ledgerLagRaw != null && Number.isFinite(Number(ledgerLagRaw))
+    ? Number(ledgerLagRaw)
+    : null;
 
   if (
     entries.size === 0 ||
-    ![lastSyncAt, network, firmwareVersion, iccid, modemType, signal].some(Boolean)
+    (
+      !/^(?:true|yes|1)$/i.test(found ?? "") &&
+      ![lastSyncAt, network, firmwareVersion, iccid, modemType, signal, endpoint].some(Boolean)
+    )
   ) {
     return emptyResult(imei, "invalid_response", fetchedAt, "UDP response did not contain recognised modem health fields");
   }
@@ -221,6 +245,8 @@ export function parseUdpModemHealthHtml(
     iccid,
     modemType,
     signal,
+    endpoint,
+    serverLedgerLag,
     source: "ewater_udp",
     error: null,
   };
@@ -268,14 +294,12 @@ async function fetchUncached(imei: string, options: FetchOptions): Promise<UdpMo
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const apiKey = process.env.EWATER_UDP_API_KEY?.trim();
     const response = await (options.fetchImpl ?? fetch)(
       `${UDP_MODEM_BASE_URL}/${encodeURIComponent(imei)}`,
       {
         method: "GET",
         headers: {
           Accept: "text/html",
-          ...(apiKey ? { "X-Api-Key": apiKey } : {}),
         },
         signal: controller.signal,
       },

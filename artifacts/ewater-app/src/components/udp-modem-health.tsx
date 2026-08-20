@@ -101,6 +101,7 @@ export function UdpModemHealthPanel({
           {selected.iccid ? ` · ICCID ${selected.iccid}` : ""}
           {selected.network ? ` · ${selected.network}` : ""}
           {selected.firmwareVersion ? ` · FW ${selected.firmwareVersion}` : ""}
+          {selected.serverLedgerLag != null ? ` · Ledger lag ${selected.serverLedgerLag}` : ""}
         </p>
       )}
 
@@ -119,7 +120,9 @@ export function UdpModemHealthPanel({
               <Detail label="Network" value={modem.network} />
               <Detail label="Modem / firmware" value={[modem.modemType, modem.firmwareVersion].filter(Boolean).join(" · ") || null} />
               <Detail label="ICCID" value={modem.iccid} mono />
-              <Detail label="Signal" value={modem.signal} mono />
+              <Detail label="Endpoint" value={modem.endpoint} mono />
+              <Detail label="Server ledger lag" value={modem.serverLedgerLag != null ? String(modem.serverLedgerLag) : null} mono />
+              {modem.signal && <Detail label="Signal" value={modem.signal} mono />}
               {modem.error && <p className="text-[9px] text-muted-foreground italic pt-1">{modem.error}</p>}
             </div>
           ))}
