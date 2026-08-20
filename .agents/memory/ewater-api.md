@@ -170,6 +170,13 @@ or purpose, since coexisting protocols show up in the same stream.
 - state: https://state.ewater.io
 - command: https://command.ewater.io
 
+## UDP modem health authentication
+The per-modem UDP route is `GET https://udp.ewater.io/api/shengda/{imei}`. The route exists but returns HTTP 401 without its separate API key; the normal eWater State/Query login token does not grant access.
+
+**Why:** Live probing confirmed that aggregate `/api/Health` is only an HTML service page, while the per-IMEI route is independently protected. Authenticated HTML field labels have not yet been confirmed.
+
+**How to apply:** Send the UDP service key only from the server via `X-Api-Key`. Treat 401, malformed HTML, and unknown labels as unavailable rather than inferring modem data.
+
 ## Codegen quirk — duplicate params type (resolved)
 Adding query params to an OpenAPI endpoint causes Orval to generate `GetXxxParams` in BOTH:
 - `lib/api-zod/src/generated/api.ts` (Zod schema)

@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/layout";
 import { ESenseCharts } from "@/components/esense-charts";
 import { BatteryPanel } from "@/components/battery-panel";
-import { useGetAssetTech, getGetAssetTechQueryKey } from "@workspace/api-client-react";
+import {
+  useGetAssetTech,
+  getGetAssetTechQueryKey,
+  useGetAssetUdpHealth,
+  getGetAssetUdpHealthQueryKey,
+} from "@workspace/api-client-react";
 import { AssetLogs } from "@/components/asset-logs";
 import { DeviceStatusCard } from "@/components/device-status-card";
 import { useRoute, Link } from "wouter";
@@ -28,6 +33,7 @@ import { EwcSettingsPanel } from "@/components/ewc-settings-panel";
 import { MeterReadingPanel } from "@/components/water-meter";
 import { RawPacketsPanel } from "@/components/raw-packets-panel";
 import { DisbursementsPanel } from "@/components/disbursements-panel";
+import { selectedUdpModem, UdpModemHealthPanel } from "@/components/udp-modem-health";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -339,6 +345,13 @@ export default function AssetDetail() {
   const { data: tech, isLoading: isLoadingTech } = useGetAssetTech(id, {
     query: { enabled: !!id, queryKey: getGetAssetTechQueryKey(id) },
   });
+  const { data: udpHealth, isLoading: isLoadingUdpHealth } = useGetAssetUdpHealth(id, {
+    query: {
+      enabled: !!id,
+      queryKey: getGetAssetUdpHealthQueryKey(id),
+      staleTime: 60_000,
+    },
+  });
 
 
   if (isLoadingTech) {
@@ -364,9 +377,15 @@ export default function AssetDetail() {
     );
   }
 
-  const isOnline = tech.lastCommsDt
-    ? Date.now() - new Date(tech.lastCommsDt).getTime() < 48 * 3600 * 1000
-    : false;
+  const udpModem = selectedUdpModem(udpHealth);
+  const resolvedLastComms = tech.lastCommsDt ?? udpHealth?.summary.lastSyncAt ?? null;
+  const resolvedNetwork = tech.lastNetwork ?? udpModem?.network ?? null;
+  const communicationsStatus = resolvedLastComms
+    ? Date.now() - new Date(resolvedLastComms).getTime() < 48 * 3600 * 1000
+      ? "online"
+      : "offline"
+    : "unknown";
+  const isOnline = communicationsStatus === "online";
 
   const isEsense = tech.purpose?.toLowerCase() === "esense";
   const isCommunityTap = tech.purpose?.toLowerCase() === "communitytap";
@@ -425,7 +444,7 @@ export default function AssetDetail() {
           <Card className="border-none shadow-md overflow-hidden relative">
             <div className={cn(
               "absolute top-0 left-0 w-full h-1",
-              tamper || lowBattery ? "bg-amber-500" : isOnline ? "bg-emerald-500" : "bg-zinc-400",
+              tamper || lowBattery ? "bg-amber-500" : isOnline ? "bg-emerald-500" : communicationsStatus === "offline" ? "bg-red-500" : "bg-zinc-400",
             )} />
             <CardContent className="p-4 pt-5">
               <div className="flex justify-between items-start mb-3 gap-2">
@@ -458,7 +477,7 @@ export default function AssetDetail() {
                       isOnline ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0" : "",
                     )}
                   >
-                    {isOnline ? "Online" : "Offline"}
+                    {communicationsStatus}
                   </Badge>
                   {tech.lifecycleState && (
                     <span className="text-[10px] text-muted-foreground">{tech.lifecycleState}</span>
@@ -473,11 +492,17 @@ export default function AssetDetail() {
                 </div>
                 <div>
                   <span className="text-muted-foreground block mb-0.5">Last comms</span>
-                  <span className="font-mono text-[11px]">{tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : "—"}</span>
+                  <span className="font-mono text-[11px]">
+                    {resolvedLastComms ? formatDateTime(resolvedLastComms) : "Unknown"}
+                    {!tech.lastCommsDt && resolvedLastComms ? <span className="block text-[9px] text-muted-foreground">UDP fallback</span> : null}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block mb-0.5">Network</span>
-                  <span className="font-medium capitalize">{tech.lastNetwork ?? "—"}</span>
+                  <span className="font-medium capitalize">
+                    {resolvedNetwork ?? "Unknown"}
+                    {!tech.lastNetwork && resolvedNetwork ? <span className="block text-[9px] text-muted-foreground">UDP fallback</span> : null}
+                  </span>
                 </div>
                 {tech.purpose && (
                   <div>
@@ -537,12 +562,16 @@ export default function AssetDetail() {
 
           {/* Connectivity */}
           <SectionCard title="Connectivity" icon={<Wifi className="w-3.5 h-3.5" />}>
-            <Row label="Last comms" value={tech.lastCommsDt ? formatTimeAgo(tech.lastCommsDt) : null} />
-            <Row label="Last comms (exact)" value={tech.lastCommsDt ? formatDateTime(tech.lastCommsDt) : null} mono />
-            <Row label="Network" value={tech.lastNetwork ?? null} />
+            <Row label="Status" value={<span className="capitalize">{communicationsStatus}</span>} />
+            <Row label="Last comms" value={resolvedLastComms ? formatTimeAgo(resolvedLastComms) : "Unknown"} />
+            <Row label="Last comms (exact)" value={resolvedLastComms ? formatDateTime(resolvedLastComms) : "Unknown"} mono />
+            <Row label="Network" value={resolvedNetwork ?? "Unknown"} />
+            {!tech.lastCommsDt && resolvedLastComms && <Row label="Comms source" value="eWater UDP fallback" />}
             <Row label="Tap events/min (today)" value={tech.tapEventsPerMinuteToday?.toFixed(4) ?? null} mono />
             <Row label="Tap events/min (week)" value={tech.tapEventsPerMinuteThisWeek?.toFixed(4) ?? null} mono />
           </SectionCard>
+
+          <UdpModemHealthPanel data={udpHealth} loading={isLoadingUdpHealth} />
 
           {/* Firmware */}
           {tech.firmware && tech.firmware.length > 0 && (

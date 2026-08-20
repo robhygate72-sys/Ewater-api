@@ -15,6 +15,8 @@ import {
   ProxyRequestBody,
   GetESenseChartsQueryParams,
   ApplyAssetCalibrationBody,
+  GetAssetUdpHealthParams,
+  GetAssetUdpHealthResponse,
 } from "@workspace/api-zod";
 import { db, alertRulesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -46,6 +48,7 @@ import {
   normaliseAssetDto,
 } from "../lib/ewater-insights";
 import { tryDecodeShengdaLwm2m } from "../lib/shengda-nbiot-decoder";
+import { getAssetUdpHealth } from "../lib/udp-modem-health";
 
 const router: IRouter = Router();
 
@@ -112,6 +115,30 @@ async function cachedEntityList(): Promise<PromiseSettledResult<{ status: number
     return { status: "rejected", reason: err };
   }
 }
+
+// ---------------------------------------------------------------------------
+// UDP modem health
+// GET /api/ewater/assets/:assetId/udp-health
+// Resolves only the selected asset's known IMEIs. Each upstream modem lookup is
+// independently bounded and cached in udp-modem-health.ts.
+// ---------------------------------------------------------------------------
+
+router.get("/ewater/assets/:assetId/udp-health", async (req, res): Promise<void> => {
+  const params = GetAssetUdpHealthParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!getCredentials()) {
+    res.status(401).json({ error: "No credentials configured" });
+    return;
+  }
+
+  const assetId = params.data.assetId;
+  const imeis = await fetchAllKnownImeis(assetId);
+  const result = await getAssetUdpHealth(assetId, imeis);
+  res.json(GetAssetUdpHealthResponse.parse(result));
+});
 
 // ---------------------------------------------------------------------------
 // Credentials

@@ -8,6 +8,8 @@ import {
   getGetHouseholdMeterCommissioningQueryKey,
   useUpdateHouseholdMeterCommissioning,
   useRecordModemIccid,
+  useGetAssetUdpHealth,
+  getGetAssetUdpHealthQueryKey,
   type CommissioningDetail,
   type QcResult,
   type UpdateCommissioningBody,
@@ -30,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { formatTimeAgo, formatDateTime } from "@/lib/date";
 import { StatusBadge } from "./shared";
 import { getOperator, isAdminRole, operatorHeaders, useOperatorSession } from "./operator";
+import { UdpModemHealthPanel } from "@/components/udp-modem-health";
 
 const GATES: { gate: number; stage: string; label: string }[] = [
   { gate: 1, stage: "gate1", label: "Gate 1 · Manufacturer" },
@@ -366,6 +369,12 @@ export function CommissioningPanel({ assetId }: { assetId: string }) {
   const query = useGetHouseholdMeterCommissioning(assetId, {
     query: { queryKey, staleTime: 15_000, refetchInterval: 60_000 },
   });
+  const udpQuery = useGetAssetUdpHealth(assetId, {
+    query: {
+      queryKey: getGetAssetUdpHealthQueryKey(assetId),
+      staleTime: 60_000,
+    },
+  });
   const [error, setError] = useState<string | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
@@ -417,6 +426,8 @@ export function CommissioningPanel({ assetId }: { assetId: string }) {
           {error}
         </p>
       )}
+
+      <UdpModemHealthPanel data={udpQuery.data} loading={udpQuery.isLoading} compact />
 
       {d.session.stage === "approved" && (
         <div className="flex items-start gap-2 text-[11px] bg-emerald-500/10 border border-emerald-500/25 rounded-md px-2.5 py-1.5">

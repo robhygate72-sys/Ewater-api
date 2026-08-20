@@ -25,6 +25,7 @@ import type {
   Asset,
   AssetEwcSettings,
   AssetTechStatus,
+  AssetUdpHealth,
   AssignableUsersResult,
   CancelJobBody,
   CommissioningDetail,
@@ -844,6 +845,83 @@ export function useGetAssetTech<TData = Awaited<ReturnType<typeof getAssetTech>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAssetTechQueryOptions(assetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssetUdpHealthUrl = (assetId: string,) => {
+
+
+
+
+  return `/api/ewater/assets/${assetId}/udp-health`
+}
+
+/**
+ * @summary Get bounded, cached UDP modem health for all known asset IMEIs
+ */
+export const getAssetUdpHealth = async (assetId: string, options?: RequestInit): Promise<AssetUdpHealth> => {
+
+  return customFetch<AssetUdpHealth>(getGetAssetUdpHealthUrl(assetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssetUdpHealthQueryKey = (assetId: string,) => {
+    return [
+    `/api/ewater/assets/${assetId}/udp-health`
+    ] as const;
+    }
+
+
+export const getGetAssetUdpHealthQueryOptions = <TData = Awaited<ReturnType<typeof getAssetUdpHealth>>, TError = ErrorType<ErrorResponse>>(assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetUdpHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssetUdpHealthQueryKey(assetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssetUdpHealth>>> = ({ signal }) => getAssetUdpHealth(assetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(assetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssetUdpHealth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssetUdpHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getAssetUdpHealth>>>
+export type GetAssetUdpHealthQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get bounded, cached UDP modem health for all known asset IMEIs
+ */
+
+export function useGetAssetUdpHealth<TData = Awaited<ReturnType<typeof getAssetUdpHealth>>, TError = ErrorType<ErrorResponse>>(
+ assetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssetUdpHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssetUdpHealthQueryOptions(assetId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

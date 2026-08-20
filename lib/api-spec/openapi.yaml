@@ -232,6 +232,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ewater/assets/{assetId}/udp-health:
+    get:
+      operationId: getAssetUdpHealth
+      tags: [ewater]
+      summary: Get bounded, cached UDP modem health for all known asset IMEIs
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Per-modem UDP health and freshest communications summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetUdpHealth"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ewater/assets/{assetId}/ewc:
     get:
       operationId: getAssetEwc
@@ -1726,6 +1751,91 @@ components:
           type: ["number", "null"]
         ewcPreload:
           type: ["number", "null"]
+
+    UdpModemHealth:
+      type: object
+      required:
+        - imei
+        - fetchStatus
+        - fetchedAt
+        - lastSyncAt
+        - network
+        - firmwareVersion
+        - iccid
+        - modemType
+        - signal
+        - source
+        - error
+      properties:
+        imei:
+          type: string
+        fetchStatus:
+          type: string
+          enum: [success, not_found, invalid_imei, invalid_response, timeout, unavailable]
+        fetchedAt:
+          type: string
+        lastSyncAt:
+          type: ["string", "null"]
+        network:
+          type: ["string", "null"]
+        firmwareVersion:
+          type: ["string", "null"]
+        iccid:
+          type: ["string", "null"]
+        modemType:
+          type: ["string", "null"]
+        signal:
+          type: ["string", "null"]
+        source:
+          type: string
+          enum: [ewater_udp]
+        error:
+          type: ["string", "null"]
+
+    UdpCommunicationsSummary:
+      type: object
+      required: [status, selectedImei, lastSyncAt, ageSeconds, source, reason]
+      properties:
+        status:
+          type: string
+          enum: [online, offline, unknown]
+        selectedImei:
+          type: ["string", "null"]
+        lastSyncAt:
+          type: ["string", "null"]
+        ageSeconds:
+          type: ["integer", "null"]
+        source:
+          type: string
+          enum: [ewater_udp]
+        reason:
+          type: string
+
+    AssetUdpHealth:
+      type: object
+      required: [assetId, imeis, modems, lookupLimited, omittedImeiCount, summary, fetchedAt]
+      properties:
+        assetId:
+          type: string
+        imeis:
+          type: array
+          items:
+            type: string
+        modems:
+          type: array
+          items:
+            $ref: "#/components/schemas/UdpModemHealth"
+        lookupLimited:
+          type: boolean
+          description: True when more than the per-asset safety limit of known IMEIs were found
+        omittedImeiCount:
+          type: integer
+          minimum: 0
+          description: Number of known IMEIs not queried because of the per-asset safety limit
+        summary:
+          $ref: "#/components/schemas/UdpCommunicationsSummary"
+        fetchedAt:
+          type: string
 
     AssetEwcSettings:
       type: object

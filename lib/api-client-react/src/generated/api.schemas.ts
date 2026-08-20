@@ -258,6 +258,89 @@ export interface AssetTechStatus {
   ewcPreload?: number | null;
 }
 
+export type UdpModemHealthFetchStatus = typeof UdpModemHealthFetchStatus[keyof typeof UdpModemHealthFetchStatus];
+
+
+export const UdpModemHealthFetchStatus = {
+  success: 'success',
+  not_found: 'not_found',
+  invalid_imei: 'invalid_imei',
+  invalid_response: 'invalid_response',
+  timeout: 'timeout',
+  unavailable: 'unavailable',
+} as const;
+
+export type UdpModemHealthSource = typeof UdpModemHealthSource[keyof typeof UdpModemHealthSource];
+
+
+export const UdpModemHealthSource = {
+  ewater_udp: 'ewater_udp',
+} as const;
+
+export interface UdpModemHealth {
+  imei: string;
+  fetchStatus: UdpModemHealthFetchStatus;
+  fetchedAt: string;
+  /** @nullable */
+  lastSyncAt: string | null;
+  /** @nullable */
+  network: string | null;
+  /** @nullable */
+  firmwareVersion: string | null;
+  /** @nullable */
+  iccid: string | null;
+  /** @nullable */
+  modemType: string | null;
+  /** @nullable */
+  signal: string | null;
+  source: UdpModemHealthSource;
+  /** @nullable */
+  error: string | null;
+}
+
+export type UdpCommunicationsSummaryStatus = typeof UdpCommunicationsSummaryStatus[keyof typeof UdpCommunicationsSummaryStatus];
+
+
+export const UdpCommunicationsSummaryStatus = {
+  online: 'online',
+  offline: 'offline',
+  unknown: 'unknown',
+} as const;
+
+export type UdpCommunicationsSummarySource = typeof UdpCommunicationsSummarySource[keyof typeof UdpCommunicationsSummarySource];
+
+
+export const UdpCommunicationsSummarySource = {
+  ewater_udp: 'ewater_udp',
+} as const;
+
+export interface UdpCommunicationsSummary {
+  status: UdpCommunicationsSummaryStatus;
+  /** @nullable */
+  selectedImei: string | null;
+  /** @nullable */
+  lastSyncAt: string | null;
+  /** @nullable */
+  ageSeconds: number | null;
+  source: UdpCommunicationsSummarySource;
+  reason: string;
+}
+
+export interface AssetUdpHealth {
+  assetId: string;
+  imeis: string[];
+  modems: UdpModemHealth[];
+  /** True when more than the per-asset safety limit of known IMEIs were found */
+  lookupLimited: boolean;
+  /**
+     * Number of known IMEIs not queried because of the per-asset safety limit
+     * @minimum 0
+     */
+  omittedImeiCount: number;
+  summary: UdpCommunicationsSummary;
+  fetchedAt: string;
+}
+
 export interface AssetEwcSettings {
   /** @nullable */
   priceOfWater?: number | null;

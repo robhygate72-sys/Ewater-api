@@ -3,6 +3,8 @@ import { useQueries } from "@tanstack/react-query";
 import {
   useGetHouseholdMeterState,
   getGetHouseholdMeterStateQueryKey,
+  useGetAssetUdpHealth,
+  getGetAssetUdpHealthQueryKey,
   type HouseholdMeterSummary,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,6 +29,11 @@ import {
 } from "@workspace/api-client-react";
 import { AlarmsPanel, MaintenancePanel, AuditPanel } from "./om-maintenance";
 import { fetchAllMeters } from "./commissioning-tab";
+import {
+  selectedUdpModem,
+  UdpModemHealthPanel,
+  udpStatusClass,
+} from "@/components/udp-modem-health";
 
 const STATE_POLL_MS = 30_000;
 
@@ -313,6 +320,13 @@ function MeterDetail({ assetId }: { assetId: string }) {
       refetchInterval: STATE_POLL_MS,
     },
   });
+  const udpQuery = useGetAssetUdpHealth(assetId, {
+    query: {
+      queryKey: getGetAssetUdpHealthQueryKey(assetId),
+      staleTime: 60_000,
+      refetchInterval: 60_000,
+    },
+  });
 
   // 24h usage from the history endpoint (real derived data, not an estimate).
   const histParams = { period: "24h" as const };
@@ -325,6 +339,7 @@ function MeterDetail({ assetId }: { assetId: string }) {
   const meter = d?.meter ?? null;
   const conn = d?.connectivity;
   const health = d?.health;
+  const udpModem = selectedUdpModem(udpQuery.data);
   const loading = stateQuery.isLoading;
 
   const reading = useMemo(() => obs(st?.meter, "meterReadingLitres"), [st]);
@@ -336,6 +351,10 @@ function MeterDetail({ assetId }: { assetId: string }) {
   const snr = obsNum(st?.network, "snr");
   const valveStatus = obsStr(st?.valve, "status");
   const usage24h = histQuery.data?.totalConsumptionLitres ?? null;
+  const resolvedImei = obsStr(st?.network, "imei") ?? udpModem?.imei ?? null;
+  const resolvedIccid = obsStr(st?.network, "iccid") ?? udpModem?.iccid ?? null;
+  const resolvedFirmware = obsStr(st?.device, "firmwareVersion") ?? udpModem?.firmwareVersion ?? null;
+  const resolvedLastComm = conn?.lastValidPacketAt ?? udpQuery.data?.summary.lastSyncAt ?? null;
 
   if (stateQuery.isError) {
     return (
@@ -371,6 +390,13 @@ function MeterDetail({ assetId }: { assetId: string }) {
               </div>
               <div className="flex items-center gap-1.5">
                 {conn && <StatusBadge label={conn.status} className={connectivityColor(conn.status)} testId="status-om-connectivity" />}
+                {udpQuery.data && (
+                  <StatusBadge
+                    label={`UDP ${udpQuery.data.summary.status}`}
+                    className={udpStatusClass(udpQuery.data.summary.status)}
+                    testId="status-om-udp-connectivity"
+                  />
+                )}
                 <button
                   data-testid="button-om-refresh"
                   onClick={() => void stateQuery.refetch()}
@@ -383,16 +409,16 @@ function MeterDetail({ assetId }: { assetId: string }) {
             </div>
             <div className="flex items-center gap-3 mt-2 flex-wrap text-[10px] text-muted-foreground">
               <span className="font-mono">Serial: {obsStr(st?.device, "serialNumber") ?? obsStr(st?.meter, "waterMeterNo") ?? "Not reported"}</span>
-              <span className="font-mono">IMEI: {obsStr(st?.network, "imei") ?? "Not reported"}</span>
-              <span className="font-mono">ICCID: {obsStr(st?.network, "iccid") ?? "Not reported"}</span>
+              <span className="font-mono">IMEI: {resolvedImei ?? "Unknown"}{!obsStr(st?.network, "imei") && resolvedImei ? " (UDP)" : ""}</span>
+              <span className="font-mono">ICCID: {resolvedIccid ?? "Unknown"}{!obsStr(st?.network, "iccid") && resolvedIccid ? " (UDP)" : ""}</span>
             </div>
             <div className="flex items-center gap-3 mt-1.5 flex-wrap text-[10px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Radio className="w-3 h-3" />
                 Last valid comm:{" "}
-                {conn?.lastValidPacketAt
-                  ? <span title={formatDateTime(conn.lastValidPacketAt)}>{formatTimeAgo(conn.lastValidPacketAt)} (device)</span>
-                  : "never"}
+                {resolvedLastComm
+                  ? <span title={formatDateTime(resolvedLastComm)}>{formatTimeAgo(resolvedLastComm)} ({conn?.lastValidPacketAt ? "device" : "UDP fallback"})</span>
+                  : "unknown"}
               </span>
               {d?.fetchedAt && <span>API fetched {formatTimeAgo(d.fetchedAt)} · polls every {STATE_POLL_MS / 1000}s</span>}
             </div>
@@ -423,11 +449,13 @@ function MeterDetail({ assetId }: { assetId: string }) {
         />
         <Stat
           icon={Radio} label="Last comm" loading={loading}
-          value={conn?.lastValidPacketAt ? formatTimeAgo(conn.lastValidPacketAt) : null}
+          value={resolvedLastComm ? formatTimeAgo(resolvedLastComm) : null}
           sub={conn?.reportCycleSeconds != null ? `Expected every ${fmtSeconds(conn.reportCycleSeconds)}` : "No report cycle established"}
           testId="stat-om-lastcomm"
         />
       </div>
+
+      <UdpModemHealthPanel data={udpQuery.data} loading={udpQuery.isLoading} />
 
       {/* ── Device health ── */}
       <SectionCard title="Device health">
@@ -467,16 +495,20 @@ function MeterDetail({ assetId }: { assetId: string }) {
           <InfoRow label="Model" field={obs(st?.device, "model")} />
           <InfoRow label="Serial number" field={obs(st?.device, "serialNumber")} mono />
           <InfoRow label="Water meter no." field={obs(st?.meter, "waterMeterNo")} mono />
-          <InfoRow label="Firmware" field={obs(st?.device, "firmwareVersion")} mono />
+          {obs(st?.device, "firmwareVersion") ? (
+            <InfoRow label="Firmware" field={obs(st?.device, "firmwareVersion")} mono />
+          ) : (
+            <FallbackRow label="Firmware" value={resolvedFirmware} />
+          )}
           <InfoRow label="Hardware" field={obs(st?.device, "hardwareVersion")} mono />
           <InfoRow label="Software" field={obs(st?.device, "softwareVersion")} mono />
           <InfoRow label="Device RTC time" field={obs(st?.device, "rtcTime")} mono />
           <InfoRow label="Meter DN size" field={obs(st?.meter, "meterDnSize")} />
         </SectionCard>
         <SectionCard title="Network">
-          <InfoRow label="IMEI" field={obs(st?.network, "imei")} mono />
+          {obs(st?.network, "imei") ? <InfoRow label="IMEI" field={obs(st?.network, "imei")} mono /> : <FallbackRow label="IMEI" value={resolvedImei} mono />}
           <InfoRow label="IMSI" field={obs(st?.network, "imsi")} mono />
-          <InfoRow label="ICCID" field={obs(st?.network, "iccid")} mono />
+          {obs(st?.network, "iccid") ? <InfoRow label="ICCID" field={obs(st?.network, "iccid")} mono /> : <FallbackRow label="ICCID" value={resolvedIccid} mono />}
           <InfoRow label="NB module" field={obs(st?.network, "nbModuleVersion")} mono />
           <InfoRow label="APN" field={obs(st?.network, "apn")} mono />
           <InfoRow label="Cell ID" field={obs(st?.network, "cellId")} mono />
@@ -517,6 +549,18 @@ function MeterDetail({ assetId }: { assetId: string }) {
       <AuditPanel assetId={assetId} />
       <UsageCharts assetId={assetId} />
       <CommsLog assetId={assetId} />
+    </div>
+  );
+}
+
+function FallbackRow({ label, value, mono = false }: { label: string; value: string | null; mono?: boolean }) {
+  return (
+    <div className="flex justify-between items-start py-2 border-b border-border/30 last:border-0 gap-3">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className={cn("inline-flex flex-col items-end text-xs", mono && "font-mono text-[11px] break-all")}>
+        {value ?? <span className="text-muted-foreground italic">Unknown</span>}
+        {value && <span className="text-[9px] text-muted-foreground font-sans">eWater UDP fallback</span>}
+      </span>
     </div>
   );
 }

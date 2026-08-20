@@ -221,6 +221,47 @@ export const GetAssetTechResponse = zod.object({
 
 
 /**
+ * @summary Get bounded, cached UDP modem health for all known asset IMEIs
+ */
+export const GetAssetUdpHealthParams = zod.object({
+  "assetId": zod.coerce.string()
+})
+
+export const getAssetUdpHealthResponseOmittedImeiCountMin = 0;
+
+
+
+export const GetAssetUdpHealthResponse = zod.object({
+  "assetId": zod.string(),
+  "imeis": zod.array(zod.string()),
+  "modems": zod.array(zod.object({
+  "imei": zod.string(),
+  "fetchStatus": zod.enum(['success', 'not_found', 'invalid_imei', 'invalid_response', 'timeout', 'unavailable']),
+  "fetchedAt": zod.string(),
+  "lastSyncAt": zod.string().nullable(),
+  "network": zod.string().nullable(),
+  "firmwareVersion": zod.string().nullable(),
+  "iccid": zod.string().nullable(),
+  "modemType": zod.string().nullable(),
+  "signal": zod.string().nullable(),
+  "source": zod.enum(['ewater_udp']),
+  "error": zod.string().nullable()
+})),
+  "lookupLimited": zod.boolean().describe('True when more than the per-asset safety limit of known IMEIs were found'),
+  "omittedImeiCount": zod.number().min(getAssetUdpHealthResponseOmittedImeiCountMin).describe('Number of known IMEIs not queried because of the per-asset safety limit'),
+  "summary": zod.object({
+  "status": zod.enum(['online', 'offline', 'unknown']),
+  "selectedImei": zod.string().nullable(),
+  "lastSyncAt": zod.string().nullable(),
+  "ageSeconds": zod.number().nullable(),
+  "source": zod.enum(['ewater_udp']),
+  "reason": zod.string()
+}),
+  "fetchedAt": zod.string()
+})
+
+
+/**
  * @summary Get EWC calibration settings and calculated price of water for an asset
  */
 export const GetAssetEwcParams = zod.object({
